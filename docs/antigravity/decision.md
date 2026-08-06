@@ -96,4 +96,16 @@ Worker SA: agent-worker@hodi-2026.iam.gserviceaccount.com
 
 **ADK (Google Agent Development Kit / OpenTelemetry SDK)**.
 
-Antigravity is retained as the IDE and agentic orchestration pair-programming assistant, while **ADK + OpenTelemetry SDK** is used for headless runtime execution of multi-agent delegation, distinct service account isolation, and OpenTelemetry span tracing (HOD-340). Compliance is unaffected since ADK independently qualifies under Hackathon Compliance Matrix (§2).
+Antigravity is retained as the primary pair-programming, system architecture, and code generation agentic SDK assistant, while **ADK + OpenTelemetry SDK** is used for headless runtime execution of multi-agent delegation, distinct service account isolation, and OpenTelemetry span tracing (HOD-340). Compliance is unaffected since ADK independently qualifies under Hackathon Compliance Matrix (§2).
+
+---
+
+## 5. What Phase 2 Actually Runs On Today
+
+Phase 2 runs on **role-separated ADK Agent classes (`src/agents/`) executing Vertex AI / GenAI calls under 4 distinct GCP Service Accounts**:
+- `rights-custodian-sa@hodi-2026.iam.gserviceaccount.com` (`RightsCustodianAgent`)
+- `licensing-negotiator-sa@hodi-2026.iam.gserviceaccount.com` (`LicensingNegotiatorAgent`)
+- `evidence-agent-sa@hodi-2026.iam.gserviceaccount.com` (`EvidenceAgent`)
+- `revocation-propagator-sa@hodi-2026.iam.gserviceaccount.com` (`RevocationPropagatorAgent`)
+
+Each agent class encapsulates its distinct Service Account credentials, registers with the `AgentRegistry`, passes all inter-agent traffic through `AgentGateway`, and exports OpenTelemetry spans (`src/observability/tracing.py`) carrying `agent.identity`, `policy.consulted`, and `outcome`.
