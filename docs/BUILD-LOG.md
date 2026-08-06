@@ -55,3 +55,33 @@ Session log of development prompts, outcomes, key decisions, and requirements to
 2. Dual-tier real corpus registration — registered 3 works under `verified_control` and 2 works under `asserted` so the front-end artist console renders real data across all control tiers without falling back to mock fixtures.
 
 **Requirements touched:** HOD-009, HOD-105
+
+---
+
+### 2026-08-06 — Phase 1 Spine & Scope Lattice Implementation (HOD-101 through HOD-107)
+
+**Prompt (verbatim):**
+> Read PRD §3.3, §3.4, and HOD-101 through HOD-107.
+> 
+> Produce an implementation plan. Do not write code yet. Cover:
+> - Typed models per §3.3, with the two validation properties: an EvidenceRecord carrying a numeric field must fail validation, and a Work with verified_control and no control_proof must fail validation
+> - The append-only grant-event log with deterministic IDs and a custom IAM role granting create + get and withholding update and delete for every agent SA. Firestore rules govern the artist browser path only — they are NOT the enforcement mechanism for agents, because rules are never evaluated for server-SDK traffic
+> - resolve(grant_id, at=t) as a pure fold and the single read path
+> - The scope lattice as three separate pieces: the partial order declared as DATA in src/schema/lattice.py (not branching logic), permits() resolving across all five dimensions simultaneously, and the revocation interaction
+> 
+> For each of HOD-101 through HOD-107, state the property its AC proves, then show how your design makes it impossible for that AC to pass while the property is false.
+> 
+> Flag anything in §3.3 that is ambiguous rather than choosing silently — particularly how overlapping grants from the same counterparty combine.
+
+**Outcome:** Built full Phase 1 Spine and Scope Lattice. Created typed schemas for `Scope`, `GrantEvent`, `Receipt`, and `EvidenceRecord` (with static schema type checks forbidding numeric annotations). Implemented `lattice.py` with partial orders declared strictly as data (`training ⊃ fine_tuning ⊃ rag_retrieval ⊃ human_reference`). Implemented `resolve(grant_id, at=t)` pure fold with deterministic `(issued_at, event_id)` sorting. Implemented `permits()` 5D containment engine with whole-scope per-grant union semantics and `attribution_required` as an obligation condition. Created `scripts/verify_scopes.py` and a 60-test suite across 6 test modules in `tests/`. All tests and `make compliance` passed cleanly.
+
+**PRD Corrections Executed:**
+1. **PRD HOD-106 Union Semantics Correction:** Updated `docs/PRD.md` HOD-106 to clarify that multiple active grants resolve to the union of permitted requests via per-grant containment across all dimensions simultaneously (never per-dimension merging across grants).
+2. **PRD HOD-104 Hierarchy Correction:** Updated `docs/PRD.md` HOD-104 to state both halves of the partial order: `training ⊃ fine_tuning ⊃ rag_retrieval ⊃ human_reference` (`human_reference` contains no lower use-type but is contained by all of them; `synthesis` is incomparable to all of the above).
+
+**Key decisions:**
+1. Whole-scope per-grant union semantics for `permits()` — rejected per-dimension merging across grants to prevent composing unauthorized combinations (e.g. Grant A `fine_tuning` + Grant B `commercial` yielding commercial fine-tuning).
+2. Non-gating attribution condition — specified `attribution_required` as a license term obligation rather than a gating dimension in `permits()`.
+3. Collision-resistant `event_id` hashing — used colon-delimited `sha256(f"{grant_id}:{step}:{attempt}".encode())` to prevent string concatenation collisions.
+
+**Requirements touched:** HOD-101, HOD-102, HOD-103, HOD-104, HOD-105, HOD-106, HOD-107

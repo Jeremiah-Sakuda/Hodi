@@ -7,7 +7,7 @@ demo-live:
 	@echo "not implemented" && exit 1
 
 verify-scopes:
-	@echo "not implemented" && exit 1
+	python3 scripts/verify_scopes.py
 
 metrics:
 	@echo "not implemented" && exit 1
