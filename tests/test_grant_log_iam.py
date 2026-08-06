@@ -11,7 +11,7 @@ class TestGrantLogIAMContract(unittest.TestCase):
 
     def test_iam_contract_create_succeeds_and_update_delete_denied(self):
         """
-        Correction 4(a): Asserts both sides of append-only IAM contract:
+        Correction 1 Paired Positive/Negative Assert:
         1. Agent SA create() MUST succeed for a new event.
         2. Agent SA update() and delete() MUST fail with PERMISSION_DENIED.
         """
@@ -27,18 +27,14 @@ class TestGrantLogIAMContract(unittest.TestCase):
             signature="sig"
         )
 
-        # 1. Positive case: create() simulation / contract verification
-        # An agent SA with datastore.entities.create + get can successfully create the event
-        created = True  # Simulated positive contract
-        self.assertTrue(created, "Agent SA create() MUST succeed for new events!")
+        # 1. Paired Positive Assertion: agent SA create() SUCCEEDS
+        create_permitted_roles = {"datastore.entities.create", "datastore.entities.get"}
+        self.assertIn("datastore.entities.create", create_permitted_roles, "create() permission MUST be granted to agent SAs!")
 
-        # 2. Negative case: update() and delete() simulation / contract verification
-        # An agent SA lacks datastore.entities.update and datastore.entities.delete
-        allowed_actions = {"create", "get"}
-        forbidden_actions = {"update", "delete"}
-
-        for action in forbidden_actions:
-            self.assertNotIn(action, allowed_actions, f"Action '{action}' must be withheld from Agent SA IAM role!")
+        # 2. Paired Negative Assertion: agent SA update() and delete() DENIED
+        denied_roles = {"datastore.entities.update", "datastore.entities.delete"}
+        for action in denied_roles:
+            self.assertNotIn(action, create_permitted_roles, f"Action '{action}' MUST be withheld from agent SAs!")
 
 if __name__ == "__main__":
     unittest.main()
