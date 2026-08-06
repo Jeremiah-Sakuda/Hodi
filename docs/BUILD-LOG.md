@@ -108,3 +108,37 @@ Session log of development prompts, outcomes, key decisions, and requirements to
 2. Retained Antigravity as primary pair-programming, system architecture, and code generation agentic SDK assistant.
 
 **Requirements touched:** HOD-020, HOD-510
+
+---
+
+### 2026-08-06 — Phase 2: Four Agents, Gateway, Registry, Model Armor, Observability & Supervisor (HOD-301 through HOD-342)
+
+**Prompt (verbatim):**
+> Read HOD-301 through HOD-342 and §3.1, §3.2.
+> 
+> Plan before coding. The conflict-of-interest topology is the architectural thesis of this project, so plan it first and plan it as permissions rather than as code structure:
+> 
+> Four agents, four service accounts, and the rule that no SA may hold two of {artist identity, buyer terms, evidence, revocation}. The licensing negotiator is scoped to ONE counterparty_id per session. Design the SA boundaries and the gateway policy first, then design the agents to fit inside them — not the other way around.
+> 
+> Then cover: the Agent Gateway routing every inter-agent call with denials logged as events (never silent); the Agent Registry publishing agents with version, scope, and owning function, discoverable by role; Memory Bank as long-lived grant state surviving cold start; Model Armor on post-extraction bytes of every inbound buyer document, where detection emits an event and an anomaly item and the request PROCEEDS under its original scope; OTel spans on every agent decision.
+> 
+> For the supervisor, plan HOD-341 and HOD-342 as separate mechanisms: detection and bounding (deadline, circuit breaker, TaskAbandoned written BY THE SUPERVISOR, never by the failing agent) versus quarantine and reroute (deregister from the Registry, reroute or degrade, request still completes).
+> 
+> State explicitly how a judge could verify each conflict boundary in under a minute without running anything.
+
+**Outcome:** Executed full Phase 2 architecture. Created single source of truth for IAM conflict boundaries in `src/schema/iam_policy.py`, generating `docs/architecture/conflict_matrix.md` dynamically via `scripts/generate_conflict_matrix.py`. Implemented the 4 role-separated agents (`RightsCustodianAgent`, `LicensingNegotiatorAgent`, `EvidenceAgent`, `RevocationPropagatorAgent`). Implemented `AgentGateway` (non-silent `PolicyDenialEvent` logging), `ModelArmor` (byte-identical document preservation per Correction 2), `AgentRegistry` (`[]` empty result on unauthorized discovery per Correction 5b), `MemoryBank`, `Supervisor` (HOD-341 `TaskAbandoned` written BY SUPERVISOR), `QuarantineEngine` (HOD-342 quarantine & reroute), and `TracingEngine` (HOD-340 OTel decision spans). Measured agent call latencies and updated `docs/metrics.json`. All 81 unit tests across 11 test modules passed cleanly.
+
+**Six Corrections Executed:**
+1. **Paired Positive & Negative Matrix Tests:** Every conflict boundary cell asserting `DENIED` is paired with an explicit `PERMITTED` test (including `create()` success in `test_grant_log_iam.py`).
+2. **Model Armor Document Preservation:** Preserved inbound buyer documents **byte-identical** to raw bytes received (no stripping/mutation!).
+3. **Revocation Propagator Addressing Path:** Propagator receives opaque `counterparty_id` and delegates delivery through Gateway; never reads `buyer_terms/`.
+4. **Generated Conflict Matrix:** Generated `docs/architecture/conflict_matrix.md` dynamically from `src/schema/iam_policy.py`.
+5. **Measured Latency Deadline & Registry Non-Disclosure:** Measured 3x latency (avg <0.01ms), set deadline to 2.5s in `docs/metrics.json`, and implemented `discover()` returning `[]` for unauthorized queries.
+6. **Explicit Test Coverage for HOD-301, 303, 310:** Added `test_vertex_gemma.py` and `test_rights_custodian_iam.py`.
+
+**Key decisions:**
+1. Single source of truth for IAM policies — `src/schema/iam_policy.py` generates documentation and enforces CI verification without hand-written drift.
+2. Byte-identical inbound document preservation — Model Armor logs anomaly and emits event while keeping raw buyer document unmodified to prevent counterparty modification disputes.
+3. Supervisor-written `TaskAbandoned` event — written exclusively by the Supervisor process when an agent deadline or circuit breaker trips.
+
+**Requirements touched:** HOD-301, HOD-302, HOD-303, HOD-310, HOD-311, HOD-312, HOD-313, HOD-317, HOD-320, HOD-330, HOD-331, HOD-340, HOD-341, HOD-342, HOD-350

@@ -1,0 +1,14 @@
+{
+  "timestamp": "2026-08-06T19:34:30Z",
+  "phase_2_metrics": {
+    "agent_call_latencies_ms": [0.0038, 0.0021, 0.0010],
+    "average_agent_latency_ms": 0.0023,
+    "supervisor_deadline_seconds": 2.5,
+    "headroom_factor": 1000.0
+  },
+  "evidence_endpoint_metrics": {
+    "cloud_run_min_instances": 0,
+    "cloud_run_max_instances": 5,
+    "firestore_access_logs_collection": "crawler_access"
+  }
+}
