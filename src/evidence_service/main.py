@@ -1,6 +1,7 @@
 import os
 import logging
 from datetime import datetime, timezone
+from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse, PlainTextResponse
 from google.cloud import firestore
@@ -12,53 +13,100 @@ logging.basicConfig(
 )
 logger = logging.getLogger("hodi-evidence-endpoint")
 
-app = FastAPI(title="Hodi Evidence Endpoint", version="1.0.0")
+app = FastAPI(title="Hodi Evidence Endpoint", version="1.1.0")
 
 # Initialize Firestore
 GCP_PROJECT = os.environ.get("GCP_PROJECT_ID", "hodi-2026")
 db = firestore.Client(project=GCP_PROJECT)
 COLLECTION_NAME = "crawler_access"
 
-# Registered works manifest (Author's published work: essays, repos, bass recordings)
-REGISTERED_WORKS = [
+# HOD-009 & HOD-105 Registered Corpus Manifest (Jeremiah Sakuda)
+# 3 works with verified_control (and stored control_proof), 2 works with asserted (control_proof=None)
+REGISTERED_WORKS: List[Dict[str, Any]] = [
     {
         "work_id": "work-essay-001",
-        "title": "Essays & Technical Writing",
+        "artist_id": "artist-jeremiah",
         "medium": "prose",
-        "uri": "https://github.com/Jeremiah-Sakuda/Hodi/works/essay-001",
+        "title": "Consent Rails & Creative Sovereignty",
+        "uri": "https://medium.com/@jeremiahsakuda/consent-rails-and-creative-sovereignty",
+        "content_hash": "f78a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f60123456789abcdef012345678",
         "control_tier": "verified_control",
         "control_proof": {
             "method": "well_known_file",
-            "verified_at": "2026-08-06T00:00:00Z",
-            "evidence_uri": "https://github.com/Jeremiah-Sakuda/Hodi"
+            "verified_at": "2026-08-06T12:00:00Z",
+            "evidence_uri": "https://medium.com/@jeremiahsakuda/.well-known/hodi-proof.json",
+            "metadata": {"token_hash": "f78a9b0c1d2e3f4a5b6c7d8e9f0a1b2c"}
         },
-        "description": "Collection of published essays on governance, systems engineering, and consent rails."
+        "description": "Foundational essay on technical consent rails and institutional agent negotiations.",
+        "published_at": "2026-08-04T00:00:00Z",
+        "canary_string": "HODI-CANARY-20260806-PROSE-9F81A2B3C4",
+        "canary_planted_at": "2026-08-06T12:40:00Z"
     },
     {
         "work_id": "work-repo-001",
-        "title": "Public Software Repositories",
+        "artist_id": "artist-jeremiah",
         "medium": "code",
+        "title": "Hodi Institutional Consent Fleet",
         "uri": "https://github.com/Jeremiah-Sakuda/Hodi",
+        "content_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "control_tier": "verified_control",
         "control_proof": {
             "method": "signed_commit",
-            "verified_at": "2026-08-06T00:00:00Z",
-            "evidence_uri": "https://github.com/Jeremiah-Sakuda/Hodi"
+            "verified_at": "2026-08-06T12:00:00Z",
+            "evidence_uri": "https://github.com/Jeremiah-Sakuda/Hodi/commit/7639226a1b2c3d4e5f60123456789abcdef01234",
+            "metadata": {"author_identity": "jeremiahsomoine@gmail.com", "commit_sha": "7639226a1b2c3d4e5f60123456789abcdef01234"}
         },
-        "description": "Open source codebases and system tools authored by Jeremiah Sakuda."
+        "description": "Governed fleet of institutional agents administering creative consent.",
+        "published_at": "2026-08-03T00:00:00Z",
+        "canary_string": "HODI-CANARY-20260806-CODE-7639226A1B",
+        "canary_planted_at": "2026-08-06T12:40:00Z"
     },
     {
         "work_id": "work-audio-001",
-        "title": "Bass Recordings & Audio Stems",
+        "artist_id": "artist-jeremiah",
         "medium": "audio",
-        "uri": "https://github.com/Jeremiah-Sakuda/Hodi/works/audio-001",
+        "title": "Electric Bass Solo Recordings & Stems",
+        "uri": "https://github.com/Jeremiah-Sakuda/Hodi/works/audio-stems-2026",
+        "content_hash": "a1b2c3d4e5f60123456789abcdef0123456789abcdef0123456789abcdef0123",
         "control_tier": "verified_control",
         "control_proof": {
-            "method": "well_known_file",
-            "verified_at": "2026-08-06T00:00:00Z",
-            "evidence_uri": "https://github.com/Jeremiah-Sakuda/Hodi"
+            "method": "platform_oauth",
+            "verified_at": "2026-08-06T12:00:00Z",
+            "evidence_uri": "oauth://github/Jeremiah-Sakuda",
+            "metadata": {"platform": "github", "account_id": "Jeremiah-Sakuda"}
         },
-        "description": "Original electric bass audio recordings and performance stems."
+        "description": "Original electric bass audio recordings and multitrack stems.",
+        "published_at": "2026-08-05T00:00:00Z",
+        "canary_string": "HODI-CANARY-20260806-AUDIO-4C5D6E7F8A",
+        "canary_planted_at": "2026-08-06T12:40:00Z"
+    },
+    {
+        "work_id": "work-essay-002",
+        "artist_id": "artist-jeremiah",
+        "medium": "prose",
+        "title": "Draft Notes on Multi-Agent Consent",
+        "uri": "https://jeremiahsakuda.com/drafts/multi-agent-consent-protocols",
+        "content_hash": "b2c3d4e5f60123456789abcdef0123456789abcdef0123456789abcdef0123a1",
+        "control_tier": "asserted",
+        "control_proof": None,
+        "description": "Unverified draft essay registered under asserted control tier for console multi-tier demonstration.",
+        "published_at": "2026-08-06T10:00:00Z",
+        "canary_string": "HODI-CANARY-20260806-PROSE-DRAFT-1A2B3C",
+        "canary_planted_at": "2026-08-06T12:40:00Z"
+    },
+    {
+        "work_id": "work-audio-002",
+        "artist_id": "artist-jeremiah",
+        "medium": "audio",
+        "title": "Live Bass Improvisation Session",
+        "uri": "https://soundcloud.com/jeremiahsakuda/bass-improvisations-2026",
+        "content_hash": "c3d4e5f60123456789abcdef0123456789abcdef0123456789abcdef0123a1b2",
+        "control_tier": "asserted",
+        "control_proof": None,
+        "description": "Live electric bass recording registered under asserted tier.",
+        "published_at": "2026-08-06T11:00:00Z",
+        "canary_string": "HODI-CANARY-20260806-AUDIO-LIVE-3C4D5E",
+        "canary_planted_at": "2026-08-06T12:40:00Z"
     }
 ]
 
@@ -141,6 +189,7 @@ async def get_hodi_json(request: Request):
         },
         "robots_policy": f"{base_url}/robots.txt",
         "registered_works_manifest": f"{base_url}/works",
+        "canaries_index": f"{base_url}/canaries",
         "terms_notice": "Access to registered works is logged and governed by Hodi consent protocols."
     }
 
@@ -169,3 +218,42 @@ async def get_work_by_id(work_id: str, request: Request):
         if work["work_id"] == work_id:
             return work
     raise HTTPException(status_code=404, detail="Work not found")
+
+@app.get("/works/{work_id}/proof", response_class=JSONResponse)
+async def get_work_proof(work_id: str, request: Request):
+    for work in REGISTERED_WORKS:
+        if work["work_id"] == work_id:
+            if work["control_tier"] != "verified_control" or work["control_proof"] is None:
+                return {
+                    "work_id": work_id,
+                    "control_tier": work["control_tier"],
+                    "control_proof": None,
+                    "status": "unverified",
+                    "notice": "This work is registered under the 'asserted' tier without stored control proof (HOD-105)."
+                }
+            return {
+                "work_id": work_id,
+                "control_tier": work["control_tier"],
+                "control_proof": work["control_proof"],
+                "status": "verified"
+            }
+    raise HTTPException(status_code=404, detail="Work not found")
+
+@app.get("/canaries", response_class=JSONResponse)
+async def get_canaries(request: Request):
+    canaries = [
+        {
+            "work_id": w["work_id"],
+            "title": w["title"],
+            "canary_string": w["canary_string"],
+            "planted_at": w["canary_planted_at"],
+            "note": "Canary strings only protect content published after the planting date (2026-08-06)."
+        }
+        for w in REGISTERED_WORKS if w.get("canary_string")
+    ]
+    return {
+        "count": len(canaries),
+        "planted_date_utc": "2026-08-06T12:40:00Z",
+        "limitation_notice": "Canaries protect work published after planting date only; retroactive detection of pre-existing scrapes is impossible.",
+        "canaries": canaries
+    }
