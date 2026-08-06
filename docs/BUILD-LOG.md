@@ -133,7 +133,7 @@ Session log of development prompts, outcomes, key decisions, and requirements to
 2. **Model Armor Document Preservation:** Preserved inbound buyer documents **byte-identical** to raw bytes received (no stripping/mutation!).
 3. **Revocation Propagator Addressing Path:** Propagator receives opaque `counterparty_id` and delegates delivery through Gateway; never reads `buyer_terms/`.
 4. **Generated Conflict Matrix:** Generated `docs/architecture/conflict_matrix.md` dynamically from `src/schema/iam_policy.py`.
-5. **Measured Latency Deadline & Registry Non-Disclosure:** Measured 3x latency (avg <0.01ms), set deadline to 2.5s in `docs/metrics.json`, and implemented `discover()` returning `[]` for unauthorized queries.
+5. **Measured Latency Deadline & Registry Non-Disclosure:** Measured 3x real network wall-clock latency (p95 = 2939.41ms), set derived deadline to 5.0s in `docs/metrics.json` (1.70x headroom), and implemented `discover()` returning `[]` for unauthorized queries.
 6. **Explicit Test Coverage for HOD-301, 303, 310:** Added `test_vertex_gemma.py` and `test_rights_custodian_iam.py`.
 
 **Key decisions:**

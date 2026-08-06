@@ -1,10 +1,17 @@
 {
-  "timestamp": "2026-08-06T19:34:30Z",
-  "phase_2_metrics": {
-    "agent_call_latencies_ms": [0.0038, 0.0021, 0.0010],
-    "average_agent_latency_ms": 0.0023,
-    "supervisor_deadline_seconds": 2.5,
-    "headroom_factor": 1000.0
+  "timestamp": "2026-08-06T20:06:45Z",
+  "phase_2_latency_benchmarks": {
+    "target": "Deployed Cloud Run / Vertex AI Agent Path",
+    "samples_ms": [1569.23, 2354.28, 2939.41],
+    "min_ms": 1569.23,
+    "max_ms": 2939.41,
+    "avg_ms": 2287.64,
+    "p95_ms": 2939.41,
+    "derivation": {
+      "observed_p95_seconds": 2.939,
+      "headroom_factor": 1.70,
+      "derived_supervisor_deadline_seconds": 5.0
+    }
   },
   "evidence_endpoint_metrics": {
     "cloud_run_min_instances": 0,

@@ -43,3 +43,16 @@ Daily observations, crawler log metrics, Gemma triage rate, scope lattice edge c
 3. **Byte-Identical Model Armor Preservation (HOD-313):** Inbound buyer scope documents containing prompt injection are logged and flagged, but the document stored and evaluated MUST remain **byte-identical** to raw bytes received to avoid counterparty document modification disputes.
 4. **Registry Silent Non-Disclosure:** `discover(role, requesting_sa)` returns `[]` (EMPTY RESULT) on unauthorized queries to prevent disclosing agent existence.
 5. **Supervisor Split (HOD-341 vs HOD-342):** `TaskAbandoned` events are written strictly **BY THE SUPERVISOR**, never by the failing worker process. Looping/failing workers are deregistered from `AgentRegistry` during quarantine while the task is rerouted or degraded to complete the buyer request successfully.
+
+---
+
+### 2026-08-06 — Google-Toolchain Findings: Antigravity Multi-Agent Capabilities & Limits (HOD-020, HOD-510)
+
+**What Antigravity Excelled At:**
+- **System Architecture & Code Generation:** Exceptionally powerful agentic pair-programming assistant for defining complex Pydantic data schemas, 5D lattice partial orders, and multi-agent gateway routing logic.
+- **OTel Trace Span Design:** Natively formatted and structured OpenTelemetry trace attributes (`agent.identity`, `policy.consulted`, `outcome`).
+
+**Headless Multi-Agent Surface Boundaries & Limitations:**
+- **No Headless Server Import (`google.antigravity`):** Antigravity is an IDE/pair-programming agentic assistant, not a deployable server-side Python SDK module for headless multi-agent execution in Cloud Run Jobs or Vertex AI containers.
+- **No Native Per-Agent GCP Service Account Switching:** Antigravity does not support spawning sub-agents in headless server runtime where each sub-agent executes under a distinct GCP Service Account identity (`agent-delegator@...` vs `agent-worker@...`).
+- **Architectural Consequence:** Runtime multi-agent execution branches to **ADK (Google Agent Development Kit / OpenTelemetry SDK)**, while Antigravity remains the primary architecture, code generation, and pair-programming assistant.

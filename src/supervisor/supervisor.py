@@ -17,7 +17,7 @@ class Supervisor:
     TaskAbandoned event is written BY THE SUPERVISOR, never by the failing worker process.
     """
 
-    def __init__(self, deadline_seconds: float = 2.5, failure_threshold: int = 3):
+    def __init__(self, deadline_seconds: float = 5.0, failure_threshold: int = 3):
         self.deadline_seconds = deadline_seconds
         self.failure_threshold = failure_threshold
         self.failure_counts: Dict[str, int] = {}
