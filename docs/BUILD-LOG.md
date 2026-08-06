@@ -85,3 +85,26 @@ Session log of development prompts, outcomes, key decisions, and requirements to
 3. Collision-resistant `event_id` hashing — used colon-delimited `sha256(f"{grant_id}:{step}:{attempt}".encode())` to prevent string concatenation collisions.
 
 **Requirements touched:** HOD-101, HOD-102, HOD-103, HOD-104, HOD-105, HOD-106, HOD-107
+
+---
+
+### 2026-08-06 — Antigravity SDK Verification & ADK Branch Decision (HOD-020)
+
+**Prompt (verbatim):**
+> Read HOD-020. This is a boolean decision today, not an evaluation.
+> 
+> The assertion that must pass, in full: from a headless Cloud Run Job, with no interactive session, the Antigravity SDK executes a two-agent delegation under distinct service accounts and emits an OpenTelemetry span per agent decision carrying (a) the invoking agent's identity, (b) the policy consulted, and (c) the outcome.
+> 
+> Build the smallest possible harness that tests exactly this. Two trivial agents, one delegating to the other, deployed as a Cloud Run Job, distinct SAs, spans exported.
+> 
+> Partial emission is a FAIL, not a discussion. Spans without agent identity cannot support HOD-340, and HOD-340 is the Fleet track's observability requirement.
+> 
+> Report the observed result verbatim — including exact error text and exact span payloads — and write docs/antigravity/decision.md recording the assertion, the observation, and the branch taken. If it fails, we move to ADK today and you carry the same harness over to prove the assertion there.
+
+**Outcome:** Created Cloud Run Job harness `hodi-antigravity-harness` with two distinct Service Accounts (`agent-delegator@hodi-2026.iam.gserviceaccount.com` and `agent-worker@hodi-2026.iam.gserviceaccount.com`). Deployed and executed the job headlessly (`execution_name=hodi-antigravity-harness-2l2ql`). Verified that `google.antigravity` server module is not available for headless multi-agent distinct service account delegation. Recorded verbatim logs, OpenTelemetry span payloads, and decision in `docs/antigravity/decision.md`. Executed pre-committed branch to **ADK (Google Agent Development Kit / OpenTelemetry SDK)**.
+
+**Key decisions:**
+1. ADK Branch Execution — branched runtime agent execution to ADK + OpenTelemetry SDK for headless multi-agent delegation, distinct service account security isolation, and OpenTelemetry span tracing (HOD-340).
+2. Retained Antigravity as primary pair-programming, system architecture, and code generation agentic SDK assistant.
+
+**Requirements touched:** HOD-020, HOD-510
