@@ -1,0 +1,9 @@
+title = "Gitleaks config for Hodi"
+
+[allowlist]
+description = "Global allowlist"
+paths = [
+    '''\.env\.example$''',
+    '''docs/PRD\.md$''',
+    '''AGENTS\.md$'''
+]
