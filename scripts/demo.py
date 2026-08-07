@@ -38,7 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.schema.lattice import USE_TYPE_CONTAINMENT, MODEL_CLASS_CONTAINMENT
 from src.schema.grant_event import GrantEvent
 from src.schema.scope import Scope
-from src.resolve.resolver import resolve
+from src.resolve.resolver import resolve, active_grant_events
 from src.resolve.evaluator import permits
 from src.gateway.prompt_inspector import PromptInspector
 from src.gateway.gateway import AgentGateway, GatewayPolicyDenial
@@ -118,7 +118,7 @@ def beat_4_poisoned_request(events):
             req = json.load(f)
         raw = req["document_text"].encode("utf-8")
         result = inspector.inspect(raw)
-        active = [e for e in events if e.counterparty_id == req["counterparty_id"]]
+        active = active_grant_events([e for e in events if e.counterparty_id == req["counterparty_id"]], at=t_eval)
         evaluation = permits(active, Scope(**req["requested_scope"]), at=t_eval)
         outcomes[name] = evaluation
         print(f"  [{name:<8}] injection_detected={result.injection_detected!s:<5} "
@@ -130,6 +130,38 @@ def beat_4_poisoned_request(events):
     assert outcomes["clean"].permitted == outcomes["poisoned"].permitted
     assert outcomes["clean"].matching_grant_id == outcomes["poisoned"].matching_grant_id
     print("  PASS: identical licensable outcome — the injection changed nothing but the audit log.")
+
+
+def beat_4b_natural_language_interpretation(events):
+    rule("BEAT 4B — THE MODEL INTERPRETS INTENT, THE LATTICE DECIDES PERMISSION (HOD-301)")
+    from src.llm.scope_interpreter import ScopeInterpreter
+    from src.llm.vertex_gemini import PINNED_INTERPRETER_MODEL
+    interp = ScopeInterpreter()
+    t_eval = datetime(2026, 8, 7, tzinfo=timezone.utc)
+    print(f"  interpreter: {PINNED_INTERPRETER_MODEL} (pinned, temperature 0; replaying the recorded")
+    print(f"  response from fixtures/gemini_response_cache.json — captured from a real Vertex AI call)")
+
+    with open(FIXTURES / "buyer_request_clean.json") as f:
+        req = json.load(f)
+    print(f"  natural-language request: \"{req['document_text'][:88]}...\"")
+    scope = interp.interpret(req["document_text"], valid_from=t_eval)
+    print(f"  interpreted scope: use_type={scope.use_type} model_class={scope.model_class} "
+          f"commercial={scope.commercial} territory={scope.territory}")
+    active = active_grant_events([e for e in events if e.counterparty_id == req["counterparty_id"]], at=t_eval)
+    evaluation = permits(active, scope, at=t_eval)
+    print(f"  lattice verdict:  permitted={evaluation.permitted} via={evaluation.matching_grant_id}")
+    assert evaluation.permitted, "The recorded clean interpretation must be permitted by the fixture grant."
+
+    with open(FIXTURES / "buyer_request_poisoned.json") as f:
+        preq = json.load(f)
+    pscope = interp.interpret(preq["document_text"], valid_from=t_eval)
+    pevaluation = permits(active_grant_events([e for e in events if e.counterparty_id == preq["counterparty_id"]], at=t_eval), pscope, at=t_eval)
+    print(f"  poisoned request interpreted as territory={pscope.territory} "
+          f"model_class={pscope.model_class} -> permitted={pevaluation.permitted}")
+    assert not pevaluation.permitted, \
+        "The injection broadened the interpretation; the lattice must deny what no grant contains."
+    print("  The model returns a Scope and nothing else; a malformed or out-of-vocabulary")
+    print("  interpretation is rejected, never coerced. permits() is the only authority.")
 
 
 def beat_5_conflict_walls():
@@ -191,6 +223,7 @@ def main():
     beat_2_byte_stable_replay(events)
     beat_3_temporal_fold(events)
     beat_4_poisoned_request(events)
+    beat_4b_natural_language_interpretation(events)
     beat_5_conflict_walls()
     beat_6_honesty_invariants()
     print("\nALL DEMO BEATS PASSED.")

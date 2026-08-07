@@ -113,12 +113,19 @@ class RevocationPropagatorAgent:
                         original_scope=state.active_scope
                     ))
                     
-                    # 3. Emit signed notices via Gateway using opaque counterparty_id
+                    # 3. Emit signed notices via Gateway using opaque counterparty_id.
+                    # Notice text is Gemini-drafted and gated by RevocationLint;
+                    # if drafting is unavailable or fails the lint, the linted
+                    # deterministic template is used (src/llm/notice_drafter.py).
+                    from src.llm.notice_drafter import NoticeDrafter
+                    notice_text, _notice_source = NoticeDrafter().draft(
+                        grant_id=gid, work_id=work_id, counterparty_id=state.counterparty_id
+                    )
                     notice = RevocationNotice(
                         grant_id=gid,
                         counterparty_id=state.counterparty_id,
                         revoked_at=datetime.now(timezone.utc),
-                        notice_text="This grant is hereby terminated. Please note that this revocation terminates the legal license but does not un-train the model."
+                        notice_text=notice_text
                     )
                     
                     receipt = self.gateway.deliver_revocation_notice(

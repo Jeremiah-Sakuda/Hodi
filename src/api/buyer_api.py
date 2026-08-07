@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from src.schema.scope import Scope, ScopeEvaluationResult
 from src.schema.grant_event import GrantEvent, Receipt
 from src.resolve.evaluator import permits
+from src.resolve.resolver import active_grant_events
 from src.gateway.prompt_inspector import PromptInspector
 from src.gateway.gateway import AgentGateway, GatewayPolicyDenial
 from src.agents.revocation_propagator import RevocationPropagatorAgent, CascadeResult
@@ -57,9 +58,12 @@ def request_license(req: ScopeRequest):
         filters={"counterparty_id": req.counterparty_id},
         session_context={"counterparty_id": req.counterparty_id}
     )
-    # Parse back to Pydantic models
-    active_grants = [GrantEvent(**g) for g in raw_grants]
-    
+    # Parse back to Pydantic models, then FOLD: the log is append-only, so a
+    # revoked grant's original `granted` event is still present — permits()
+    # must only ever see grants that are active after the fold (HOD-107).
+    all_events = [GrantEvent(**g) for g in raw_grants]
+    active_grants = active_grant_events(all_events)
+
     # 4. Resolve scope against lattice
     eval_result = permits(active_grants=active_grants, requested_scope=req.requested_scope)
     
@@ -93,6 +97,93 @@ def request_license(req: ScopeRequest):
             anomaly_detected=anomaly_detected,
             inspector_engine=armor_result.inspector_engine
         )
+
+class NaturalScopeRequest(BaseModel):
+    counterparty_id: str
+    request_text: str = Field(..., description="Natural-language license request from the counterparty")
+    signature: str = Field(..., description="Cryptographic signature of the request")
+
+class NaturalLicenseResponse(BaseModel):
+    permitted: bool
+    interpreted_scope: Optional[Scope] = None
+    interpreter_model: str
+    licensable_set: List[str]
+    explicit_exclusions: List[str]
+    receipt: Optional[Receipt] = None
+    anomaly_detected: bool = False
+    inspector_engine: str = "unknown"
+
+@router.post("/api/v1/license/natural", response_model=NaturalLicenseResponse)
+def request_license_natural(req: NaturalScopeRequest):
+    """
+    THE MODEL INTERPRETS INTENT. THE LATTICE DECIDES PERMISSION.
+
+    Gemini structures the counterparty's natural-language request into a typed
+    Scope; permits() decides against the lattice deterministically. The model's
+    output cannot influence the permission decision except by producing a valid
+    Scope — a malformed or out-of-vocabulary interpretation is rejected (422),
+    never coerced.
+    """
+    from src.llm.scope_interpreter import ScopeInterpreter, ScopeInterpretationError
+    from src.llm.vertex_gemini import GeminiUnavailableError
+
+    if not req.signature:
+        raise HTTPException(status_code=400, detail="Unsigned request rejected.")
+
+    # Untrusted inbound buyer document: inspect post-extraction bytes (HOD-313).
+    # Detection is logged and the request PROCEEDS under its original scope.
+    armor_result = armor.inspect(req.request_text.encode("utf-8"))
+
+    interpreter = ScopeInterpreter()
+    try:
+        interpreted = interpreter.interpret(req.request_text, valid_from=datetime.now(timezone.utc))
+    except ScopeInterpretationError as e:
+        raise HTTPException(status_code=422, detail=f"Interpretation rejected: {e}")
+    except GeminiUnavailableError as e:
+        raise HTTPException(status_code=503, detail=f"Interpreter unavailable: {e}")
+
+    gateway = AgentGateway()
+    raw_grants = gateway.read_collection(
+        calling_sa=NEGOTIATOR_SA,
+        calling_role_key="licensing_negotiator",
+        target_collection="grants",
+        filters={"counterparty_id": req.counterparty_id},
+        session_context={"counterparty_id": req.counterparty_id}
+    )
+    # Fold before containment: permits() must only see active grants (HOD-107).
+    active_grants = active_grant_events([GrantEvent(**g) for g in raw_grants])
+
+    # The ONLY input the model contributed to this call is `interpreted`,
+    # a schema-validated Scope. permits() is deterministic.
+    eval_result = permits(active_grants=active_grants, requested_scope=interpreted)
+
+    receipt = None
+    licensable_set: List[str] = []
+    exclusions: List[str] = []
+    if eval_result.permitted:
+        receipt = Receipt(
+            receipt_id=str(uuid.uuid4()),
+            grant_id=eval_result.matching_grant_id or "unknown",
+            counterparty_id=req.counterparty_id,
+            payload_hash="real_hash",
+            issued_at=datetime.now(timezone.utc),
+            signature="SIG_RECEIPT"
+        )
+        granted_scope = next((g.scope for g in active_grants if g.grant_id == eval_result.matching_grant_id), None)
+        licensable_set = [granted_scope.use_type, granted_scope.model_class] if granted_scope else []
+    else:
+        exclusions = [interpreted.use_type, interpreted.model_class]
+
+    return NaturalLicenseResponse(
+        permitted=eval_result.permitted,
+        interpreted_scope=interpreted,
+        interpreter_model=interpreter.model_id,
+        licensable_set=licensable_set,
+        explicit_exclusions=exclusions,
+        receipt=receipt,
+        anomaly_detected=armor_result.injection_detected,
+        inspector_engine=armor_result.inspector_engine
+    )
 
 class RevokeRequest(BaseModel):
     work_id: str

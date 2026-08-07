@@ -327,5 +327,48 @@ class TestScopeContainmentTruthTable(unittest.TestCase):
         r = Scope(use_type="training", territory=[], valid_from=self.now)
         self.assertFalse(permits([g], r, at=self.now).permitted)
 
+    # --- FOLD BEFORE CONTAINMENT (Cases 46-47) ---
+    # permits() takes ACTIVE grants. In the append-only log a revoked grant's
+    # original `granted` event is still present; every log reader must fold
+    # through active_grant_events() first, or a revoked grant keeps permitting.
+    def _revoked_then_narrower_log(self):
+        from src.schema.grant_event import GrantEvent
+        broad = self._make_grant("g1", "training", commercial=True, territory=["WW"])
+        revoke = GrantEvent(
+            event_id="evt-g1-revoke", grant_id="g1", work_id="work-01", counterparty_id="buyer-01",
+            scope=broad.scope, kind="revoked", supersedes="evt-g1",
+            issued_at=self.past + timedelta(days=1), signature="sig"
+        )
+        narrower = GrantEvent(
+            event_id="evt-g1-regrant", grant_id="g1", work_id="work-01", counterparty_id="buyer-01",
+            scope=Scope(use_type="fine_tuning", model_class="open_weights", commercial=False,
+                        territory=["US"], valid_from=self.past + timedelta(days=2)),
+            kind="granted", issued_at=self.past + timedelta(days=2), signature="sig"
+        )
+        return [broad, revoke, narrower]
+
+    def test_case_46_revoked_grants_original_event_cannot_permit_after_fold(self):
+        """Raw events would permit commercial WW training via the revoked broad
+        grant; the folded active set must deny it."""
+        from src.resolve.resolver import active_grant_events
+        events = self._revoked_then_narrower_log()
+        r = self._make_request("training", commercial=True, territory=["WW"])
+        # The trap: raw events still contain the broad `granted` event.
+        self.assertTrue(permits(events, r, at=self.now).permitted,
+                        "Precondition: raw events would wrongly permit — the fold is what saves us.")
+        active = active_grant_events(events, at=self.now)
+        self.assertFalse(permits(active, r, at=self.now).permitted)
+
+    def test_case_47_fold_resolves_to_narrower_regrant(self):
+        """After revoke-then-regrant-narrower, the folded active set permits
+        exactly the narrower scope and nothing broader (HOD-107 on the read path)."""
+        from src.resolve.resolver import active_grant_events
+        active = active_grant_events(self._revoked_then_narrower_log(), at=self.now)
+        self.assertEqual(len(active), 1)
+        narrower_req = self._make_request("fine_tuning", commercial=False, territory=["US"], model_class="open_weights")
+        self.assertTrue(permits(active, narrower_req, at=self.now).permitted)
+        broader_req = self._make_request("fine_tuning", commercial=False, territory=["US", "EU"], model_class="open_weights")
+        self.assertFalse(permits(active, broader_req, at=self.now).permitted)
+
 if __name__ == "__main__":
     unittest.main()
