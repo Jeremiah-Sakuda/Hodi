@@ -33,8 +33,9 @@ class TestEvidenceHonesty(unittest.TestCase):
         for target_dir in target_dirs:
             if not target_dir.exists():
                 continue
-            for file_path in target_dir.rglob("*.py"):
-                text = file_path.read_text(encoding="utf-8")
+            for ext in ["*.py", "*.js", "*.html"]:
+                for file_path in target_dir.rglob(ext):
+                    text = file_path.read_text(encoding="utf-8")
                 for pattern in forbidden_patterns:
                     if re.search(pattern, text, re.IGNORECASE):
                         violations.append(f"{file_path.name}: matched forbidden pattern '{pattern}'")
@@ -61,6 +62,33 @@ class TestEvidenceHonesty(unittest.TestCase):
                     m.lower(),
                     f"Honesty Invariant Violation: EvidenceEngine method '{m}' contains forbidden aggregation keyword '{kw}'."
                 )
+
+    def test_no_hardcoded_metric_literals_in_console(self):
+        """
+        HOD-370: Console must not render fabricated evidence numbers.
+        Any numeric literal assigned to a metric field in the console UI
+        violates the honesty invariant.
+        """
+        repo_root = Path(__file__).resolve().parent.parent
+        console_dir = repo_root / "src" / "console"
+        
+        # Matches property assignments like: count: 47, latency: 120, records: 0
+        violation_pattern = re.compile(r'(count|latency|records|total|accrued)\s*:\s*\d+', re.IGNORECASE)
+        
+        violations = []
+        if console_dir.exists():
+            for ext in ["*.js", "*.html"]:
+                for file_path in console_dir.rglob(ext):
+                    lines = file_path.read_text(encoding="utf-8").splitlines()
+                    for i, line in enumerate(lines):
+                        if violation_pattern.search(line):
+                            violations.append(f"{file_path.name}:{i+1}: {line.strip()}")
+        
+        self.assertEqual(
+            violations,
+            [],
+            f"Honesty Invariant Violation detected! Found hardcoded metric literals in console code:\n" + "\n".join(violations)
+        )
 
 if __name__ == "__main__":
     unittest.main()

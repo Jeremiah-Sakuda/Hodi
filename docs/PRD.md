@@ -62,7 +62,7 @@ Cells enumerate IDs. `make compliance` (HOD-007) diffs §4 against this table **
 | Category | The Fortified Enterprise Fleet | — |
 | **Fleet: cataloged for cross-department use** | **Agent Registry** — agents published with versions, scopes, and owning function; discoverable and invocable by role | HOD-310, HOD-330 |
 | **Fleet: context across weeks of async operation** | **Memory Bank** — grants, scopes, and revocations are long-lived state with temporal validity; the registry survives instance death; crawler logs accumulate for weeks | HOD-101, HOD-102, HOD-103, HOD-320, HOD-331 |
-| **Fleet: production data without violating policy** | **Agent Identity** (per-agent scoped SAs), **Agent Gateway** (routing + policy enforcement at the boundary), **Model Armor** (untrusted buyer/scope documents) | HOD-104, HOD-105, HOD-106, HOD-107, HOD-311, HOD-312, HOD-313 |
+| **Fleet: production data without violating policy** | **Agent Identity** (per-agent scoped SAs), **Agent Gateway** (routing + policy enforcement at the boundary), **Prompt Inspector** (local regex on untrusted buyer documents) | HOD-102, HOD-311, HOD-312, HOD-313, HOD-340 |
 | **Fleet: audit reasoning** | **Agent Observability** — OpenTelemetry traces end-to-end; every agent decision carries a span; the trace is a demo artifact, not a log file | HOD-340 |
 | **Nexus: failure tolerance** | Supervisor quarantine + reroute on loop, timeout, or scope violation; per-agent circuit breaker; `TaskAbandoned` on deadline; revocation propagation | HOD-341, HOD-342, HOD-350 |
 | Devpost — features/functionality | `docs/devpost-description.md` §1 | HOD-622 |
@@ -112,7 +112,7 @@ Cells enumerate IDs. `make compliance` (HOD-007) diffs §4 against this table **
   quarantine · reroute · circuit-break          /.well-known/hodi.json
   OTel traces for every decision                scope request → licensable set + receipt
 
-  MODEL ARMOR sits on every untrusted inbound document, post-extraction
+  PROMPT INSPECTOR sits on every untrusted inbound document, post-extraction
 ```
 
 ### 3.2 Why this is structurally multi-agent
@@ -167,7 +167,7 @@ EvidenceRecord {
 | Grants are never mutated | Append-only `create()`-only event log with deterministic IDs; revocation is a **new event that supersedes**; the original grant remains visible with a strikethrough, never deleted. |
 | Current state is always a fold | `resolve(grant_id, at=t)` is the single read path; "what was permitted on March 3" is the same function with a timestamp. |
 | Ownership is verified or explicitly not | `control_tier` is mandatory; `verified_control` requires a stored `control_proof`; the UI renders the three tiers differently and never hides `asserted`. |
-| Untrusted documents cannot redirect the fleet | Model Armor on post-extraction bytes of every inbound buyer/scope document; detection emits an event and an anomaly item and the request **proceeds** under its original scope. |
+| Untrusted documents cannot redirect the fleet | Prompt Inspector (local regex) on post-extraction bytes of every inbound buyer/scope document; detection emits an event and an anomaly item and the request **proceeds** under its original scope. |
 | A looping or hallucinating worker cannot stall the fleet | Supervisor with per-agent deadline and circuit breaker; quarantine + reroute; `TaskAbandoned` events; every decision carries an OTel span. |
 | Least privilege | One SA per agent, per §3.2's conflict boundaries; no SA holds two of {identity, buyer terms, evidence, revocation}. |
 
@@ -209,8 +209,8 @@ Every AC names **the property it proves**, not the artifact it inspects. Before 
 - **HOD-310** **Rights custodian**: registration, terms authoring, control-tier management. *AC:* holds identity; has no read path to buyer terms.
 - **HOD-311** **Licensing negotiator**: resolves a buyer scope request against the lattice, returns a licensable set with exclusions explained and a signed receipt. **Scoped to one `counterparty_id` per session by IAM.** *AC (property: confidentiality is enforced, not promised):* the negotiator's SA receives `PERMISSION_DENIED` reading any other counterparty's grants — a deployed test, not a doc diff.
 - **HOD-312** **Agent Gateway**: every inter-agent call routed and policy-checked; denials logged as events, never silent. *AC:* a call violating a scope boundary appears in the log as a denial with the policy that rejected it.
-- **HOD-313** **Model Armor on post-extraction bytes** of every inbound buyer document. Detection emits `InjectionDetected` + an anomaly item; **the request proceeds under its original scope**. *AC:* the poisoned scope-request fixture is caught every run and does not alter the returned set.
-- **HOD-317** **Wall-clock measurement.** *AC:* the two live video beats — buyer scope request with the Model Armor catch, and the revocation cascade — are each timed **three times on the deployed path, with variance recorded** to `metrics.json`. You get one take; you need the worst case, and §6's ladder is denominated in seconds that must be real.
+- **HOD-313** **Prompt Inspector (local regex) on post-extraction bytes** of every inbound buyer document. Detection emits `InjectionDetected` + an anomaly item; **the request proceeds under its original scope**. *AC:* the poisoned scope-request fixture is caught every run and does not alter the returned set.
+- **HOD-317** **Wall-clock measurement.** *AC:* the two live video beats — buyer scope request with the Prompt Inspector catch, and the revocation cascade — are each timed **three times on the deployed path, with variance recorded** to `metrics.json`. You get one take; you need the worst case, and §6's ladder is denominated in seconds that must be real.
 - **HOD-320** **Evidence agent**: crawler-log analysis, canary checks, verbatim matching against a queryable model, redistribution checks. **`verbatim_match` is the only class requiring an external model surface** — if unavailable or unreliable, it is cut third on the §7 ladder and the class is stated in the README as designed-but-not-demonstrated, which is a limit, not a failure. Emits typed `EvidenceRecord`s with `claim_limit` on every one. *AC (property: it cannot overclaim):* a render-time lint rejects "trained on" / "was in the training set" / "proves training" in any generated text; no code path produces a cross-class total.
 - **HOD-330** **Agent Registry**: agents published with version, scope, owning function; discoverable and invocable by role. *AC:* a role query returns only agents that role may invoke.
 - **HOD-331** **Memory Bank**: long-lived grant/scope/revocation state surviving instance death and cold start. *AC:* a resolve after a cold start returns identical state to a warm one.
@@ -235,7 +235,7 @@ Every AC names **the property it proves**, not the artifact it inspects. Before 
 - **HOD-510** **Make the toolchain evidence reachable.** `## Technologies used` names Antigravity, ADK (fallback and the Aug 8 outcome), Gemini 3.5 Pro/Flash with pinned IDs, and Gemma, each with one line — and **links `docs/BUILD-LOG.md` and `docs/antigravity/decision.md`, the latter with the boolean assertion quoted inline.** This is the most externally valuable artifact this project produces for a Fleet judge and it must not sit in a folder someone has to find. *AC (property: the build evidence is reached, not merely stored):* both links above the fold of `## Technologies used`; the assertion and its observed result quoted in the README itself; the Devpost technologies field mirrors it.
 - **HOD-601** Video beat 1: Cold open on author's registered work.
 - **HOD-602** Video beat 2: Agent Registry and conflict boundaries.
-- **HOD-603** Video beat 3: Live buyer scope request with Model Armor catch.
+- **HOD-603** Video beat 3: Live buyer scope request with Prompt Inspector catch.
 - **HOD-604** Video beat 4: Revocation cascade hero demonstration.
 - **HOD-605** Video beat 5: OTel trace waterfall view.
 - **HOD-606** Video beat 6: Supervisor quarantine and reroute.
@@ -267,7 +267,7 @@ Eight proofs is too many for 3:40 with an uncompressible 45-second hero. Budget 
 |---|---|
 | Cold open on the author's own registered work — real essays, real recordings, terms attached. Thesis as a burned-in lower third at **0:08** (zero narration cost). | 15 |
 | Registry + gateway + the four conflict walls | 20 |
-| **Live buyer scope request**, with Model Armor catching the poisoned document **inside the same window** and the request completing under its original scope. Burned-in wall clock. | 35 |
+| **Live buyer scope request**, with Prompt Inspector catching the poisoned document **inside the same window** and the request completing under its original scope. Burned-in wall clock. | 35 |
 | **HERO — revocation cascade.** One click; affected grants light up; containment resolves downstream scopes; signed notices and receipts generate; the original grant remains struck through, never deleted. | 45 |
 | OTel trace of that cascade, agent identities visible | 20 |
 | Supervisor quarantines a looped worker; the request still completes | 20 |
@@ -284,7 +284,7 @@ Eight proofs is too many for 3:40 with an uncompressible 45-second hero. Budget 
 4. Registry + walls → 12s, Diagram A held with narration over it (**−8s**)
 5. Cold open → 10s, one burned-in stat card (**−5s**)
 
-**Never cut:** the revocation cascade at 45 seconds; the Model Armor catch landing live inside the request window; Diagram B; the thesis at 0:08 and at close; the wall clock's continuity.
+**Never cut:** the revocation cascade at 45 seconds; the Prompt Inspector catch landing live inside the request window; Diagram B; the thesis at 0:08 and at close; the wall clock's continuity.
 
 ## 9. Prize notes
 

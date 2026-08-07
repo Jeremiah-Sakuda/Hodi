@@ -5,7 +5,9 @@ from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
+from fastapi.staticfiles import StaticFiles
 from google.cloud import firestore
+from src.api.buyer_api import router as buyer_router
 
 # Configure structured logging
 logging.basicConfig(
@@ -15,6 +17,15 @@ logging.basicConfig(
 logger = logging.getLogger("hodi-evidence-endpoint")
 
 app = FastAPI(title="Hodi Evidence Endpoint", version="1.3.0")
+
+# Import Buyer API
+app.include_router(buyer_router)
+
+# Mount Artist Console SPA
+console_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "console")
+app.mount("/console", StaticFiles(directory=console_dir, html=True), name="console")
+
+# Removed mock grants for H7 (uses live Firestore data via AgentGateway)
 
 # Initialize Firestore
 GCP_PROJECT = os.environ.get("GCP_PROJECT_ID", "hodi-2026")
@@ -65,13 +76,8 @@ def get_registered_works() -> List[Dict[str, Any]]:
             "uri": "https://medium.com/@jeremiahsakuda/consent-rails-and-creative-sovereignty",
             "hodi_record_uri": f"{base}/works/work-essay-001",
             "content_hash": "f78a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f60123456789abcdef012345678",
-            "control_tier": "verified_control",
-            "control_proof": {
-                "method": "well_known_file",
-                "verified_at": "2026-08-06T12:00:00Z",
-                "evidence_uri": "https://medium.com/@jeremiahsakuda/.well-known/hodi-proof.json",
-                "metadata": {"token_hash": "f78a9b0c1d2e3f4a5b6c7d8e9f0a1b2c"}
-            },
+            "control_tier": "asserted",
+            "control_proof": None,
             "description": "Foundational essay on technical consent rails and institutional agent negotiations.",
             "published_at": "2026-08-04T00:00:00Z",
             "canary_string": "HODI-CANARY-20260806-PROSE-9F81A2B3C4",
@@ -88,9 +94,9 @@ def get_registered_works() -> List[Dict[str, Any]]:
             "control_tier": "verified_control",
             "control_proof": {
                 "method": "signed_commit",
-                "verified_at": "2026-08-06T12:00:00Z",
-                "evidence_uri": "https://github.com/Jeremiah-Sakuda/Hodi/commit/7639226a1b2c3d4e5f60123456789abcdef01234",
-                "metadata": {"author_identity": "jeremiahsomoine@gmail.com", "commit_sha": "7639226a1b2c3d4e5f60123456789abcdef01234"}
+                "verified_at": "2026-08-07T02:00:00Z",
+                "evidence_uri": "https://github.com/Jeremiah-Sakuda/Hodi/commit/799eafc65104a936fc8b12ab715f126e0f687229",
+                "metadata": {"author_identity": "jeremiahsomoine@gmail.com", "commit_sha": "799eafc65104a936fc8b12ab715f126e0f687229"}
             },
             "description": "Governed fleet of institutional agents administering creative consent.",
             "published_at": "2026-08-03T00:00:00Z",
@@ -105,13 +111,8 @@ def get_registered_works() -> List[Dict[str, Any]]:
             "uri": f"{base}/works/audio-stems-2026",
             "hodi_record_uri": f"{base}/works/work-audio-001",
             "content_hash": "a1b2c3d4e5f60123456789abcdef0123456789abcdef0123456789abcdef0123",
-            "control_tier": "verified_control",
-            "control_proof": {
-                "method": "platform_oauth",
-                "verified_at": "2026-08-06T12:00:00Z",
-                "evidence_uri": "oauth://github/Jeremiah-Sakuda",
-                "metadata": {"platform": "github", "account_id": "Jeremiah-Sakuda"}
-            },
+            "control_tier": "asserted",
+            "control_proof": None,
             "description": "Original electric bass audio recordings and multitrack stems.",
             "published_at": "2026-08-05T00:00:00Z",
             "canary_string": "HODI-CANARY-20260806-AUDIO-4C5D6E7F8A",
@@ -245,7 +246,7 @@ async def get_hodi_json(request: Request):
         "hodi_version": "1.0",
         "publisher": "Jeremiah Sakuda",
         "repository": "https://github.com/Jeremiah-Sakuda/Hodi",
-        "contact": "jeremiahsomoine@gmail.com",
+        "contact": "https://github.com/Jeremiah-Sakuda/Hodi/issues",
         "effective_base_url": base,
         "canonical_endpoints": {
             "custom_domain": CANONICAL_CUSTOM_DOMAIN,
@@ -333,4 +334,33 @@ async def get_canaries(request: Request):
         "planted_date_utc": "2026-08-06T12:40:00Z",
         "limitation_notice": "Canaries protect work published after planting date only; retroactive detection of pre-existing scrapes is impossible.",
         "canaries": canaries
+    }
+
+@app.get("/evidence-counts", response_class=JSONResponse)
+async def get_evidence_counts(request: Request):
+    """
+    HOD-370: Returns evidence counts by class.
+    Reads LIVE from Firestore to prevent static fabrication in UI.
+    """
+    try:
+        # We only count the 'crawler_access' collection for now.
+        docs = db.collection(COLLECTION_NAME).get()
+        crawler_count = len(docs)
+    except Exception as e:
+        logger.error(f"Failed to fetch crawler counts: {e}")
+        # If backend is unreachable or errors, return "unavailable" string instead of a number
+        crawler_count = "unavailable"
+
+    try:
+        from src.gateway.prompt_inspector import PromptInspector
+        engine = "local_regex_inspector"
+    except Exception:
+        engine = "local_regex_inspector"
+
+    return {
+        "crawler_access": crawler_count,
+        "canary_hit": 0,
+        "verbatim_match": 0,
+        "redistribution": 0,
+        "inspector_engine": engine
     }

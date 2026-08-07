@@ -43,6 +43,8 @@ Daily observations, crawler log metrics, Gemma triage rate, scope lattice edge c
 3. **Byte-Identical Model Armor Preservation (HOD-313):** Inbound buyer scope documents containing prompt injection are logged and flagged, but the document stored and evaluated MUST remain **byte-identical** to raw bytes received to avoid counterparty document modification disputes.
 4. **Registry Silent Non-Disclosure:** `discover(role, requesting_sa)` returns `[]` (EMPTY RESULT) on unauthorized queries to prevent disclosing agent existence.
 5. **Supervisor Split (HOD-341 vs HOD-342):** `TaskAbandoned` events are written strictly **BY THE SUPERVISOR**, never by the failing worker process. Looping/failing workers are deregistered from `AgentRegistry` during quarantine while the task is rerouted or degraded to complete the buyer request successfully.
+6. **Widened Boundary Detection & Structural IAM Fix:** Discovered that granting `grants` read access to the negotiator (to unblock deployment) widened the boundary to collection-wide cross-buyer visibility, violating the core thesis. Fixed by expressing the required scoping filter *structurally* in `iam_policy.py` (`required_filter_key`) and strictly enforcing it in the Gateway (matching the filter against `session_context`), proving boundary integrity over the live network.
+7. **Model Armor API Unavailability:** The managed Google Cloud Model Armor API is currently in restricted preview and cannot be enabled without organization-level allowlisting. Attempting to create templates yielded HTTP 403 Write Access Denied. The component was renamed to `Prompt Inspector` and relies strictly on a local regex stub. The system's security posture rests entirely on its IAM boundaries, gateway policy enforcement, and audit traces rather than a managed API guardrail.
 
 ---
 
@@ -62,7 +64,7 @@ Daily observations, crawler log metrics, Gemma triage rate, scope lattice edge c
 ### 2026-08-07 — Phase 5 Live Access Log Audit, Discoverability Action Plan & Zero-Hit Finding (HOD-303, HOD-320)
 
 **Live `crawler_access` Collection Audit (HOD-320):**
-- **Total Accrued Records:** `47` (accrued since deployment on Aug 6, 2026).
+- **Total Accrued Records:** `11` (accrued since deployment on Aug 6, 2026).
 - **Observed User-Agents:** `Python-urllib/3.14`, `curl/8.7.1`, `Hodi-HealthCheck/1.0` (automated health checks & verification requests).
 - **Self-Deploy Check Filtering:** 100% of currently accrued records are self-originated deployment checks. Zero third-party web crawlers or AI scrapers have hit the endpoint yet.
 - **Time Spread:** `2026-08-06T17:32:36Z` to `2026-08-07T01:53:49Z`.

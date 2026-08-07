@@ -38,6 +38,8 @@ Everything else in this system is ordinary engineering. These three are why it i
 - **No aggregate across evidence classes.** No numeric field on `EvidenceRecord`, no scoring, no ordering, no total. Honest tiers collapse into a dishonest number the moment someone sums them.
 - **Gateway denials are logged as events.** Never a silent refusal — a denial nobody can see is indistinguishable from a bug.
 - **Truthful Build Log & Verification Rule.** An outcome in `docs/BUILD-LOG.md` may ONLY report what was empirically verified. Any infrastructure or command step whose success was not confirmed (or where errors were masked) MUST be logged strictly as `attempted-and-unverified`. Never use `|| true` on infrastructure commands whose failure changes application behavior.
+- **Latency Measurement Surface Rule.** Any latency or timing figure recorded in `metrics.json` MUST explicitly state its measurement surface — `'deployed-over-network'` or `'in-process'`. A figure without that field is invalid. Measuring an in-process mock and reporting it as the deployed latency is a critical failure.
+- **Literal Metric Rendering Rule.** No displayed metric (evidence counts, crawler figures, timing values, accrual numbers) may be a literal in the UI or docs. Every number shown to a user or written to a doc MUST be read from its source at render time. An unavailable source renders as "unavailable", never as a plausible stand-in or mock value.
 
 ---
 

@@ -44,3 +44,10 @@ python3 -m unittest discover -s tests
 - **Hodi Consent Terms**: `https://hodi-evidence-endpoint-406699565497.us-central1.run.app/.well-known/hodi.json`
 - **Registered Works**: `https://hodi-evidence-endpoint-406699565497.us-central1.run.app/works`
 - **Canaries Index**: `https://hodi-evidence-endpoint-406699565497.us-central1.run.app/canaries`
+
+---
+
+## Security & Data Integrity
+
+- **Prompt Inspection**: The managed Google Cloud Model Armor API is in restricted preview and was unavailable for this project (yielding HTTP 403). Consequently, untrusted inbound documents are screened post-extraction via a local regex (`Prompt Inspector`). The system's security posture rests entirely on its IAM boundaries, gateway policy enforcement, and audit traces.
+- **Live Boundary Testing**: The endpoint `/api/v1/debug/compromised_agent_read` is a live public demonstration of the IAM boundary in action. It is **structurally incapable of leaking data** — the endpoint is hardcoded to submit cross-buyer reads that strictly violate IAM policy, resulting in guaranteed `GATEWAY_POLICY_DENIAL` events. It exists to allow judges and reviewers to verify cross-buyer confidentiality bounds over the public network.
