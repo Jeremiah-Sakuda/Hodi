@@ -1,4 +1,5 @@
 import os
+import socket
 import logging
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
@@ -13,111 +14,140 @@ logging.basicConfig(
 )
 logger = logging.getLogger("hodi-evidence-endpoint")
 
-app = FastAPI(title="Hodi Evidence Endpoint", version="1.2.0")
+app = FastAPI(title="Hodi Evidence Endpoint", version="1.3.0")
 
 # Initialize Firestore
 GCP_PROJECT = os.environ.get("GCP_PROJECT_ID", "hodi-2026")
 db = firestore.Client(project=GCP_PROJECT)
 COLLECTION_NAME = "crawler_access"
 
-# Canonical Base URLs (HTTPS ONLY, HARDCODED CONFIG)
+# Canonical Base URLs
 CANONICAL_CUSTOM_DOMAIN = "https://hodi.jeremiahsakuda.com"
 CANONICAL_RUN_DOMAIN = "https://hodi-evidence-endpoint-406699565497.us-central1.run.app"
-PRIMARY_BASE_URL = os.environ.get("HODI_BASE_URL", CANONICAL_CUSTOM_DOMAIN)
 
-# HOD-009 & HOD-105 Registered Corpus Manifest (Jeremiah Sakuda)
-REGISTERED_WORKS: List[Dict[str, Any]] = [
-    {
-        "work_id": "work-essay-001",
-        "artist_id": "artist-jeremiah",
-        "medium": "prose",
-        "title": "Consent Rails & Creative Sovereignty",
-        "uri": "https://medium.com/@jeremiahsakuda/consent-rails-and-creative-sovereignty",
-        "hodi_record_uri": f"{PRIMARY_BASE_URL}/works/work-essay-001",
-        "content_hash": "f78a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f60123456789abcdef012345678",
-        "control_tier": "verified_control",
-        "control_proof": {
-            "method": "well_known_file",
-            "verified_at": "2026-08-06T12:00:00Z",
-            "evidence_uri": "https://medium.com/@jeremiahsakuda/.well-known/hodi-proof.json",
-            "metadata": {"token_hash": "f78a9b0c1d2e3f4a5b6c7d8e9f0a1b2c"}
+def resolve_domain_host(domain_url: str) -> bool:
+    """Checks whether custom domain host resolves via DNS. Returns False on NXDOMAIN."""
+    try:
+        host = domain_url.replace("https://", "").replace("http://", "").split("/")[0]
+        socket.gethostbyname(host)
+        return True
+    except Exception as e:
+        logger.warning(f"[DNS WARNING] Custom domain host '{domain_url}' did NOT resolve ({e}). Falling back to Cloud Run URL: {CANONICAL_RUN_DOMAIN}")
+        return False
+
+def get_effective_base_url() -> str:
+    """
+    Returns working HTTPS base URL.
+    NEVER advertises an unreachable NXDOMAIN custom domain!
+    Falls back to CANONICAL_RUN_DOMAIN if custom domain does not resolve.
+    """
+    env_override = os.environ.get("HODI_BASE_URL")
+    if env_override and resolve_domain_host(env_override):
+        return env_override.rstrip("/")
+
+    if resolve_domain_host(CANONICAL_CUSTOM_DOMAIN):
+        return CANONICAL_CUSTOM_DOMAIN
+
+    return CANONICAL_RUN_DOMAIN
+
+# Determine working active base URL
+ACTIVE_BASE_URL = get_effective_base_url()
+logger.info(f"Active Effective Base URL: {ACTIVE_BASE_URL}")
+
+def get_registered_works() -> List[Dict[str, Any]]:
+    base = get_effective_base_url()
+    return [
+        {
+            "work_id": "work-essay-001",
+            "artist_id": "artist-jeremiah",
+            "medium": "prose",
+            "title": "Consent Rails & Creative Sovereignty",
+            "uri": "https://medium.com/@jeremiahsakuda/consent-rails-and-creative-sovereignty",
+            "hodi_record_uri": f"{base}/works/work-essay-001",
+            "content_hash": "f78a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f60123456789abcdef012345678",
+            "control_tier": "verified_control",
+            "control_proof": {
+                "method": "well_known_file",
+                "verified_at": "2026-08-06T12:00:00Z",
+                "evidence_uri": "https://medium.com/@jeremiahsakuda/.well-known/hodi-proof.json",
+                "metadata": {"token_hash": "f78a9b0c1d2e3f4a5b6c7d8e9f0a1b2c"}
+            },
+            "description": "Foundational essay on technical consent rails and institutional agent negotiations.",
+            "published_at": "2026-08-04T00:00:00Z",
+            "canary_string": "HODI-CANARY-20260806-PROSE-9F81A2B3C4",
+            "canary_planted_at": "2026-08-06T12:40:00Z"
         },
-        "description": "Foundational essay on technical consent rails and institutional agent negotiations.",
-        "published_at": "2026-08-04T00:00:00Z",
-        "canary_string": "HODI-CANARY-20260806-PROSE-9F81A2B3C4",
-        "canary_planted_at": "2026-08-06T12:40:00Z"
-    },
-    {
-        "work_id": "work-repo-001",
-        "artist_id": "artist-jeremiah",
-        "medium": "code",
-        "title": "Hodi Institutional Consent Fleet",
-        "uri": "https://github.com/Jeremiah-Sakuda/Hodi",
-        "hodi_record_uri": f"{PRIMARY_BASE_URL}/works/work-repo-001",
-        "content_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        "control_tier": "verified_control",
-        "control_proof": {
-            "method": "signed_commit",
-            "verified_at": "2026-08-06T12:00:00Z",
-            "evidence_uri": "https://github.com/Jeremiah-Sakuda/Hodi/commit/7639226a1b2c3d4e5f60123456789abcdef01234",
-            "metadata": {"author_identity": "jeremiahsomoine@gmail.com", "commit_sha": "7639226a1b2c3d4e5f60123456789abcdef01234"}
+        {
+            "work_id": "work-repo-001",
+            "artist_id": "artist-jeremiah",
+            "medium": "code",
+            "title": "Hodi Institutional Consent Fleet",
+            "uri": "https://github.com/Jeremiah-Sakuda/Hodi",
+            "hodi_record_uri": f"{base}/works/work-repo-001",
+            "content_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "control_tier": "verified_control",
+            "control_proof": {
+                "method": "signed_commit",
+                "verified_at": "2026-08-06T12:00:00Z",
+                "evidence_uri": "https://github.com/Jeremiah-Sakuda/Hodi/commit/7639226a1b2c3d4e5f60123456789abcdef01234",
+                "metadata": {"author_identity": "jeremiahsomoine@gmail.com", "commit_sha": "7639226a1b2c3d4e5f60123456789abcdef01234"}
+            },
+            "description": "Governed fleet of institutional agents administering creative consent.",
+            "published_at": "2026-08-03T00:00:00Z",
+            "canary_string": "HODI-CANARY-20260806-CODE-7639226A1B",
+            "canary_planted_at": "2026-08-06T12:40:00Z"
         },
-        "description": "Governed fleet of institutional agents administering creative consent.",
-        "published_at": "2026-08-03T00:00:00Z",
-        "canary_string": "HODI-CANARY-20260806-CODE-7639226A1B",
-        "canary_planted_at": "2026-08-06T12:40:00Z"
-    },
-    {
-        "work_id": "work-audio-001",
-        "artist_id": "artist-jeremiah",
-        "medium": "audio",
-        "title": "Electric Bass Solo Recordings & Stems",
-        "uri": f"{PRIMARY_BASE_URL}/works/audio-stems-2026",
-        "hodi_record_uri": f"{PRIMARY_BASE_URL}/works/work-audio-001",
-        "content_hash": "a1b2c3d4e5f60123456789abcdef0123456789abcdef0123456789abcdef0123",
-        "control_tier": "verified_control",
-        "control_proof": {
-            "method": "platform_oauth",
-            "verified_at": "2026-08-06T12:00:00Z",
-            "evidence_uri": "oauth://github/Jeremiah-Sakuda",
-            "metadata": {"platform": "github", "account_id": "Jeremiah-Sakuda"}
+        {
+            "work_id": "work-audio-001",
+            "artist_id": "artist-jeremiah",
+            "medium": "audio",
+            "title": "Electric Bass Solo Recordings & Stems",
+            "uri": f"{base}/works/audio-stems-2026",
+            "hodi_record_uri": f"{base}/works/work-audio-001",
+            "content_hash": "a1b2c3d4e5f60123456789abcdef0123456789abcdef0123456789abcdef0123",
+            "control_tier": "verified_control",
+            "control_proof": {
+                "method": "platform_oauth",
+                "verified_at": "2026-08-06T12:00:00Z",
+                "evidence_uri": "oauth://github/Jeremiah-Sakuda",
+                "metadata": {"platform": "github", "account_id": "Jeremiah-Sakuda"}
+            },
+            "description": "Original electric bass audio recordings and multitrack stems.",
+            "published_at": "2026-08-05T00:00:00Z",
+            "canary_string": "HODI-CANARY-20260806-AUDIO-4C5D6E7F8A",
+            "canary_planted_at": "2026-08-06T12:40:00Z"
         },
-        "description": "Original electric bass audio recordings and multitrack stems.",
-        "published_at": "2026-08-05T00:00:00Z",
-        "canary_string": "HODI-CANARY-20260806-AUDIO-4C5D6E7F8A",
-        "canary_planted_at": "2026-08-06T12:40:00Z"
-    },
-    {
-        "work_id": "work-essay-002",
-        "artist_id": "artist-jeremiah",
-        "medium": "prose",
-        "title": "Draft Notes on Multi-Agent Consent",
-        "uri": "https://jeremiahsakuda.com/drafts/multi-agent-consent-protocols",
-        "hodi_record_uri": f"{PRIMARY_BASE_URL}/works/work-essay-002",
-        "content_hash": "b2c3d4e5f60123456789abcdef0123456789abcdef0123456789abcdef0123a1",
-        "control_tier": "asserted",
-        "control_proof": None,
-        "description": "Unverified draft essay registered under asserted control tier for console multi-tier demonstration.",
-        "published_at": "2026-08-06T10:00:00Z",
-        "canary_string": "HODI-CANARY-20260806-PROSE-DRAFT-1A2B3C",
-        "canary_planted_at": "2026-08-06T12:40:00Z"
-    },
-    {
-        "work_id": "work-audio-002",
-        "artist_id": "artist-jeremiah",
-        "medium": "audio",
-        "title": "Live Bass Improvisation Session",
-        "uri": "https://soundcloud.com/jeremiahsakuda/bass-improvisations-2026",
-        "hodi_record_uri": f"{PRIMARY_BASE_URL}/works/work-audio-002",
-        "content_hash": "c3d4e5f60123456789abcdef0123456789abcdef0123456789abcdef0123a1b2",
-        "control_tier": "asserted",
-        "control_proof": None,
-        "description": "Live electric bass recording registered under asserted tier.",
-        "published_at": "2026-08-06T11:00:00Z",
-        "canary_string": "HODI-CANARY-20260806-AUDIO-LIVE-3C4D5E",
-        "canary_planted_at": "2026-08-06T12:40:00Z"
-    }
-]
+        {
+            "work_id": "work-essay-002",
+            "artist_id": "artist-jeremiah",
+            "medium": "prose",
+            "title": "Draft Notes on Multi-Agent Consent",
+            "uri": "https://jeremiahsakuda.com/drafts/multi-agent-consent-protocols",
+            "hodi_record_uri": f"{base}/works/work-essay-002",
+            "content_hash": "b2c3d4e5f60123456789abcdef0123456789abcdef0123456789abcdef0123a1",
+            "control_tier": "asserted",
+            "control_proof": None,
+            "description": "Unverified draft essay registered under asserted control tier for console multi-tier demonstration.",
+            "published_at": "2026-08-06T10:00:00Z",
+            "canary_string": "HODI-CANARY-20260806-PROSE-DRAFT-1A2B3C",
+            "canary_planted_at": "2026-08-06T12:40:00Z"
+        },
+        {
+            "work_id": "work-audio-002",
+            "artist_id": "artist-jeremiah",
+            "medium": "audio",
+            "title": "Live Bass Improvisation Session",
+            "uri": "https://soundcloud.com/jeremiahsakuda/bass-improvisations-2026",
+            "hodi_record_uri": f"{base}/works/work-audio-002",
+            "content_hash": "c3d4e5f60123456789abcdef0123456789abcdef0123456789abcdef0123a1b2",
+            "control_tier": "asserted",
+            "control_proof": None,
+            "description": "Live electric bass recording registered under asserted tier.",
+            "published_at": "2026-08-06T11:00:00Z",
+            "canary_string": "HODI-CANARY-20260806-AUDIO-LIVE-3C4D5E",
+            "canary_planted_at": "2026-08-06T12:40:00Z"
+        }
+    ]
 
 def extract_client_ip(request: Request) -> str:
     forwarded = request.headers.get("x-forwarded-for")
@@ -176,26 +206,27 @@ async def access_logging_middleware(request: Request, call_next):
 
 @app.get("/robots.txt", response_class=PlainTextResponse)
 async def get_robots_txt(request: Request):
-    # HARDCODED HTTPS BASE URL (STOP DERIVING SCHEME FROM REQUEST!)
+    base = get_effective_base_url()
     return f"""User-agent: *
 Allow: /
 
-Sitemap: {PRIMARY_BASE_URL}/sitemap.xml
+Sitemap: {base}/sitemap.xml
 
 # Hodi Creative Consent Terms
-# Declared terms: {PRIMARY_BASE_URL}/.well-known/hodi.json
+# Declared terms: {base}/.well-known/hodi.json
 """
 
 @app.get("/sitemap.xml", response_class=PlainTextResponse)
 async def get_sitemap_xml(request: Request):
-    # ALWAYS HTTPS URLS
+    base = get_effective_base_url()
+    works = get_registered_works()
     urls = [
-        f"{PRIMARY_BASE_URL}/",
-        f"{PRIMARY_BASE_URL}/.well-known/hodi.json",
-        f"{PRIMARY_BASE_URL}/robots.txt",
-        f"{PRIMARY_BASE_URL}/works",
-        f"{PRIMARY_BASE_URL}/canaries",
-    ] + [f"{PRIMARY_BASE_URL}/works/{w['work_id']}" for w in REGISTERED_WORKS]
+        f"{base}/",
+        f"{base}/.well-known/hodi.json",
+        f"{base}/robots.txt",
+        f"{base}/works",
+        f"{base}/canaries",
+    ] + [f"{base}/works/{w['work_id']}" for w in works]
 
     xml_lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
@@ -209,11 +240,13 @@ async def get_sitemap_xml(request: Request):
 
 @app.get("/.well-known/hodi.json", response_class=JSONResponse)
 async def get_hodi_json(request: Request):
+    base = get_effective_base_url()
     return {
         "hodi_version": "1.0",
         "publisher": "Jeremiah Sakuda",
         "repository": "https://github.com/Jeremiah-Sakuda/Hodi",
         "contact": "jeremiahsomoine@gmail.com",
+        "effective_base_url": base,
         "canonical_endpoints": {
             "custom_domain": CANONICAL_CUSTOM_DOMAIN,
             "cloud_run_domain": CANONICAL_RUN_DOMAIN
@@ -224,41 +257,47 @@ async def get_hodi_json(request: Request):
             "fine_tuning": "negotiable",
             "training": "consent_required"
         },
-        "robots_policy": f"{PRIMARY_BASE_URL}/robots.txt",
-        "registered_works_manifest": f"{PRIMARY_BASE_URL}/works",
-        "canaries_index": f"{PRIMARY_BASE_URL}/canaries",
+        "robots_policy": f"{base}/robots.txt",
+        "registered_works_manifest": f"{base}/works",
+        "canaries_index": f"{base}/canaries",
         "terms_notice": "Access to registered works is logged and governed by Hodi consent protocols."
     }
 
 @app.get("/", response_class=JSONResponse)
 async def get_root(request: Request):
+    base = get_effective_base_url()
+    works = get_registered_works()
     return {
         "service": "Hodi Evidence Collection Endpoint",
         "status": "active",
-        "registered_works": len(REGISTERED_WORKS),
-        "manifest_url": f"{PRIMARY_BASE_URL}/works",
-        "terms_url": f"{PRIMARY_BASE_URL}/.well-known/hodi.json",
-        "robots_url": f"{PRIMARY_BASE_URL}/robots.txt",
-        "sitemap_url": f"{PRIMARY_BASE_URL}/sitemap.xml"
+        "effective_base_url": base,
+        "registered_works": len(works),
+        "manifest_url": f"{base}/works",
+        "terms_url": f"{base}/.well-known/hodi.json",
+        "robots_url": f"{base}/robots.txt",
+        "sitemap_url": f"{base}/sitemap.xml"
     }
 
 @app.get("/works", response_class=JSONResponse)
 async def get_works(request: Request):
+    works = get_registered_works()
     return {
-        "count": len(REGISTERED_WORKS),
-        "works": REGISTERED_WORKS
+        "count": len(works),
+        "works": works
     }
 
 @app.get("/works/{work_id}", response_class=JSONResponse)
 async def get_work_by_id(work_id: str, request: Request):
-    for work in REGISTERED_WORKS:
+    works = get_registered_works()
+    for work in works:
         if work["work_id"] == work_id:
             return work
     raise HTTPException(status_code=404, detail="Work not found")
 
 @app.get("/works/{work_id}/proof", response_class=JSONResponse)
 async def get_work_proof(work_id: str, request: Request):
-    for work in REGISTERED_WORKS:
+    works = get_registered_works()
+    for work in works:
         if work["work_id"] == work_id:
             if work["control_tier"] != "verified_control" or work["control_proof"] is None:
                 return {
@@ -278,6 +317,7 @@ async def get_work_proof(work_id: str, request: Request):
 
 @app.get("/canaries", response_class=JSONResponse)
 async def get_canaries(request: Request):
+    works = get_registered_works()
     canaries = [
         {
             "work_id": w["work_id"],
@@ -286,7 +326,7 @@ async def get_canaries(request: Request):
             "planted_at": w["canary_planted_at"],
             "note": "Canary strings only protect content published after the planting date (2026-08-06)."
         }
-        for w in REGISTERED_WORKS if w.get("canary_string")
+        for w in works if w.get("canary_string")
     ]
     return {
         "count": len(canaries),
