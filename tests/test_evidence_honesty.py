@@ -2,6 +2,7 @@ import unittest
 import os
 import re
 from pathlib import Path
+from src.evidence.evidence_engine import EvidenceEngine
 
 class TestEvidenceHonesty(unittest.TestCase):
     """
@@ -11,7 +12,7 @@ class TestEvidenceHonesty(unittest.TestCase):
 
     def test_no_cross_class_aggregation_in_evidence_modules(self):
         """
-        Static & functional audit asserting no code in src/evidence or src/console/
+        Static audit asserting no code in src/evidence or src/console/
         computes cross-class totals, sums, or numeric scores across evidence classes.
         """
         repo_root = Path(__file__).resolve().parent.parent
@@ -22,7 +23,9 @@ class TestEvidenceHonesty(unittest.TestCase):
             r"total_score",
             r"evidence_score",
             r"rank_evidence",
-            r"aggregate_evidence_score"
+            r"aggregate_evidence_score",
+            r"total_evidence_count",
+            r"combine_evidence"
         ]
 
         violations = []
@@ -41,6 +44,23 @@ class TestEvidenceHonesty(unittest.TestCase):
             [],
             f"Honesty Invariant Violation detected! Code path attempts cross-class evidence aggregation: {violations}"
         )
+
+    def test_functional_evidence_engine_exposes_no_cross_class_aggregators(self):
+        """
+        Functional audit of EvidenceEngine class methods to ensure no cross-class scoring,
+        ordering, or total sum methods exist on the object.
+        """
+        engine = EvidenceEngine()
+        method_names = [m for m in dir(engine) if not m.startswith("_")]
+
+        forbidden_keywords = ["total", "sum", "score", "rank", "aggregate", "combine"]
+        for m in method_names:
+            for kw in forbidden_keywords:
+                self.assertNotIn(
+                    kw,
+                    m.lower(),
+                    f"Honesty Invariant Violation: EvidenceEngine method '{m}' contains forbidden aggregation keyword '{kw}'."
+                )
 
 if __name__ == "__main__":
     unittest.main()
