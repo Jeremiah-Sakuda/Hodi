@@ -7,10 +7,18 @@ from src.gateway.prompt_inspector import PromptInspector
 from google.cloud import firestore
 from google.oauth2 import credentials
 
+@unittest.skipUnless(os.environ.get("HODI_E2E") == "1",
+                     "Live-Firestore test: set HODI_E2E=1 to run. It needs gcloud credentials and "
+                     "writes to a real collection, so it must not run in the credential-free suite.")
 class TestPromptInspector(unittest.TestCase):
     """
-    Model Armor Prompt Injection & Firestore Storage-Layer Byte-Identical Inbound Document Tests (HOD-313).
-    Tests readback directly from Firestore Datastore at rest, verifying zero storage-layer normalization via sha256 hash comparison.
+    Prompt Injection & Firestore Storage-Layer Byte-Identical Inbound Document Tests (HOD-313).
+    Tests readback directly from Firestore Datastore at rest, verifying zero storage-layer
+    normalization via sha256 hash comparison.
+
+    The byte-identity property genuinely requires the real datastore — an in-memory buffer
+    cannot normalize bytes, so an offline version of this test could not fail (BUILD-LOG
+    2026-08-07). It is therefore gated rather than mocked.
     """
 
     def setUp(self):
