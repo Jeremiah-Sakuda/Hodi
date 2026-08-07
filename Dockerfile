@@ -5,8 +5,8 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-COPY src/evidence_service/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY src/evidence_service/requirements.txt src/evidence_service/requirements.lock ./
+RUN pip install --no-cache-dir -r requirements.lock
 
 COPY src/ /app/src/
 

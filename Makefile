@@ -1,16 +1,19 @@
-.PHONY: demo demo-live verify-scopes metrics compliance
+.PHONY: demo demo-live verify-scopes verify-manifest metrics compliance
 
 demo:
-	@echo "not implemented" && exit 1
+	HODI_OFFLINE=1 python3 scripts/demo.py
 
 demo-live:
-	@echo "not implemented" && exit 1
+	time python3 scripts/test_live_cross_counterparty.py
 
 verify-scopes:
 	python3 scripts/verify_scopes.py
 
+verify-manifest:
+	python3 scripts/verify_manifest.py
+
 metrics:
-	@echo "not implemented" && exit 1
+	python3 scripts/daily_accrual_check.py --write-metrics
 
 compliance:
 	python3 scripts/compliance.py

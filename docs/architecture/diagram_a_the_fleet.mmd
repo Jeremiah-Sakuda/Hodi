@@ -1,0 +1,58 @@
+---
+title: "Hodi — The Fleet: four agents, four conflict walls (every number on this diagram is read from /docs/metrics.json)"
+---
+flowchart TB
+
+    REG["AGENT REGISTRY<br/>publish · version · discover · scope<br/>role-scoped discovery returns [ ] when unauthorized"]
+
+    GW["AGENT GATEWAY<br/>routing + policy enforcement<br/>every denial = structured PolicyDenialEvent, never silent"]
+
+    REG --> GW
+
+    subgraph ADK["ADK (Google Agent Development Kit) — orchestration layer"]
+        direction LR
+        RC["RIGHTS CUSTODIAN<br/>artist identity, works, terms<br/>SA: rights-custodian-sa@"]
+        LN["LICENSING NEGOTIATOR<br/>ONE counterparty per session<br/>SA: licensing-negotiator-sa@"]
+        EV["EVIDENCE AGENT<br/>crawler logs, canaries<br/>never claims training membership<br/>SA: evidence-agent-sa@"]
+        RP["REVOCATION PROPAGATOR<br/>signed notices + receipts<br/>SA: revocation-propagator-sa@"]
+    end
+
+    OTEL(["OTel exporter<br/>span per agent decision:<br/>agent.identity · policy.consulted · outcome"])
+    ADK -.exports.-> OTEL
+
+    GW --> RC
+    GW --> LN
+    GW --> EV
+    GW --> RP
+
+    W1["🧱 WALL<br/>other buyers' terms"]
+    W2["🧱 WALL<br/>commercial terms"]
+    W3["🧱 WALL<br/>artist identity"]
+    W4["🧱 WALL<br/>buyer terms"]
+
+    LN --x W1
+    EV --x W2
+    RP --x W3
+    RC --x W4
+
+    LOG[("APPEND-ONLY GRANT-EVENT LOG (Firestore)<br/>grants · scopes · revocations · receipts<br/>create()-only custom IAM role — no update, no delete<br/>state = fold: resolve(grant_id, at=t)")]
+
+    RC --> LOG
+    LN --> LOG
+    EV --> LOG
+    RP --> LOG
+
+    SUP["SUPERVISOR<br/>deadline 5.0 s (derived from observed p95 2939 ms, ×1.7 headroom — metrics.json)<br/>quarantine · reroute · circuit-break · TaskAbandoned"]
+    SUP -.watches.-> ADK
+
+    NOTE["No SA holds two of {identity, buyer terms, evidence, revocation}.<br/>A monolith here would itself be the violation.<br/>Numbers trace to /docs/metrics.json (2026-08-07 audit)."]
+
+    classDef wall fill:#1a1a1a,color:#ffffff,stroke:#d33,stroke-width:4px
+    classDef agent fill:#eef6ff,stroke:#3367d6,stroke-width:1.5px,color:#111
+    classDef infra fill:#fff8e6,stroke:#b8860b,color:#111
+    classDef note fill:#f3f3f3,stroke:#999,stroke-dasharray:4 3,color:#111
+
+    class W1,W2,W3,W4 wall
+    class RC,LN,EV,RP agent
+    class REG,GW,LOG,SUP,OTEL infra
+    class NOTE note

@@ -1,0 +1,14 @@
+{
+  "description": "Clean buyer scope request fixture for `make demo` (HOD-313). The counterparty is fictional.",
+  "counterparty_id": "acme-intelligence-labs",
+  "requested_scope": {
+    "use_type": "fine_tuning",
+    "model_class": "open_weights",
+    "commercial": false,
+    "attribution_required": true,
+    "territory": ["US"],
+    "valid_from": "2026-08-06T12:00:00Z"
+  },
+  "signature": "DEMO_SIG_CLEAN",
+  "document_text": "Acme Intelligence Labs requests a non-commercial fine-tuning license over the registered essay corpus, open-weights models only, United States territory, attribution required."
+}

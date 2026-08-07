@@ -3,13 +3,14 @@ import base64
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Depends
+from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
 
 from src.schema.scope import Scope, ScopeEvaluationResult
 from src.schema.grant_event import GrantEvent, Receipt
 from src.resolve.evaluator import permits
 from src.gateway.prompt_inspector import PromptInspector
-from src.gateway.gateway import AgentGateway
+from src.gateway.gateway import AgentGateway, GatewayPolicyDenial
 from src.agents.revocation_propagator import RevocationPropagatorAgent, CascadeResult
 
 router = APIRouter()
@@ -109,44 +110,65 @@ def revoke_scope(req: RevokeRequest):
 class CompromisedAgentRequest(BaseModel):
     attack_type: str
 
+# The demo session counterparty. A grant for this counterparty over one of the
+# five registered corpus works is seeded by scripts/seed_demo_grant.py, so the
+# properly scoped read returns real documents rather than an empty set.
+DEMO_SESSION_COUNTERPARTY = "acme-intelligence-labs"
+# The cross-counterparty attack targets a counterparty that genuinely exists in
+# Firestore ('buyer-acme-2'), so the denial protects real data, not a phantom.
+CROSS_COUNTERPARTY_TARGET = "buyer-acme-2"
+
 @router.post("/api/v1/debug/compromised_agent_read", response_model=Dict[str, Any])
 def debug_compromised_read(req: CompromisedAgentRequest):
     """
     Test endpoint for H7 to prove Gateway policy enforcement over the network.
     Simulates a compromised Licensing Negotiator attempting illegal reads.
+    The only reads it can perform are (a) the properly scoped session read and
+    (b) attempts that the Gateway denies — it cannot exfiltrate anything.
     """
     gateway = AgentGateway()
-    
+
     try:
         if req.attack_type == "valid_read":
             docs = gateway.read_collection(
                 calling_sa=NEGOTIATOR_SA,
                 calling_role_key="licensing_negotiator",
                 target_collection="grants",
-                filters={"counterparty_id": "test-session-buyer"},
-                session_context={"counterparty_id": "test-session-buyer"}
+                filters={"counterparty_id": DEMO_SESSION_COUNTERPARTY},
+                session_context={"counterparty_id": DEMO_SESSION_COUNTERPARTY}
             )
-            return {"status": "SUCCESS", "docs_returned": len(docs), "message": "Gateway permitted properly scoped read."}
-            
+            return {
+                "status": "SUCCESS",
+                "docs_returned": len(docs),
+                "docs": jsonable_encoder(docs),
+                "message": "Gateway permitted properly scoped read."
+            }
+
         elif req.attack_type == "unfiltered":
             gateway.read_collection(
                 calling_sa=NEGOTIATOR_SA,
                 calling_role_key="licensing_negotiator",
                 target_collection="grants",
                 filters=None,
-                session_context={"counterparty_id": "test-session-buyer"}
+                session_context={"counterparty_id": DEMO_SESSION_COUNTERPARTY}
             )
         elif req.attack_type == "cross_counterparty":
             gateway.read_collection(
                 calling_sa=NEGOTIATOR_SA,
                 calling_role_key="licensing_negotiator",
                 target_collection="grants",
-                filters={"counterparty_id": "different-buyer"},
-                session_context={"counterparty_id": "test-session-buyer"}
+                filters={"counterparty_id": CROSS_COUNTERPARTY_TARGET},
+                session_context={"counterparty_id": DEMO_SESSION_COUNTERPARTY}
             )
         else:
             raise HTTPException(status_code=400, detail="Unknown attack type")
-            
+
         return {"status": "FAILED", "reason": "Gateway permitted the read when it should have denied it!"}
-    except PermissionError as e:
-        return {"status": "DENIED", "error": str(e)}
+    except GatewayPolicyDenial as e:
+        # The API response carries the same PolicyDenialEvent that was logged —
+        # one denial, one reason, one source (HOD-312).
+        return {
+            "status": "DENIED",
+            "error": str(e),
+            "denial_event": e.denial.model_dump(mode="json")
+        }

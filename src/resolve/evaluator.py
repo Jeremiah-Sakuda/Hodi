@@ -16,7 +16,8 @@ def permits(
     1. Use-Type Containment (lattice partial order: training ⊃ fine_tuning ⊃ rag_retrieval ⊃ human_reference)
     2. Model-Class Containment (all_models ⊃ open_weights, proprietary_frontier)
     3. Commercial Status (commercial grant permits non-commercial request; containment is one-way)
-    4. Territory Containment ('WW' covers all; requested territory set must be subset of granted set)
+    4. Territory Containment ('WW' covers all; an empty/absent granted territory means unrestricted
+       (worldwide); a non-empty granted set without 'WW' requires the requested set to be a non-empty subset)
     5. Temporal Validity (valid_from <= at <= valid_until)
     
     # NOTE: attribution_required is deliberately NOT a gating dimension in permits().
@@ -56,9 +57,16 @@ def permits(
             continue
 
         # Dimension 4: Territory Containment
-        if "WW" not in g_scope.territory:
-            requested_territories = set(requested_scope.territory)
-            granted_territories = set(g_scope.territory)
+        # An empty or absent territory list on a grant means UNRESTRICTED (worldwide),
+        # equivalent to ["WW"] — never "no territories permitted". Only a non-empty
+        # list without "WW" restricts.
+        granted_territories = set(g_scope.territory or [])
+        if granted_territories and "WW" not in granted_territories:
+            requested_territories = set(requested_scope.territory or [])
+            if not requested_territories:
+                # An empty requested territory asks for worldwide use; a
+                # territory-limited grant cannot contain it.
+                continue
             if not requested_territories.issubset(granted_territories):
                 continue
 

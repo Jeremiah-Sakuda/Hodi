@@ -287,5 +287,45 @@ class TestScopeContainmentTruthTable(unittest.TestCase):
         self.assertTrue(res.permitted)
         self.assertEqual(res.matching_grant_id, "g2")
 
+    # --- EMPTY-TERRITORY SEMANTICS (Cases 43-45) ---
+    # NOTE: these cases construct the grant Scope directly because _make_grant's
+    # `territory or ["WW"]` coerces an explicit [] into ["WW"], which is exactly
+    # the blind spot that let the empty-territory defect ship.
+    def _make_grant_with_explicit_territory(self, grant_id, use_type, territory):
+        return GrantEvent(
+            event_id=f"evt-{grant_id}",
+            grant_id=grant_id,
+            work_id="work-01",
+            counterparty_id="buyer-01",
+            scope=Scope(
+                use_type=use_type,
+                territory=territory,
+                valid_from=self.past
+            ),
+            kind="granted",
+            issued_at=self.past,
+            signature="sig"
+        )
+
+    def test_case_43_empty_granted_territory_means_worldwide_permits_us_request(self):
+        """An empty territory list on a grant means UNRESTRICTED (worldwide), never 'no territories permitted'."""
+        g = self._make_grant_with_explicit_territory("g1", "training", territory=[])
+        r = self._make_request("training", territory=["US"])
+        res = permits([g], r, at=self.now)
+        self.assertTrue(res.permitted, "Empty granted territory must resolve as worldwide, not as zero territories!")
+        self.assertEqual(res.matching_grant_id, "g1")
+
+    def test_case_44_empty_granted_territory_permits_containment_across_use_type(self):
+        """Empty granted territory + use-type containment: a training grant with territory=[] permits fine_tuning in US."""
+        g = self._make_grant_with_explicit_territory("g1", "training", territory=[])
+        r = self._make_request("fine_tuning", territory=["US"])
+        self.assertTrue(permits([g], r, at=self.now).permitted)
+
+    def test_case_45_empty_requested_territory_denied_by_territory_limited_grant(self):
+        """An empty REQUESTED territory asks for worldwide use; a US-only grant cannot contain it (set().issubset() must not slip through)."""
+        g = self._make_grant("g1", "training", territory=["US"])
+        r = Scope(use_type="training", territory=[], valid_from=self.now)
+        self.assertFalse(permits([g], r, at=self.now).permitted)
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/env python3
 # scripts/daily_accrual_check.py — Daily Accrual Audit & Sitemap URL Health Verification (HOD-320)
 # Fetches robots.txt, sitemap.xml, verifies HTTP 200 status for all listed URLs, and updates metrics.json.
 
@@ -84,7 +84,12 @@ def audit_firestore_crawler_access() -> dict:
     third_party_count = 0
     distinct_user_agents = set()
 
-    SELF_UA_PATTERNS = ["python-urllib", "curl", "wget", "gcloud", "hodi-healthcheck"]
+    # Every tool this project itself runs against the endpoint must be listed here,
+    # or self traffic inflates the third-party count into a fabricated finding.
+    # python-requests = scripts/test_live_cross_counterparty.py;
+    # hodi-latency-test = scripts/measure_h6_timings.py.
+    SELF_UA_PATTERNS = ["python-urllib", "curl", "wget", "gcloud",
+                        "hodi-healthcheck", "hodi-latency-test", "python-requests"]
 
     for doc in docs:
         data = doc.to_dict()
@@ -151,11 +156,44 @@ def verify_corpus_proofs(base_url: str):
     assert len(dead_proofs) == 0, f"CRITICAL: Found {len(dead_proofs)} broken verified_control proofs: {dead_proofs}"
     print(f"[SUCCESS] All verified_control works have live, resolving proof URIs!")
 
+def write_metrics(stats: dict):
+    """
+    `make metrics` path: merges the freshly audited accrual stats into
+    docs/metrics.json under 'daily_crawler_accrual_metrics'. Only this section
+    is regenerated; every number in it is read from Firestore at audit time,
+    never typed (Literal Metric Rendering Rule).
+    """
+    import os
+    metrics_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "docs", "metrics.json")
+    with open(metrics_path) as f:
+        metrics = json.load(f)
+
+    metrics["timestamp"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    metrics["daily_crawler_accrual_metrics"] = {
+        "audit_date_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "total_accrued_records": stats["total_accrued_records"],
+        "non_self_originated_requests_count": stats["third_party_count"],
+        "self_deploy_check_count": stats["self_originated_count"],
+        "distinct_user_agents_count": len(stats["distinct_user_agents"]),
+        "distinct_user_agents": sorted(stats["distinct_user_agents"]),
+        "hostname_breakdown": stats["hostname_breakdown"],
+    }
+
+    with open(metrics_path, "w") as f:
+        json.dump(metrics, f, indent=2)
+        f.write("\n")
+    print(f"\n[make metrics] Regenerated 'daily_crawler_accrual_metrics' in {metrics_path} from live Firestore audit.")
+
+
 if __name__ == "__main__":
+    import sys
     base_url = "https://hodi-evidence-endpoint-406699565497.us-central1.run.app"
     verify_sitemap_and_robots(base_url)
     verify_corpus_proofs(base_url)
-    
+
     stats = audit_firestore_crawler_access()
     print("\n--- FIRESTORE CRAWLER ACCESS STATS ---")
     print(json.dumps(stats, indent=2))
+
+    if "--write-metrics" in sys.argv:
+        write_metrics(stats)

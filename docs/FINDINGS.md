@@ -87,3 +87,26 @@ Daily observations, crawler log metrics, Gemma triage rate, scope lattice edge c
 **Google-Toolchain Findings:**
 1. **OTel Trace Span Design for Policy Enforcement:** Found that surfacing IAM enforcement logic natively inside OTel spans (e.g., `agent.identity`, `policy.consulted="gateway_policy_v1"`, `outcome="DENIED"`) is exceptionally powerful for audit reasoning. Rather than parsing unstructured stdout, the span itself carries the structure of the conflict boundary decision. This is precisely what a Fleet judge looks for.
 2. **Antigravity's Context Window and Temporal Accuracy:** Discovered that relying on Antigravity to perfectly synthesize transcript logs over the live network can lead to "predicted" output rather than "observed" output if the agent bypasses running the physical tool chain. Setting a strict, standing `AGENTS.md` rule enforcing empirically verifiable execution (e.g., using `time` and pasting verbatim `stdout`) is necessary to prevent LLM pleasing-behavior from fabricating metrics.
+
+---
+
+### 2026-08-07 — Session Findings: Territory Lattice Defect, Denial Event Unification, Self-Traffic Misclassification & Gemini Model Availability Probe (HOD-106, HOD-311, HOD-312, HOD-301, HOD-320)
+
+**Scope-Lattice Edge Case — Empty Territory (HOD-106):**
+- **Defect:** `permits()` resolved an empty granted `territory` list as "no territories permitted": a request for `["US"]` against a grant with `territory=[]` was denied. An empty or absent territory list must mean UNRESTRICTED (worldwide), equivalent to `["WW"]`.
+- **Companion hazard:** an empty *requested* territory slipped past territory-limited grants, because `set().issubset(anything)` is vacuously true. An empty requested territory asks for worldwide use and must be denied by a territory-limited grant.
+- **Fix:** both semantics corrected in `src/resolve/evaluator.py`; truth table extended to 45 cases (cases 43–45). Cases construct the grant `Scope` directly because the test helper's `territory or ["WW"]` coerced explicit `[]` into `["WW"]` — the exact blind spot that let the defect ship.
+
+**Denial Evidence Was Two Records (HOD-312):**
+- **Defect:** a gateway denial reached Cloud Logging as an unhandled `PermissionError` stack trace (file path + line number) while the API returned a differently worded message — two code paths producing two divergent records of one denial.
+- **Fix:** the gateway now raises `GatewayPolicyDenial` carrying a structured `PolicyDenialEvent` (calling SA, role, target collection, attempted filters, session context, policy consulted, rejection reason, timestamp). The event is emitted as one pure-JSON stdout line (ingested by Cloud Logging as queryable `jsonPayload`, severity WARNING) and the identical event object is returned in the API response — verified live by matching `event_id` between the HTTP response and the Cloud Logging entry.
+
+**Self-Traffic Misclassification in the Accrual Audit (HOD-320):**
+- **Defect:** the accrual audit's self-UA patterns omitted `python-requests` (the live boundary test script) and `Hodi-Latency-Test/1.0` (the timing harness), so 80 of 145 records were about to be reported as "non-self-originated" — a fabricated third-party finding.
+- **Verification:** a per-user-agent, per-IP audit of all records showed every record originates from the developer's two IPs. The single browser-UA record is `scripts/audit_corpus.py` (which sends a spoofed browser UA to check bot-protected external URIs) hitting our own endpoint from the developer's IP.
+- **Fix:** self patterns extended in `scripts/daily_accrual_check.py` and `src/evidence/gemma_triage.py`. **The zero-third-party-hits finding stands.** `make metrics` now regenerates `daily_crawler_accrual_metrics` in `docs/metrics.json` from the live Firestore audit.
+
+**Gemini Model Availability Probe (HOD-301) — decision needed:**
+- **Observed (2026-08-07, Vertex AI `generateContent` REST, project `hodi-2026`):** `gemini-2.5-flash` in `us-central1` returned HTTP 200 (`"modelVersion": "gemini-2.5-flash"`). `gemini-3.5-pro` and `gemini-3.5-flash` returned HTTP 404 (`Publisher model ... was not found or your project does not have access to it`) in both `us-central1` and `global`.
+- **Repo state:** the only Gemini artifact in the codebase is a mocked client in `tests/test_vertex_gemma.py` pinning `gemini-1.5-pro` / `gemini-1.5-flash` literals; no runtime code path calls Vertex AI.
+- **Implication:** the compliance matrix row "Gemini 3.5+ via Vertex AI" is not currently backed by a reachable model or a runtime integration. This is recorded as an open item, not resolved silently.

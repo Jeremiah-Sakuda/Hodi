@@ -1,0 +1,59 @@
+---
+title: "Hodi — What Hodi will not say (every number on this diagram is read from /docs/metrics.json)"
+---
+flowchart TB
+
+    HDR["WHAT HODI WILL — AND WILL NOT — SAY<br/>Four typed evidence classes. No numeric score. No cross-class total.<br/>Every record carries the literal: 'This record does not assert training-set membership.'"]
+
+    subgraph C1["crawler_access"]
+        C1a["checkable: our logs<br/>high confidence"]
+        C1b["instrumented since 2026-08-06<br/>160 records accrued ·<br/>0 attributable to third parties<br/>(metrics.json, 2026-08-07 audit)"]
+        C1a --- C1b
+    end
+
+    subgraph C2["canary_hit"]
+        C2a["checkable: planted string returned<br/>high confidence"]
+        C2b["5 canaries planted 2026-08-06<br/>hits observed: 0"]
+        C2a --- C2b
+    end
+
+    subgraph C3["verbatim_match"]
+        C3a["checkable: near-exact reproduction<br/>medium confidence"]
+        C3b["designed — not demonstrated<br/>(requires an external model surface)"]
+        C3a --- C3b
+    end
+
+    subgraph C4["redistribution"]
+        C4a["checkable: copy at another URI<br/>medium confidence"]
+        C4b["designed — no live scanner claimed<br/>hits observed: 0"]
+        C4a --- C4b
+    end
+
+    subgraph C5["✕ training-set membership"]
+        C5a["<s>trained on</s> · <s>was in the training set</s> · <s>proves training</s>"]
+        C5b["NOT DETERMINABLE.<br/>No enum value exists for this claim —<br/>the schema cannot express it.<br/>A render-time lint rejects the phrase<br/>in all generated text."]
+        C5a --- C5b
+    end
+
+    HDR --> C1
+    HDR --> C2
+    HDR --> C3
+    HDR --> C4
+    HDR --> C5
+
+    FOOT["Revocation terminates a grant. It does not un-train a model.<br/>Numbers trace to /docs/metrics.json; accrual counts regenerate via `make metrics`."]
+    C1 --> FOOT
+    C2 --> FOOT
+    C3 --> FOOT
+    C4 --> FOOT
+    C5 --> FOOT
+
+    classDef struck fill:#2b2b2b,color:#ffb3b3,stroke:#d33,stroke-width:4px,stroke-dasharray:6 3
+    classDef ok fill:#eefaf0,stroke:#2e7d32,color:#111
+    classDef mid fill:#fffbe6,stroke:#b8860b,color:#111
+    classDef hdr fill:#f3f3f3,stroke:#666,color:#111
+
+    class C5,C5a,C5b struck
+    class C1,C1a,C1b,C2,C2a,C2b ok
+    class C3,C3a,C3b,C4,C4a,C4b mid
+    class HDR,FOOT hdr
