@@ -255,3 +255,38 @@ A fabricated proof inside a real corpus is worse than a synthetic corpus. The en
 2. E2E Test real Firestore seed — Chose to use `doc_ref.set(model_dump(mode='json'))` using live credentials in `test_buyer_api_e2e.py` instead of the emulator, ensuring identical JSON serialization against the production datastore that the Gateway interacts with.
 
 **Requirements touched:** HOD-311, HOD-312, HOD-313, HOD-104, HOD-105, HOD-106, HOD-107
+
+---
+
+### 2026-08-07 — Demo-Blocking Defects, Truthful Quickstart, README (HOD-510), Diagrams (HOD-505) & Repo Robustness Audit
+
+**Prompt (verbatim, abridged to the directive headers; four-part session):**
+> ═══ PART 1 — TWO DEMO-BLOCKING DEFECTS. These come before any documentation. ═══
+> 1. The "properly scoped read succeeds" case returns docs_returned: 0. [...] If an empty territory list is resolving as "no territories permitted" when it should mean worldwide, that is a real lattice defect in src/resolve/evaluator.py [...]
+> 2. Denial evidence is a Python stack trace, not a structured event. [...] The API response and the logged event must state the same reason from the same source.
+> ═══ PART 2 — README (HOD-510). The highest-value remaining artifact. ═══
+> ═══ PART 3 — DIAGRAMS (HOD-505). Committed source files (.mmd or .excalidraw), not just images. ═══
+> ═══ PART 4 — REPO ROBUSTNESS AUDIT. Nobody has done this end to end. ═══
+
+**Outcome:**
+1. **valid_read defect diagnosed and fixed (both causes real).** The deployed Firestore held no grant for the endpoint's hardcoded session counterparty (`test-session-buyer`) — the grant was absent, not failing containment. Separately, the reported territory defect was confirmed real and latent: `permits()` resolved an empty granted `territory` list as "no territories permitted" (denying a `["US"]` request), and an empty *requested* territory vacuously passed the subset check against territory-limited grants. Both fixed in `src/resolve/evaluator.py`; truth table extended 42 → 45 cases (the old test helper's `territory or ["WW"]` had made an explicit `[]` untestable). Seeded `grant-acme-il-001` (fictional counterparty `acme-intelligence-labs`, over `work-repo-001`, the verified_control work) via new `scripts/seed_demo_grant.py` with read-back verification. Redeployed (`hodi-evidence-endpoint-00024-zpg`); live run of `scripts/test_live_cross_counterparty.py` observed `SUCCESS, docs_returned: 1` with the grant's fields in the response, plus both denials.
+2. **Denials are now one structured event, end to end.** The gateway raises `GatewayPolicyDenial` carrying a `PolicyDenialEvent` (calling SA, role, target collection, attempted filters, session context, policy consulted, reason, timestamp), emits it as a pure-JSON stdout line (ingested by Cloud Logging as `jsonPayload`, severity WARNING), and the API returns the identical event object (FastAPI handler → HTTP 403; no more 500 traceback). Verified live: the Cloud Logging entry and the HTTP response carry the same `event_id`.
+3. **Quickstart made true before the README could claim it.** `make demo` implemented (credential-free, no network, committed fixtures, six asserted beats), `make demo-live`, `make verify-manifest`, `make metrics --write-metrics` regenerating the accrual section of `docs/metrics.json` from the live Firestore audit.
+4. **README rewritten per HOD-510** (invariant table verbatim, conflict topology, quickstart with what each command proves, reproducing-the-demo map, what-Hodi-will-not-claim, negative decisions with arithmetic, technologies with BUILD-LOG/FINDINGS above the fold, Antigravity assertion quoted inline, provenance, security, debug-endpoint explanation). **Diagrams A and B committed** as `.mmd` sources with rendered SVG/PNG in `docs/architecture/`.
+5. **Robustness audit executed.** Git history intact after the force-push (16 commits local == origin; the single dangling commit is the pre-force-push tip variant differing only in scratch content — nothing lost). **Critical teardown defect fixed:** `teardown.sh` step 1 set `--max-instances=0` on `hodi-evidence-endpoint` — the nightly teardown would have taken the irreplaceable evidence instrument offline, and the invalid flag value was masked by `|| true`; rewritten to fence only the Gemma project with explicit verified no-op paths and no masked failures. `bootstrap_gcp.sh` executed against a throwaway project: **fails with exit 1 (`UREQ_PROJECT_BILLING_NOT_FOUND`) on a project without linked billing** — recorded, not masked; teardown's both no-op paths verified empirically against the throwaway; throwaway deleted. Requirements pinned exactly with a full `requirements.lock` resolved inside `python:3.11-slim`; unused `google-cloud-modelarmor` dependency removed; Dockerfile installs from the lock. `.env.example` rewritten to document every variable the code actually reads. `debug_test.py` and duplicate root spec files removed. Accrual self-UA classifier corrected (`python-requests`, `Hodi-Latency-Test`) after a per-UA/per-IP audit proved all accrued records self-originated — the zero-third-party finding stands.
+
+**Defect INTRODUCED and fixed within this session (logged per the Truthful Build Log Rule):**
+The gateway's new gcloud-token credential fallback silently converted three unit-test modules from the mocked gateway (`db=None`) to a live Firestore client on any machine with gcloud auth. `test_revocation_cascade` then **wrote real `revoked` events for fixture grants (g1/g2, work w1) and two revocation notices into the production `grants` and `revocation_notices` collections**, which in turn made subsequent test runs flaky (the polluted reads shadowed the in-memory fixtures). Resolution: the four pollution documents were identified and deleted from live Firestore (the collection was verified back to exactly the 5 corpus seeds + the demo grant); `test_revocation_cascade`, `test_gateway`, and `test_revocation_propagator_iam` now force `HODI_OFFLINE=1` in `setUp` so unit tests are hermetic regardless of ambient credentials.
+
+**Attempted-and-unverified / open items (stated, not resolved silently):**
+- No runtime Vertex AI/Gemini call exists in any execution path; the only Gemini artifact is a mocked test client pinning `gemini-1.5-*` literals. A live probe found Gemini 2.5-generation reachable (HTTP 200) and 3.5-generation IDs 404 for this project. HOD-301 is currently not backed by running code.
+- The Cloud Scheduler API has never been enabled in `hodi-2026`; the nightly teardown and daily accrual check are not scheduled anywhere.
+- The fenced Gemma project `hodi-gemma-2026` does not exist.
+- The evidence service cannot import without GCP credentials (module-level Firestore client) — harmless on Cloud Run, fails anywhere else.
+
+**Key decisions:**
+1. Empty granted territory means worldwide; empty requested territory is denied by territory-limited grants — rejected leaving empty-as-zero semantics (it silently killed the demo's success beat) and rejected a data backfill (deployed grants already carry explicit territories).
+2. One denial, one record — the exception object carries the same `PolicyDenialEvent` that is logged, and the API renders it; rejected having the log line and the API response compose their messages independently, which is how the two-record divergence happened.
+3. Teardown never touches the evidence endpoint — rejected retaining the "cost guard" scaling step because `min-instances=0` already zeroes idle cost and the accrual loss from downtime is permanent.
+
+**Requirements touched:** HOD-005, HOD-104, HOD-106, HOD-311, HOD-312, HOD-320, HOD-501, HOD-505, HOD-506, HOD-510

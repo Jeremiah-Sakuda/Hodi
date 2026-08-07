@@ -7,6 +7,11 @@ class TestAgentGateway(unittest.TestCase):
     """
 
     def setUp(self):
+        # Unit test: force the offline gateway so permitted routes never touch
+        # live Firestore, regardless of ambient credentials.
+        import os
+        os.environ["HODI_OFFLINE"] = "1"
+        self.addCleanup(lambda: os.environ.pop("HODI_OFFLINE", None))
         self.gateway = AgentGateway()
 
     def test_authorized_gateway_route_succeeds(self):

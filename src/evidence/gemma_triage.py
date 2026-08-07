@@ -17,7 +17,8 @@ class GemmaTriageEngine:
     """
 
     SELF_DEPLOY_CHECK_USER_AGENTS = [
-        r"python-urllib", r"curl", r"wget", r"gcloud", r"google-cloud-sdk", r"postmanruntime"
+        r"python-urllib", r"curl", r"wget", r"gcloud", r"google-cloud-sdk", r"postmanruntime",
+        r"python-requests", r"hodi-healthcheck", r"hodi-latency-test"
     ]
 
     THIRD_PARTY_BOT_USER_AGENTS = [

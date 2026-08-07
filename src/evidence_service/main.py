@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from google.cloud import firestore
 from src.api.buyer_api import router as buyer_router
+from src.gateway.gateway import GatewayPolicyDenial
 
 # Configure structured logging
 logging.basicConfig(
@@ -20,6 +21,22 @@ app = FastAPI(title="Hodi Evidence Endpoint", version="1.3.0")
 
 # Import Buyer API
 app.include_router(buyer_router)
+
+@app.exception_handler(GatewayPolicyDenial)
+async def gateway_policy_denial_handler(request: Request, exc: GatewayPolicyDenial):
+    """
+    HOD-312: a gateway denial is a structured event, never an unhandled 500.
+    The response body carries the SAME PolicyDenialEvent that was logged, so the
+    API's stated reason and the log's stated reason share one source.
+    """
+    return JSONResponse(
+        status_code=403,
+        content={
+            "status": "DENIED",
+            "error": str(exc),
+            "denial_event": exc.denial.model_dump(mode="json")
+        }
+    )
 
 # Mount Artist Console SPA
 console_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "console")

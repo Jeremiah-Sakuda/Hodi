@@ -8,6 +8,13 @@ from src.resolve.resolver import resolve
 
 class TestRevocationCascade(unittest.TestCase):
     def setUp(self):
+        # This is a UNIT test over in-memory events. Force the offline gateway:
+        # with real credentials present, a live gateway would WRITE revoked
+        # events and notices into production Firestore (this happened once —
+        # see BUILD-LOG 2026-08-07).
+        import os
+        os.environ["HODI_OFFLINE"] = "1"
+        self.addCleanup(lambda: os.environ.pop("HODI_OFFLINE", None))
         self.gateway = AgentGateway()
         
         self.t0 = datetime.now(timezone.utc) - timedelta(days=2)

@@ -1,5 +1,7 @@
-fastapi>=0.100.0
-uvicorn>=0.22.0
-google-cloud-firestore>=2.11.0
-pydantic>=2.0.0
-google-cloud-modelarmor>=0.1.0
+# Exact pins — judging runs to Oct 1 and floating ranges roll underneath it.
+# Resolved inside python:3.11-slim (the Dockerfile base) on 2026-08-07.
+# Full transitive freeze: requirements.lock (same directory).
+fastapi==0.141.1
+uvicorn==0.52.1
+google-cloud-firestore==2.28.1
+pydantic==2.13.4

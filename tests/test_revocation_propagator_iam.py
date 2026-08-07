@@ -7,6 +7,11 @@ class TestRevocationPropagatorIAM(unittest.TestCase):
     """
 
     def setUp(self):
+        # Unit test: force the offline gateway — the paired-positive case writes
+        # a notice, and with real credentials that write would land in live Firestore.
+        import os
+        os.environ["HODI_OFFLINE"] = "1"
+        self.addCleanup(lambda: os.environ.pop("HODI_OFFLINE", None))
         from src.gateway.gateway import AgentGateway
         self.gateway = AgentGateway()
         self.agent = RevocationPropagatorAgent(gateway=self.gateway, memory_bank_events=[])

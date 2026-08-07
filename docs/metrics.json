@@ -1,18 +1,22 @@
 {
-  "timestamp": "2026-08-07T01:39:40Z",
+  "timestamp": "2026-08-07T16:05:17Z",
   "daily_crawler_accrual_metrics": {
     "audit_date_utc": "2026-08-07",
-    "total_accrued_records": 11,
-    "non_self_originated_requests_count": 0,
-    "self_deploy_check_count": 11,
-    "distinct_user_agents_count": 2,
+    "total_accrued_records": 160,
+    "non_self_originated_requests_count": 1,
+    "self_deploy_check_count": 159,
+    "distinct_user_agents_count": 6,
     "distinct_user_agents": [
+      "Hodi-HealthCheck/1.0",
+      "Hodi-Latency-Test/1.0",
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
       "Python-urllib/3.14",
-      "curl/8.7.1"
+      "curl/8.7.1",
+      "python-requests/2.34.2"
     ],
-    "robots_txt_fetched_first_count": 0,
-    "time_span_start_utc": "2026-08-06T17:32:36.440229+00:00",
-    "time_span_end_utc": "2026-08-06T20:06:47.371525+00:00"
+    "hostname_breakdown": {
+      "hodi-evidence-endpoint-406699565497.us-central1.run.app": 160
+    }
   },
   "gemma_triage_routing_distribution": {
     "sample_size_total_requests": 11,

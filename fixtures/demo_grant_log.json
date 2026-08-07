@@ -1,0 +1,81 @@
+{
+  "description": "Committed fixture grant-event log for `make demo` (HOD-103, HOD-106, HOD-107). Append-only events; deterministic timestamps; every counterparty is fictional.",
+  "events": [
+    {
+      "event_id": "demo-evt-001",
+      "grant_id": "grant-demo-001",
+      "work_id": "work-essay-001",
+      "counterparty_id": "acme-intelligence-labs",
+      "scope": {
+        "use_type": "training",
+        "model_class": "all_models",
+        "commercial": true,
+        "attribution_required": true,
+        "territory": ["WW"],
+        "valid_from": "2026-08-01T00:00:00Z",
+        "valid_until": null
+      },
+      "kind": "granted",
+      "supersedes": null,
+      "issued_at": "2026-08-01T00:00:00Z",
+      "signature": "SIG_DEMO_EVT_001"
+    },
+    {
+      "event_id": "demo-evt-002",
+      "grant_id": "grant-demo-001",
+      "work_id": "work-essay-001",
+      "counterparty_id": "acme-intelligence-labs",
+      "scope": {
+        "use_type": "training",
+        "model_class": "all_models",
+        "commercial": true,
+        "attribution_required": true,
+        "territory": ["WW"],
+        "valid_from": "2026-08-01T00:00:00Z",
+        "valid_until": null
+      },
+      "kind": "revoked",
+      "supersedes": "demo-evt-001",
+      "issued_at": "2026-08-05T00:00:00Z",
+      "signature": "SIG_DEMO_EVT_002"
+    },
+    {
+      "event_id": "demo-evt-003",
+      "grant_id": "grant-demo-001",
+      "work_id": "work-essay-001",
+      "counterparty_id": "acme-intelligence-labs",
+      "scope": {
+        "use_type": "fine_tuning",
+        "model_class": "open_weights",
+        "commercial": false,
+        "attribution_required": true,
+        "territory": ["US"],
+        "valid_from": "2026-08-06T00:00:00Z",
+        "valid_until": null
+      },
+      "kind": "granted",
+      "supersedes": null,
+      "issued_at": "2026-08-06T00:00:00Z",
+      "signature": "SIG_DEMO_EVT_003"
+    },
+    {
+      "event_id": "demo-evt-004",
+      "grant_id": "grant-demo-002",
+      "work_id": "work-audio-002",
+      "counterparty_id": "buyer-acme-2",
+      "scope": {
+        "use_type": "human_reference",
+        "model_class": "all_models",
+        "commercial": false,
+        "attribution_required": false,
+        "territory": ["WW"],
+        "valid_from": "2026-08-02T00:00:00Z",
+        "valid_until": null
+      },
+      "kind": "granted",
+      "supersedes": null,
+      "issued_at": "2026-08-02T00:00:00Z",
+      "signature": "SIG_DEMO_EVT_004"
+    }
+  ]
+}
