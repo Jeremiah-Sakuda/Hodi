@@ -1,5 +1,8 @@
 import time
-from typing import Dict, Any, Callable, Optional
+import subprocess
+import signal
+import os
+from typing import Dict, Any, Callable, Optional, List
 from pydantic import BaseModel
 from datetime import datetime, timezone
 
@@ -7,7 +10,7 @@ class TaskAbandonedEvent(BaseModel):
     event_id: str
     agent_id: str
     written_by: str = "supervisor"  # MUST be written BY THE SUPERVISOR (HOD-341)
-    reason: str  # "deadline_exceeded" | "circuit_breaker_tripped"
+    reason: str  # "deadline_exceeded" | "circuit_breaker_tripped" | "process_exit_error"
     timestamp: datetime
 
 class Supervisor:
@@ -22,7 +25,7 @@ class Supervisor:
         self.failure_threshold = failure_threshold
         self.failure_counts: Dict[str, int] = {}
         self.circuit_breakers: Dict[str, bool] = {}  # True = tripped
-        self.abandoned_events: list = []
+        self.abandoned_events: List[TaskAbandonedEvent] = []
 
     def execute_bounded_task(self, agent_id: str, task_func: Callable[[], Any]) -> Dict[str, Any]:
         """
@@ -58,6 +61,39 @@ class Supervisor:
                 raise
             self._handle_failure(agent_id, f"error: {str(e)}")
             raise
+
+    def execute_bounded_subprocess(self, agent_id: str, cmd: List[str], kill_sig: Optional[int] = None) -> Dict[str, Any]:
+        """
+        Executes child subprocess under strict Supervisor deadline.
+        Path A (Deadline-Driven Detection): If process does not complete before deadline_seconds,
+        Supervisor marks task abandoned (reason: 'deadline_exceeded', written_by: 'supervisor') WITHOUT OS exit-code cooperation.
+        Path B (Process-Exit Fast Path): If process exits prematurely with non-zero code, supervisor writes TaskAbandoned (reason: 'process_exit_error').
+        """
+        proc = subprocess.Popen(cmd)
+        
+        if kill_sig is not None:
+            # Simulate uncooperative external SIGKILL mid-execution
+            time.sleep(0.05)
+            try:
+                os.kill(proc.pid, kill_sig)
+            except ProcessLookupError:
+                pass
+
+        try:
+            # SUPERVISOR OBSERVES ONLY WHETHER A RESULT ARRIVES BEFORE DEADLINE
+            stdout, stderr = proc.communicate(timeout=self.deadline_seconds)
+            if proc.returncode != 0:
+                self._handle_failure(agent_id, f"process_exit_error_code_{proc.returncode}")
+                raise RuntimeError(f"SUPERVISOR_BOUND: Subprocess exited with non-zero code {proc.returncode}. TaskAbandoned written by supervisor.")
+            return {"status": "ok", "stdout": stdout}
+
+        except subprocess.TimeoutExpired:
+            # DEADLINE PATH: NO RESULT ARRIVED BEFORE DEADLINE!
+            # Supervisor forces cleanup and writes TaskAbandoned with reason="deadline_exceeded"
+            proc.kill()
+            proc.wait()
+            self._handle_failure(agent_id, "deadline_exceeded")
+            raise TimeoutError(f"SUPERVISOR_BOUND: Deadline {self.deadline_seconds}s exceeded with no result. TaskAbandoned written by supervisor.")
 
     def _handle_failure(self, agent_id: str, reason: str):
         count = self.failure_counts.get(agent_id, 0) + 1
