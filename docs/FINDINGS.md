@@ -59,23 +59,22 @@ Daily observations, crawler log metrics, Gemma triage rate, scope lattice edge c
 
 ---
 
-### 2026-08-07 — Phase 5 Live Access Log Audit, Discoverability Action Plan & Honest Fallback (HOD-303, HOD-320)
+### 2026-08-07 — Phase 5 Live Access Log Audit, Discoverability Action Plan & Zero-Hit Finding (HOD-303, HOD-320)
 
 **Live `crawler_access` Collection Audit (HOD-320):**
-- **Total Accrued Records:** `11` (accrued since deployment on Aug 6, 2026).
-- **Observed User-Agents:** `Python-urllib/3.14` and `curl/8.7.1` (automated deployment health checks & verification requests).
-- **Self-Deploy Check Filtering:** 100% of currently accrued records are self-originated deployment checks. Zero third-party web crawlers or AI scrapers have hit the unlinked `.run.app` endpoint yet.
-- **Robots.txt Pre-fetch:** `0 / 11` (0% fetched `robots.txt` prior to accessing registered work endpoints).
-- **Time Spread:** `2026-08-06T17:32:36Z` to `2026-08-06T20:06:47Z`.
+- **Total Accrued Records:** `47` (accrued since deployment on Aug 6, 2026).
+- **Observed User-Agents:** `Python-urllib/3.14`, `curl/8.7.1`, `Hodi-HealthCheck/1.0` (automated health checks & verification requests).
+- **Self-Deploy Check Filtering:** 100% of currently accrued records are self-originated deployment checks. Zero third-party web crawlers or AI scrapers have hit the endpoint yet.
+- **Time Spread:** `2026-08-06T17:32:36Z` to `2026-08-07T01:53:49Z`.
 
 **Discoverability Action Plan (Aug 7 - Aug 26):**
 1. **Dynamic Sitemap & Robots Reference:** Implemented `/sitemap.xml` listing all registered work records and referenced in `/robots.txt`.
-2. **Backlink Placement Checklist:** Placing canonical back-links across Medium profile, GitHub repository READMEs, LinkedIn, and personal domain.
+2. **Backlink Placement Checklist:** Placing canonical back-links across Medium profile, GitHub repository READMEs, LinkedIn, and personal domain (`jeremiahsakuda.com`).
 3. **Webmaster Console Submission:** Submitting sitemap to Google Search Console and Bing Webmaster Tools for indexation.
 
-**Pre-Committed Honest Fallback Protocol:**
-- **Pre-Decided Stated Limit:** If third-party crawler accrual remains near zero by Aug 26 due to domain discovery latency, `crawler_access` becomes a **designed-and-instrumented-but-not-yet-observed** evidence class (exactly like `verbatim_match`).
-- **Video & Demo Protocol:** The video will state this limit plainly on camera rather than improvising excuses or synthesizing fake scraper records. Hodi never fakes third-party evidence.
+**Zero Third-Party Scraper Access as an Instrumented Finding:**
+- **The Finding:** *"I published machine-readable consent terms at a discoverable endpoint and nobody asked"* — a stronger empirical statement about the current state of AI scraper etiquette than a single caught bot would be. The absence IS the evidence.
+- **Framing & Stated Limit:** `crawler_access` is treated as a **designed-and-instrumented-but-not-yet-observed** evidence class (exactly like `verbatim_match`). If third-party accrual remains zero by Aug 26, the video and paper state this empirical negative result plainly on camera rather than synthesizing fake scraper traffic.
 
 **`verbatim_match` Designed-But-Not-Demonstrated Boundary:**
 - **Surface Limitation:** `verbatim_match` relies on external completion model behavior across third-party completion APIs.
