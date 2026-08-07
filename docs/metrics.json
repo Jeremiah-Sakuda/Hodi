@@ -6,7 +6,10 @@
     "non_self_originated_requests_count": 0,
     "self_deploy_check_count": 11,
     "distinct_user_agents_count": 2,
-    "distinct_user_agents": ["Python-urllib/3.14", "curl/8.7.1"],
+    "distinct_user_agents": [
+      "Python-urllib/3.14",
+      "curl/8.7.1"
+    ],
     "robots_txt_fetched_first_count": 0,
     "time_span_start_utc": "2026-08-06T17:32:36.440229+00:00",
     "time_span_end_utc": "2026-08-06T20:06:47.371525+00:00"
@@ -23,14 +26,18 @@
   },
   "phase_2_latency_benchmarks": {
     "target": "Deployed Cloud Run / Vertex AI Agent Path",
-    "samples_ms": [1569.23, 2354.28, 2939.41],
+    "samples_ms": [
+      1569.23,
+      2354.28,
+      2939.41
+    ],
     "min_ms": 1569.23,
     "max_ms": 2939.41,
     "avg_ms": 2287.64,
     "p95_ms": 2939.41,
     "derivation": {
       "observed_p95_seconds": 2.939,
-      "headroom_factor": 1.70,
+      "headroom_factor": 1.7,
       "derived_supervisor_deadline_seconds": 5.0
     }
   },
@@ -40,5 +47,31 @@
     "firestore_access_logs_collection": "crawler_access",
     "sitemap_url": "https://hodi-evidence-endpoint-406699565497.us-central1.run.app/sitemap.xml",
     "robots_url": "https://hodi-evidence-endpoint-406699565497.us-central1.run.app/robots.txt"
+  },
+  "h6_buyer_api_with_model_armor": {
+    "measurement_surface": "deployed-over-network",
+    "idle_forcing_method": "revision-update (gcloud run services update)",
+    "model_armor_hit_rate": {
+      "api_calls": 0,
+      "fallback_calls": 4
+    },
+    "cold_start_ms": 896.4916249969974,
+    "warm_runs_ms": [
+      581.9057079788763,
+      572.347000008449,
+      524.4869590096641
+    ],
+    "warm_avg_ms": 559.5798889989965
+  },
+  "h6_revocation_cascade_real_corpus_scale": {
+    "measurement_surface": "deployed-over-network",
+    "idle_forcing_method": "revision-update (gcloud run services update)",
+    "cold_start_ms": 466.8259579921141,
+    "warm_runs_ms": [
+      286.5714580111671,
+      281.2236669997219,
+      292.4062079982832
+    ],
+    "warm_avg_ms": 286.7337776697241
   }
 }

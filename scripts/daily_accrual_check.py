@@ -109,9 +109,52 @@ def audit_firestore_crawler_access() -> dict:
         "hostname_breakdown": hostname_breakdown
     }
 
+def verify_corpus_proofs(base_url: str):
+    """Fetches /works manifest and re-verifies all verified_control evidence_uris."""
+    print(f"\n================================================================================")
+    print(f"HODI CORPUS PROOF VERIFICATION")
+    print(f"================================================================================")
+    
+    works_url = f"{base_url}/works"
+    try:
+        req = urllib.request.Request(works_url, headers={"User-Agent": "Hodi-HealthCheck/1.0"})
+        with urllib.request.urlopen(req, timeout=5.0) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            works = data.get("works", [])
+    except Exception as e:
+        assert False, f"CRITICAL: Failed to fetch /works manifest at '{works_url}': {e}"
+        
+    print(f"Found {len(works)} registered works. Auditing verified_control proofs...")
+    
+    dead_proofs = []
+    for w in works:
+        if w.get("control_tier") == "verified_control":
+            proof = w.get("control_proof")
+            if not proof:
+                dead_proofs.append(f"{w['work_id']} (Missing proof object)")
+                continue
+            
+            evidence_uri = proof.get("evidence_uri")
+            if not evidence_uri:
+                dead_proofs.append(f"{w['work_id']} (Missing evidence_uri)")
+                continue
+                
+            if evidence_uri.startswith("http"):
+                ok = check_url_status_200(evidence_uri)
+                if ok:
+                    print(f"  [200 OK] {w['work_id']} proof: {evidence_uri}")
+                else:
+                    dead_proofs.append(f"{w['work_id']} (Dead proof URI: {evidence_uri})")
+            else:
+                print(f"  [SKIPPED] {w['work_id']} proof is non-HTTP: {evidence_uri}")
+                
+    assert len(dead_proofs) == 0, f"CRITICAL: Found {len(dead_proofs)} broken verified_control proofs: {dead_proofs}"
+    print(f"[SUCCESS] All verified_control works have live, resolving proof URIs!")
+
 if __name__ == "__main__":
     base_url = "https://hodi-evidence-endpoint-406699565497.us-central1.run.app"
     verify_sitemap_and_robots(base_url)
+    verify_corpus_proofs(base_url)
     
     stats = audit_firestore_crawler_access()
     print("\n--- FIRESTORE CRAWLER ACCESS STATS ---")

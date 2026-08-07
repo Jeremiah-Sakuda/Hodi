@@ -26,7 +26,15 @@ def generate_markdown_matrix() -> str:
     md.append("|---|---|---|---|---|")
 
     for key, info in AGENT_SA_MAP.items():
-        permitted_str = "<br>".join([f"`{c}`" for c in info["permitted_collections"]])
+        permitted_list = []
+        for c in info["permitted_collections"]:
+            if isinstance(c, dict):
+                req = c.get("required_filter_key")
+                permitted_list.append(f"`{c['collection']}` (Requires filter: `{req}`) ")
+            else:
+                permitted_list.append(f"`{c}`")
+                
+        permitted_str = "<br>".join(permitted_list)
         denied_str = "<br>".join([f"`{c}`" for c in info["denied_collections"]])
         md.append(f"| **{info['role_name']}** | `{info['sa_email']}` | `{info['conflict_domain']}` | {permitted_str} | {denied_str} |")
 

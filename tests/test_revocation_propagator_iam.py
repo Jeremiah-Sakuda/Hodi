@@ -7,7 +7,9 @@ class TestRevocationPropagatorIAM(unittest.TestCase):
     """
 
     def setUp(self):
-        self.agent = RevocationPropagatorAgent()
+        from src.gateway.gateway import AgentGateway
+        self.gateway = AgentGateway()
+        self.agent = RevocationPropagatorAgent(gateway=self.gateway, memory_bank_events=[])
 
     def test_revocation_propagator_can_write_notices_and_grants(self):
         """Paired Positive: Revocation Propagator CAN write revocation_notices/ and read grants/."""

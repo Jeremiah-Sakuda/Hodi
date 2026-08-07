@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hodi | Artist Registry</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header class="top-nav">
+        <div class="logo">Hodi</div>
+        <div class="nav-links">
+            <a href="#" class="active">Registry</a>
+            <a href="#">Scopes</a>
+            <a href="#">Evidence</a>
+        </div>
+    </header>
+
+    <main class="container">
+        <section class="intro">
+            <h1>Registered Works</h1>
+            <p>Your creative portfolio, registered and governed by explicit scope terms.</p>
+        </section>
+
+        <section class="works-grid" id="works-grid">
+            <!-- Populated by app.js -->
+        </section>
+        
+        <section class="evidence-section">
+            <h2>Evidence Ledger</h2>
+            <p class="ledger-desc">Observed telemetry grouped by strict evidence class. Cross-class aggregation is intentionally disabled.</p>
+            <div class="evidence-grid" id="evidence-grid">
+                <!-- Populated by app.js -->
+            </div>
+        </section>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>
