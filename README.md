@@ -84,7 +84,7 @@ Fetches the **live** `/works` manifest and verifies the corpus-integrity propert
 make test
 ```
 
-Runs the full offline suite — 153 tests, credential-free, including the cross-buyer attack suite, the containment truth table, and the ADK delegation.
+Runs the full offline suite — 153 tests, credential-free, including the cross-buyer attack suite, the containment truth table, and the ADK delegation. Four tests that genuinely require live Firestore (byte-identity at rest cannot be proven against an in-memory buffer) are skipped unless you set `HODI_E2E=1`, because they write to real collections.
 
 ```bash
 make compliance
