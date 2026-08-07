@@ -21,9 +21,20 @@ class AgentRegistry:
 
     def __init__(self):
         self._publications: Dict[str, AgentPublication] = {}
-        # Matrix of authorized inter-agent invocations
+        # Matrix of authorized inter-agent invocations: {requesting_role: [roles it may invoke]}.
+        #
+        # rights_custodian -> revocation_propagator is the artist's revocation
+        # path: the artist owns the work and initiates termination. Invoking is
+        # not sharing — the custodian passes an opaque work_id and use_type, and
+        # the propagator resolves affected grants itself, so no identity crosses
+        # the boundary (Phase 2 correction 3).
+        #
+        # licensing_negotiator -> revocation_propagator is deliberately ABSENT:
+        # a buyer's negotiator must not be able to trigger revocations, and the
+        # registry answers such a query with [] rather than disclosing that the
+        # propagator exists at all.
         self._allowed_invocations: Dict[str, List[str]] = {
-            "rights_custodian": ["rights_custodian"],
+            "rights_custodian": ["rights_custodian", "revocation_propagator"],
             "licensing_negotiator": ["licensing_negotiator", "rights_custodian"],
             "evidence_agent": ["evidence_agent"],
             "revocation_propagator": ["revocation_propagator", "evidence_agent"],

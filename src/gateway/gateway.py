@@ -102,6 +102,30 @@ class AgentGateway:
             _emit_denial_log(denial)
             raise GatewayPolicyDenial(denial)
 
+    def log_identity_claim_denial(self, calling_sa: str, authenticated_counterparty_id: str,
+                                  claimed_counterparty_id: str, key_id: str) -> PolicyDenialEvent:
+        """
+        Records a rejected cross-buyer identity claim: a caller authenticated as
+        one counterparty asked for another's data. Logged as the same structured
+        PolicyDenialEvent as any other denial — never a silent 403.
+        """
+        denial = PolicyDenialEvent(
+            event_id=f"denial-{uuid.uuid4()}",
+            calling_sa=calling_sa,
+            target_role="licensing_negotiator",
+            requested_collection="grants",
+            attempted_filters={"counterparty_id": claimed_counterparty_id},
+            session_context={"counterparty_id": authenticated_counterparty_id, "key_id": key_id},
+            timestamp=datetime.now(timezone.utc),
+            policy_consulted="request_authentication_v1",
+            reason=(f"Credential '{key_id}' is bound to counterparty "
+                    f"'{authenticated_counterparty_id}' and cannot act for "
+                    f"'{claimed_counterparty_id}'."),
+        )
+        self.denial_events.append(denial)
+        _emit_denial_log(denial)
+        return denial
+
     def route(self, calling_sa: str, calling_role_key: str, target_collection: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Legacy route method (kept for tests)."""
         self._enforce(calling_sa, calling_role_key, target_collection)

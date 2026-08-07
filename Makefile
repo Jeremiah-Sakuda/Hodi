@@ -1,7 +1,10 @@
-.PHONY: demo demo-live verify-scopes verify-manifest metrics compliance
+.PHONY: demo demo-live test verify-scopes verify-manifest metrics compliance
 
 demo:
 	HODI_OFFLINE=1 python3 scripts/demo.py
+
+test:
+	HODI_OFFLINE=1 python3 -m unittest discover -s tests -t .
 
 demo-live:
 	time python3 scripts/test_live_cross_counterparty.py

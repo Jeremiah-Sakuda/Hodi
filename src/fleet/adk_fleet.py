@@ -1,0 +1,362 @@
+"""
+src/fleet/adk_fleet.py — the fleet as real ADK agents (HOD-302, HOD-330, HOD-340, HOD-341).
+
+This module is the answer to a fair criticism: ADK was named as the runtime
+framework in the README, the PRD, and Diagram A while `google.adk` appeared
+nowhere in the code. It does now, and it EXECUTES — `run_revocation_delegation()`
+drives a real `google.adk.runners.Runner` over real `google.adk.agents.BaseAgent`
+subclasses, and the ADK event stream is what the caller consumes.
+
+The agents extend ADK's BaseAgent rather than LlmAgent because each hop here is
+a deterministic authority decision — a scoped Firestore read, a registry lookup,
+a lattice fold. Putting a model in that path would be the opposite of this
+project's thesis, and it would make `make demo` non-deterministic and
+credentialed. ADK supplies the agent lifecycle, composition, and event stream;
+the decisions stay deterministic. (The one place a model DOES sit is scope
+interpretation — src/llm/scope_interpreter.py — where its output is confined to
+a schema-validated Scope.)
+
+What one run demonstrates end to end:
+  1. The licensing negotiator reads ONLY its own session counterparty's grants,
+     through the Gateway, under its own service account.
+  2. That negotiator then asks the Agent Registry for the revocation propagator
+     and is told nothing — a buyer's negotiator may not trigger revocations, and
+     the registry returns [] rather than disclosing that the agent exists.
+  3. The rights custodian — the artist's agent, a DIFFERENT service account —
+     asks the same question and IS given the propagator, because the artist owns
+     the work and may terminate a grant over it.
+  4. The revocation propagator, a THIRD service account holding neither identity
+     nor buyer terms, executes the cascade from an opaque work_id.
+  5. Every hop emits an OTel span carrying agent.identity, policy.consulted, and
+     outcome, nested inside ADK's own invoke_agent spans.
+  6. The whole delegation runs inside the Supervisor's wall-clock deadline.
+
+Steps 2 and 3 are the same query from two different callers — the paired
+positive and negative of HOD-330 in a single trace.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from typing import Any, AsyncGenerator, Dict, List, Optional
+
+from google.adk.agents import BaseAgent
+from google.adk.agents.invocation_context import InvocationContext
+from google.adk.events import Event
+from google.adk.runners import InMemoryRunner
+from google.genai import types
+
+from src.gateway.gateway import AgentGateway, GatewayPolicyDenial
+from src.observability.tracing import create_agent_decision_span
+from src.registry.registry import AgentRegistry, AgentPublication
+from src.resolve.evaluator import permits
+from src.resolve.resolver import active_grant_events
+from src.schema.grant_event import GrantEvent
+from src.schema.iam_policy import AGENT_SA_MAP
+from src.supervisor.supervisor import Supervisor
+
+APP_NAME = "hodi-fleet"
+
+
+def _text_event(author: str, payload: str) -> Event:
+    return Event(author=author, content=types.Content(role="model", parts=[types.Part(text=payload)]))
+
+
+class FleetState(dict):
+    """
+    Shared delegation state.
+
+    A plain dict passed as a Pydantic field is DEEP-COPIED during model
+    validation, so each agent would mutate its own private copy and nothing an
+    agent produced would be visible to the orchestrator or the caller. This
+    subclass is stored outside the Pydantic field set (see HodiADKAgent) so all
+    agents in one run share one object by reference.
+    """
+
+
+class HodiADKAgent(BaseAgent):
+    """
+    Base for every Hodi fleet agent.
+
+    Carries the agent's role and service-account identity, and emits an OTel
+    decision span for every run — so `agent.identity` on the span is the SA the
+    work was actually done under, not a label chosen at render time.
+    """
+
+    role_key: str
+
+    def __init__(self, *, name: str, role_key: str, shared: FleetState, **kwargs):
+        super().__init__(
+            name=name,
+            description=AGENT_SA_MAP[role_key]["description"],
+            role_key=role_key,
+            **kwargs,
+        )
+        # Bypasses Pydantic's field machinery deliberately: `shared` must be the
+        # same object in every agent, not a validated copy.
+        object.__setattr__(self, "_shared", shared)
+
+    @property
+    def shared(self) -> FleetState:
+        return self._shared
+
+    @property
+    def sa_email(self) -> str:
+        return AGENT_SA_MAP[self.role_key]["sa_email"]
+
+    def _decision_span(self, span_name: str, policy: str, outcome: str):
+        return create_agent_decision_span(
+            span_name=span_name,
+            agent_identity=self.sa_email,
+            policy_consulted=policy,
+            outcome=outcome,
+        )
+
+
+class LicensingNegotiatorADKAgent(HodiADKAgent):
+    """Reads its session counterparty's grants — and nothing else — through the Gateway."""
+
+    def __init__(self, shared: FleetState):
+        super().__init__(name="licensing_negotiator", role_key="licensing_negotiator", shared=shared)
+
+    async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
+        counterparty_id = self.shared["counterparty_id"]
+        gateway: AgentGateway = self.shared["gateway"]
+
+        try:
+            raw = gateway.read_collection(
+                calling_sa=self.sa_email,
+                calling_role_key=self.role_key,
+                target_collection="grants",
+                filters={"counterparty_id": counterparty_id},
+                session_context={"counterparty_id": counterparty_id},
+            )
+            outcome = "PERMITTED"
+        except GatewayPolicyDenial as denial:
+            span = self._decision_span("negotiator.read_grants", "gateway_policy_v1", "DENIED")
+            span.end()
+            self.shared["denial"] = denial.denial.reason
+            yield _text_event(self.name, f"DENIED reading grants: {denial.denial.reason}")
+            return
+
+        events = [GrantEvent(**g) for g in raw] if raw else list(self.shared.get("fallback_events", []))
+        # Fold before containment: the log is append-only (HOD-107).
+        active = active_grant_events([e for e in events if e.counterparty_id == counterparty_id])
+        self.shared["active_grants"] = active
+
+        span = self._decision_span("negotiator.read_grants", "gateway_policy_v1", outcome)
+        span.set_attribute("counterparty.session", counterparty_id)
+        span.set_attribute("grants.active_count", len(active))
+        span.end()
+
+        yield _text_event(
+            self.name,
+            f"read {len(active)} active grant(s) for session counterparty '{counterparty_id}' "
+            f"under {self.sa_email}",
+        )
+
+
+class RightsCustodianADKAgent(HodiADKAgent):
+    """The artist's agent: holds identity and works, and initiates revocation."""
+
+    def __init__(self, shared: FleetState):
+        super().__init__(name="rights_custodian", role_key="rights_custodian", shared=shared)
+
+    async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
+        work_id = self.shared["work_id"]
+        span = self._decision_span("custodian.initiate_revocation", "gateway_policy_v1", "INITIATED")
+        span.set_attribute("work.id", work_id)
+        span.end()
+        yield _text_event(
+            self.name,
+            f"initiating revocation of '{self.shared['revoked_use_type']}' on work '{work_id}' "
+            f"under {self.sa_email}",
+        )
+
+
+class RevocationPropagatorADKAgent(HodiADKAgent):
+    """Executes the cascade under a DIFFERENT service account: no identity, no buyer terms."""
+
+    def __init__(self, shared: FleetState):
+        super().__init__(name="revocation_propagator", role_key="revocation_propagator", shared=shared)
+
+    async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
+        from src.agents.revocation_propagator import RevocationPropagatorAgent
+
+        work_id = self.shared["work_id"]
+        revoked_use_type = self.shared["revoked_use_type"]
+        propagator = RevocationPropagatorAgent(
+            gateway=self.shared["gateway"],
+            memory_bank_events=list(self.shared.get("fallback_events", [])),
+        )
+        result = propagator.execute_revocation_cascade(
+            work_id=work_id, revoked_use_type=revoked_use_type
+        )
+        self.shared["cascade"] = result
+
+        span = self._decision_span("propagator.execute_cascade", "revocation_lattice_v1", "CASCADED")
+        span.set_attribute("work.id", work_id)
+        span.set_attribute("revoked.use_type", revoked_use_type)
+        span.set_attribute("grants.affected_count", len(result.affected_grants))
+        span.end()
+
+        yield _text_event(
+            self.name,
+            f"cascade on '{work_id}' revoking '{revoked_use_type}' affected "
+            f"{len(result.affected_grants)} grant(s) under {self.sa_email}",
+        )
+
+
+class FleetDelegationOrchestrator(HodiADKAgent):
+    """
+    The delegation itself.
+
+    The negotiator does not hold a reference to the propagator. To reach it, the
+    orchestrator queries the Agent Registry by ROLE on the negotiator's behalf;
+    the registry answers only if that role may invoke the target, and returns []
+    otherwise without disclosing whether the agent exists. Only a non-empty
+    discovery result produces the second hop.
+    """
+
+    def __init__(self, shared: FleetState, negotiator: LicensingNegotiatorADKAgent,
+                 custodian: RightsCustodianADKAgent,
+                 propagator: RevocationPropagatorADKAgent):
+        super().__init__(
+            name="fleet_orchestrator",
+            role_key="rights_custodian",
+            shared=shared,
+            sub_agents=[negotiator, custodian, propagator],
+        )
+
+    def _discover(self, requesting_role_key: str) -> List[AgentPublication]:
+        registry: AgentRegistry = self.shared["registry"]
+        discovered = registry.discover(
+            target_role="revocation_propagator", requesting_role_key=requesting_role_key
+        )
+        span = create_agent_decision_span(
+            span_name="registry.discover",
+            agent_identity=AGENT_SA_MAP[requesting_role_key]["sa_email"],
+            policy_consulted="registry_role_scope_v1",
+            outcome="DISCOVERED" if discovered else "NOT_DISCLOSED",
+        )
+        span.set_attribute("registry.target_role", "revocation_propagator")
+        span.set_attribute("registry.requesting_role", requesting_role_key)
+        span.set_attribute("registry.results", len(discovered))
+        span.end()
+        return discovered
+
+    async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
+        negotiator, custodian, propagator = self.sub_agents[0], self.sub_agents[1], self.sub_agents[2]
+
+        # Hop 1 — the negotiator reads its own session counterparty's grants.
+        async for event in negotiator.run_async(ctx):
+            yield event
+        if "denial" in self.shared:
+            return
+
+        # Hop 2 — NEGATIVE discovery: the negotiator may not invoke the
+        # propagator, and is not told it exists.
+        denied = self._discover("licensing_negotiator")
+        self.shared["negotiator_discovered"] = [p.agent_id for p in denied]
+        yield _text_event(
+            self.name,
+            f"registry discovery for 'revocation_propagator' as licensing_negotiator returned "
+            f"{len(denied)} agent(s) — a buyer's negotiator is not told the propagator exists",
+        )
+
+        # Hop 3 — the artist's custodian initiates the revocation.
+        async for event in custodian.run_async(ctx):
+            yield event
+
+        # Hop 4 — POSITIVE discovery: the custodian may invoke the propagator.
+        discovered = self._discover("rights_custodian")
+        self.shared["discovered"] = [p.agent_id for p in discovered]
+        yield _text_event(
+            self.name,
+            f"registry discovery for 'revocation_propagator' as rights_custodian returned "
+            f"{len(discovered)} agent(s): {self.shared['discovered']}",
+        )
+        if not discovered:
+            return
+
+        # Hop 5 — the discovered agent runs, under a third service account.
+        async for event in propagator.run_async(ctx):
+            yield event
+
+
+def build_fleet(counterparty_id: str, work_id: str, revoked_use_type: str,
+                gateway: Optional[AgentGateway] = None,
+                registry: Optional[AgentRegistry] = None,
+                fallback_events: Optional[List[GrantEvent]] = None):
+    """Wires the fleet. Returns (orchestrator, shared_state)."""
+    if registry is None:
+        registry = AgentRegistry()
+        for role_key, info in AGENT_SA_MAP.items():
+            registry.register(AgentPublication(
+                agent_id=f"{role_key}-v1",
+                name=info["role_name"],
+                version="1.0.0",
+                owning_function=role_key,
+                role=role_key,
+                scopes=[c if isinstance(c, str) else c["collection"]
+                        for c in info["permitted_collections"]],
+            ))
+
+    shared = FleetState({
+        "counterparty_id": counterparty_id,
+        "work_id": work_id,
+        "revoked_use_type": revoked_use_type,
+        "gateway": gateway or AgentGateway(),
+        "registry": registry,
+        "fallback_events": fallback_events or [],
+    })
+    orchestrator = FleetDelegationOrchestrator(
+        shared=shared,
+        negotiator=LicensingNegotiatorADKAgent(shared),
+        custodian=RightsCustodianADKAgent(shared),
+        propagator=RevocationPropagatorADKAgent(shared),
+    )
+    return orchestrator, shared
+
+
+async def _run_async(orchestrator) -> List[Dict[str, str]]:
+    runner = InMemoryRunner(agent=orchestrator, app_name=APP_NAME)
+    session = await runner.session_service.create_session(app_name=APP_NAME, user_id="hodi-fleet-user")
+    transcript: List[Dict[str, str]] = []
+    async for event in runner.run_async(
+        user_id="hodi-fleet-user",
+        session_id=session.id,
+        new_message=types.Content(role="user", parts=[types.Part(text="run revocation delegation")]),
+    ):
+        if event.content and event.content.parts and event.content.parts[0].text:
+            transcript.append({"author": event.author, "text": event.content.parts[0].text})
+    return transcript
+
+
+def run_revocation_delegation(counterparty_id: str, work_id: str, revoked_use_type: str,
+                              gateway: Optional[AgentGateway] = None,
+                              registry: Optional[AgentRegistry] = None,
+                              fallback_events: Optional[List[GrantEvent]] = None,
+                              supervisor: Optional[Supervisor] = None) -> Dict[str, Any]:
+    """
+    Runs the delegation through the ADK runner, inside the Supervisor's
+    wall-clock deadline. Returns the ADK event transcript plus what each hop
+    produced.
+    """
+    orchestrator, shared = build_fleet(
+        counterparty_id=counterparty_id, work_id=work_id, revoked_use_type=revoked_use_type,
+        gateway=gateway, registry=registry, fallback_events=fallback_events,
+    )
+    supervisor = supervisor or Supervisor(deadline_seconds=10.0)
+    transcript = supervisor.execute_bounded_task(
+        agent_id="fleet_orchestrator",
+        task_func=lambda: asyncio.run(_run_async(orchestrator)),
+    )
+    return {
+        "transcript": transcript,
+        "discovered": shared.get("discovered", []),
+        "negotiator_discovered": shared.get("negotiator_discovered", []),
+        "active_grants": shared.get("active_grants", []),
+        "cascade": shared.get("cascade"),
+        "denial": shared.get("denial"),
+    }

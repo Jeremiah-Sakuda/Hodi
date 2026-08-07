@@ -1,4 +1,5 @@
 import time
+import threading
 import subprocess
 import signal
 import os
@@ -44,23 +45,49 @@ class Supervisor:
             self.abandoned_events.append(event)
             raise TimeoutError(f"SUPERVISOR_BOUND: Circuit breaker tripped for agent '{agent_id}'. TaskAbandoned written by supervisor.")
 
-        start_time = time.time()
-        try:
-            res = task_func()
-            elapsed = time.time() - start_time
-            if elapsed > self.deadline_seconds:
-                self._handle_failure(agent_id, "deadline_exceeded")
-                raise TimeoutError(f"SUPERVISOR_BOUND: Task execution time {elapsed:.2f}s exceeded deadline {self.deadline_seconds}s. TaskAbandoned written by supervisor.")
-            
-            # Reset failure count on success
-            self.failure_counts[agent_id] = 0
-            return res
+        # The task runs on a separate thread and the SUPERVISOR waits with a
+        # timeout, so the deadline bounds the supervisor's wait rather than
+        # being checked after the fact. An earlier version called task_func()
+        # inline and compared elapsed time afterwards — under that version a
+        # 1.2s task with a 0.3s deadline took 1.21s to be "abandoned", so the
+        # deadline bounded nothing at all in-process.
+        #
+        # A Python thread cannot be forcibly killed; the property being proven
+        # is that the supervisor DETECTS and reports within the deadline without
+        # the worker's cooperation. The orphaned worker is a daemon thread and
+        # cannot keep the process alive. For hard termination of an uncooperative
+        # worker, use execute_bounded_subprocess (Path A).
+        result_box: Dict[str, Any] = {}
 
-        except Exception as e:
-            if isinstance(e, TimeoutError):
-                raise
-            self._handle_failure(agent_id, f"error: {str(e)}")
-            raise
+        def _runner():
+            try:
+                result_box["value"] = task_func()
+            except BaseException as exc:  # noqa: BLE001 — reported on the caller's thread
+                result_box["error"] = exc
+
+        worker = threading.Thread(target=_runner, name=f"hodi-agent-{agent_id}", daemon=True)
+        start_time = time.time()
+        worker.start()
+        worker.join(timeout=self.deadline_seconds)
+
+        if worker.is_alive():
+            # DEADLINE PATH: no result arrived in time. The supervisor writes
+            # TaskAbandoned itself — the worker is still running and has
+            # reported nothing.
+            self._handle_failure(agent_id, "deadline_exceeded")
+            raise TimeoutError(
+                f"SUPERVISOR_BOUND: No result within deadline {self.deadline_seconds}s "
+                f"(supervisor waited {time.time() - start_time:.2f}s). "
+                "TaskAbandoned written by supervisor."
+            )
+
+        if "error" in result_box:
+            self._handle_failure(agent_id, f"error: {result_box['error']}")
+            raise result_box["error"]
+
+        # Reset failure count on success
+        self.failure_counts[agent_id] = 0
+        return result_box.get("value")
 
     def execute_bounded_subprocess(self, agent_id: str, cmd: List[str], kill_sig: Optional[int] = None) -> Dict[str, Any]:
         """
