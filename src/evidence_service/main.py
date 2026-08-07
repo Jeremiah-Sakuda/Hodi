@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from google.cloud import firestore
 
 # Configure structured logging
@@ -169,9 +169,32 @@ async def get_robots_txt(request: Request):
     return f"""User-agent: *
 Allow: /
 
+Sitemap: {base_url}/sitemap.xml
+
 # Hodi Creative Consent Terms
 # Declared terms: {base_url}/.well-known/hodi.json
 """
+
+@app.get("/sitemap.xml", response_class=PlainTextResponse)
+async def get_sitemap_xml(request: Request):
+    base_url = str(request.base_url).rstrip("/")
+    urls = [
+        f"{base_url}/",
+        f"{base_url}/.well-known/hodi.json",
+        f"{base_url}/robots.txt",
+        f"{base_url}/works",
+        f"{base_url}/canaries",
+    ] + [f"{base_url}/works/{w['work_id']}" for w in REGISTERED_WORKS]
+
+    xml_lines = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+    ]
+    for url in urls:
+        xml_lines.append(f'  <url><loc>{url}</loc><changefreq>daily</changefreq><priority>0.8</priority></url>')
+    xml_lines.append('</urlset>')
+
+    return Response(content="\n".join(xml_lines), media_type="application/xml")
 
 @app.get("/.well-known/hodi.json", response_class=JSONResponse)
 async def get_hodi_json(request: Request):
