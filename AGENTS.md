@@ -40,6 +40,7 @@ Everything else in this system is ordinary engineering. These three are why it i
 - **Truthful Build Log & Verification Rule.** An outcome in `docs/BUILD-LOG.md` may ONLY report what was empirically verified. Any infrastructure or command step whose success was not confirmed (or where errors were masked) MUST be logged strictly as `attempted-and-unverified`. Never use `|| true` on infrastructure commands whose failure changes application behavior.
 - **Latency Measurement Surface Rule.** Any latency or timing figure recorded in `metrics.json` MUST explicitly state its measurement surface — `'deployed-over-network'` or `'in-process'`. A figure without that field is invalid. Measuring an in-process mock and reporting it as the deployed latency is a critical failure.
 - **Literal Metric Rendering Rule.** No displayed metric (evidence counts, crawler figures, timing values, accrual numbers) may be a literal in the UI or docs. Every number shown to a user or written to a doc MUST be read from its source at render time. An unavailable source renders as "unavailable", never as a plausible stand-in or mock value.
+- **Observation vs. Prediction Rule.** Any transcript, output sample, timing, or trace shown to the user or written into a document MUST be captured from a real run. Predicted output must be explicitly labelled **PREDICTED — NOT OBSERVED**, in those exact words.
 
 ---
 

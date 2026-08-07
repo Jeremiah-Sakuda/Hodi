@@ -65,7 +65,7 @@ Cells enumerate IDs. `make compliance` (HOD-007) diffs §4 against this table **
 | **Fleet: production data without violating policy** | **Agent Identity** (per-agent scoped SAs), **Agent Gateway** (routing + policy enforcement at the boundary), **Prompt Inspector** (local regex on untrusted buyer documents) | HOD-102, HOD-311, HOD-312, HOD-313, HOD-340 |
 | **Fleet: audit reasoning** | **Agent Observability** — OpenTelemetry traces end-to-end; every agent decision carries a span; the trace is a demo artifact, not a log file | HOD-340 |
 | **Nexus: failure tolerance** | Supervisor quarantine + reroute on loop, timeout, or scope violation; per-agent circuit breaker; `TaskAbandoned` on deadline; revocation propagation | HOD-341, HOD-342, HOD-350 |
-| Devpost — features/functionality | `docs/devpost-description.md` §1 | HOD-622 |
+| Devpost — features/functionality | `docs/devpost-description.md` §1 | HOD-104, HOD-105, HOD-106, HOD-107, HOD-622 |
 | Devpost — technologies used | `docs/devpost-description.md` §2 (Gemma named) | HOD-622, HOD-623 |
 | Devpost — other data sources | `docs/devpost-description.md` §3 — **the corpus is the author's own published work** | HOD-009, HOD-622 |
 | **Devpost — findings and learnings** | `docs/devpost-description.md` §4, **drafted Aug 12–13**, `{{fill from metrics.json}}` slot | HOD-317, HOD-509, HOD-622 |
