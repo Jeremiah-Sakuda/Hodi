@@ -6,6 +6,9 @@ from fastapi.testclient import TestClient
 from src.api.buyer_api import router, ScopeRequest
 from src.schema.scope import Scope
 from src.schema.grant_event import GrantEvent
+import subprocess
+from google.cloud import firestore
+from google.oauth2 import credentials
 
 class TestBuyerApiE2E(unittest.TestCase):
     def setUp(self):
@@ -18,19 +21,23 @@ class TestBuyerApiE2E(unittest.TestCase):
         
         # Setup mock active grant (commercial training for all models)
         self.active_grant = GrantEvent(
-            event_id="e1", grant_id="g1", work_id="w1", counterparty_id="buyer1",
+            event_id="e1-test-buyer", grant_id="g1-test-buyer", work_id="w1", counterparty_id="buyer1-e2e-test",
             scope=Scope(use_type="training", model_class="all_models", derivative_retention=True, attribution_required=True, commercial=True, valid_from=self.t0, valid_until=None),
             kind="granted", issued_at=self.t0, signature="sig1"
         )
         
-        from unittest.mock import patch
-        self.patcher = patch('src.api.buyer_api.AgentGateway.read_collection')
-        self.mock_read = self.patcher.start()
-        # Mock the raw dictionary return that AgentGateway provides
-        self.mock_read.return_value = [self.active_grant.model_dump()]
+        # Connect to real Firestore
+        token = subprocess.check_output(['gcloud', 'auth', 'print-access-token']).decode('utf-8').strip()
+        creds = credentials.Credentials(token)
+        self.db = firestore.Client(project="hodi-2026", credentials=creds)
+        
+        # Seed test grant
+        self.doc_ref = self.db.collection("grants").document("g1-test-buyer")
+        self.doc_ref.set(self.active_grant.model_dump(mode='json'))
 
     def tearDown(self):
-        self.patcher.stop()
+        # Cleanup real Firestore test document
+        self.doc_ref.delete()
 
     def test_signed_request_scope_resolution_and_receipt(self):
         # A clean, signed request for fine_tuning (which is contained in training)
@@ -45,7 +52,7 @@ class TestBuyerApiE2E(unittest.TestCase):
         }
         
         payload = {
-            "counterparty_id": "buyer1",
+            "counterparty_id": "buyer1-e2e-test",
             "requested_scope": req_scope,
             "signature": "VALID_SIG",
             "raw_document_b64": base64.b64encode(b"Clean request text").decode("utf-8")
@@ -73,14 +80,14 @@ class TestBuyerApiE2E(unittest.TestCase):
         }
         
         clean_payload = {
-            "counterparty_id": "buyer1",
+            "counterparty_id": "buyer1-e2e-test",
             "requested_scope": req_scope,
             "signature": "VALID_SIG",
             "raw_document_b64": base64.b64encode(b"Clean request text").decode("utf-8")
         }
         
         poisoned_payload = {
-            "counterparty_id": "buyer1",
+            "counterparty_id": "buyer1-e2e-test",
             "requested_scope": req_scope,
             "signature": "VALID_SIG",
             # This triggers ModelArmor injection detection
