@@ -44,10 +44,11 @@ The full permission matrix is in [docs/architecture/conflict_matrix.md](docs/arc
 ## Quickstart
 
 ```bash
+pip install -r src/evidence_service/requirements.lock
 make demo
 ```
 
-**Zero credentials, no network, no emulator.** Runs entirely from committed fixtures and proves, with assertions that fail the run if false: the scope-lattice partial order (declared as data); byte-stable replay of `resolve()` over a shuffled event log; revocation narrowing the present without rewriting the past; the poisoned buyer document detected and proceeding under its original scope with an identical licensable outcome; all four conflict walls denying forbidden reads with structured `PolicyDenialEvent`s; and the schema refusing to express training-set membership.
+**Zero credentials, no network, no emulator.** Verified from a clean clone of this repository in a fresh `python:3.11-slim` container with no mounted config. Runs entirely from committed fixtures and proves, with assertions that fail the run if false: the scope-lattice partial order (declared as data); byte-stable replay of `resolve()` over a shuffled event log; revocation narrowing the present without rewriting the past; the poisoned buyer document detected and proceeding under its original scope with an identical licensable outcome; all four conflict walls denying forbidden reads with structured `PolicyDenialEvent`s; and the schema refusing to express training-set membership.
 
 ```bash
 make demo-live
