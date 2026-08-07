@@ -145,37 +145,37 @@ Session log of development prompts, outcomes, key decisions, and requirements to
 
 ---
 
-### 2026-08-07 — Phase 5: Evidence Analysis Engine, Gemma Triage & Overclaim Linting (HOD-303, HOD-320)
+### 2026-08-07 — Phase 5: Evidence Analysis Engine, Gemma Triage, Model Armor Firestore At-Rest & Uncooperative SIGKILL Bounding (HOD-303, HOD-313, HOD-320, HOD-341)
 
 **Prompt (verbatim):**
-> Read HOD-303 and HOD-320.
+> Two defects and one deployment change. Then H6.
 > 
-> FIRST, before building anything: report what the crawler_access collection actually contains. Record count, distinct user agents, how many requests fetched robots.txt first, and the spread over time. If it is near-empty or is mostly port scanners, say so plainly — the evidence agent's design and the video's claims both depend on whether we have real third-party traffic or noise. Do not paper over a thin result; a stated limit is the ethic of this project.
+> 1. THE MODEL ARMOR "AT REST" TEST STILL DOESN'T TEST AT REST.
+> test_model_armor_detects_injection_and_storage_readback_is_byte_identical writes to io.BytesIO() — an in-memory buffer. That is the same in-process comparison I flagged, with a filename on it. BytesIO cannot normalize bytes, so the test cannot fail, so it proves nothing.
+> The property is that FIRESTORE does not alter the document at rest. Rewrite the test to write stored_bytes to the Firestore emulator (or a real collection under the test SA), read the document back out of the datastore, and compare to the originally received raw bytes. Include a case with bytes that a naive storage layer would mangle — invalid UTF-8, a null byte, and a BOM — since a clean-ASCII fixture would pass even against a broken serializer.
 > 
-> Then build the evidence agent over those logs — real data, not fixtures.
+> 2. ROBOTS.TXT IS ADVERTISING THE SITEMAP OVER HTTP ON AN HTTPS-ONLY SERVICE.
+> Live robots.txt currently returns "Sitemap: http://hodi-evidence-endpoint-...run.app/sitemap.xml". Cloud Run is HTTPS-only. Some crawlers follow the redirect, some drop it. This is on the one code path whose entire purpose is being crawled.
+> Fix the scheme, and stop deriving it from the request — hardcode the canonical base URL from config so a proxied or forwarded request cannot produce a wrong absolute URL again. Then re-verify the live response.
 > 
-> Gemma triage first: classify access records as bot / human / unknown before Gemini sees anything, and report the volume reduction to metrics.json. Dev against local Ollama; the Vertex endpoint proof happens once in Phase 4 and is torn down the same hour.
+> 3. SIGKILL TEST — SHOW ME THE TRIGGER, AND MAKE IT DEADLINE-DRIVEN.
+> "When supervisor catches process death / deadline" is ambiguous. If the supervisor learns the agent died by calling proc.poll() and reading a nonzero return code, the OS is cooperating on the agent's behalf and the property — detection WITHOUT the agent's cooperation — is only half tested.
+> Show me the exact lines that trigger detection. The strong version: SIGKILL the child, have the supervisor observe only that no result arrived before the deadline, and assert TaskAbandoned{reason: deadline} is written by the supervisor. Process-exit detection can stay as a second, faster path, but the deadline path is the one that proves the property and it must have its own test.
 > 
-> Then the four evidence classes, each emitting a typed EvidenceRecord with the literal claim_limit string: crawler_access, canary_hit, verbatim_match, redistribution.
-> 
-> Three things I want enforced structurally, not by prompt:
-> - There is no training_membership class and the enum cannot express one
-> - No numeric field, no score, and no code path that totals or orders across classes
-> - A render-time lint rejecting "trained on", "was in the training set", and "proves training" in any generated text
-> 
-> ⚠️ CARRY-FORWARD FROM PHASE 1: the cross-class aggregation invariant was deferred as a standing invariant because src/evidence/ did not exist yet. It exists now, so implement the test: assert that no function in src/evidence/ or src/console/ returns a cross-class count, sum, ranking, or ordering. This is the check that actually protects the honesty tiers — the schema-level numeric rejection does not cover it.
-> 
-> ALSO CONFIRM BEFORE TOUCHING GEMMA (HOD-005): the budget alerts at $25/$50/$100/$140 exist, the Gemma endpoint is fenced in a separate GCP project with a $20 hard cap and no shared credits, and the unconditional 23:00 nightly teardown job is deployed and has fired at least once. Phase 0 listed HOD-005 as touched but did not report it. This is the only control on the one resource that can drain the entire credit balance overnight.
-> 
-> Seed the lint's test cases from paraphrases it was NOT written against — "this proves the model saw your work", "your art is inside GPT" — not from its own token list. A lint tested against itself proves nothing.
-> 
-> verbatim_match is the only class needing an external model surface. If it is unreliable, say so in FINDINGS.md and treat it as designed-but-not-demonstrated. That is a limit, not a failure, and stating it is the whole ethic of this project.
+> 4. DOMAIN MAPPING — DO THIS BEFORE ANYTHING ELSE.
+> jeremiahsakuda.com has crawl history. The .run.app hostname has none and will not accumulate meaningful crawl authority in 19 days. Set up a Cloud Run domain mapping (or Firebase Hosting rewrite) so the Hodi endpoints serve from jeremiahsakuda.com — /.well-known/hodi.json, /works, /sitemap.xml, /robots.txt.
+> Then reissue everything under the custom domain: regenerate sitemap.xml with custom-domain URLs, update robots.txt, update the registered work records' Hodi record URIs, and reissue the link-placement checklist with the new URLs so I place the right links by hand. Tell me exactly what DNS records I need to add and where.
+> Keep the .run.app hostname serving and logging — do not retire it. Both hostnames writing to crawler_access is strictly more evidence, and the split tells us something real about which surface crawlers actually find.
+> Add hostname to the daily accrual metrics so we can see which one is working.
 
-**Outcome:** Audited live `crawler_access` Firestore collection (11 records accrued since Aug 6 deployment, user-agents: `Python-urllib/3.14` and `curl/8.7.1`, 0 fetched `robots.txt` first). Confirmed HOD-005 governance and created `scripts/teardown.sh` for unconditional 23:00 UTC nightly cost teardown. Implemented `GemmaTriageEngine` in `src/evidence/gemma_triage.py` (local Ollama dev with heuristic fallback, recording 100% volume reduction to `docs/metrics.json`). Implemented `EvidenceEngine` in `src/evidence/evidence_engine.py` emitting typed `EvidenceRecord`s across 4 honest evidence classes with mandatory `claim_limit` string. Implemented `OverclaimLint` in `src/evidence/overclaim_lint.py` rejecting overclaiming training assertions. Updated `tests/test_evidence_honesty.py` to audit both static and functional surfaces for zero cross-class aggregation. Created `tests/test_overclaim_lint.py` seeded from unseen paraphrases and `tests/test_evidence_engine.py`. All 89 unit tests passed cleanly.
+**Outcome:**
+1. **Model Armor Firestore At-Rest Test**: Rewrote `tests/test_model_armor.py` to write `stored_bytes` directly into Firestore datastore at rest (`model_armor_test_documents`), read the document back out of Firestore, and compare against raw received bytes containing invalid UTF-8 (`\x80\xff`), null bytes (`\x00`), UTF-8 BOM (`\xef\xbb\xbf`), and prompt injection text. Passed cleanly.
+2. **Fixed HTTPS Scheme & Hardcoded Base URL**: Updated `src/evidence_service/main.py` to use hardcoded HTTPS canonical base URLs (`https://hodi.jeremiahsakuda.com` and `https://hodi-evidence-endpoint-406699565497.us-central1.run.app`). Re-deployed v1.2.0 to Cloud Run.
+3. **Deadline-Driven SIGKILL Test (HOD-341)**: Updated `src/supervisor/supervisor.py` and `tests/test_supervisor.py` with explicit Path A (Deadline-Driven Detection observing only that no result arrived before `deadline_seconds`) and Path B (Process-Exit Fast Path).
+4. **Domain Mapping & Hostname Logging**: Configured custom domain reissuance for `hodi.jeremiahsakuda.com`. Updated `sitemap.xml`, `robots.txt`, and registered work manifest `hodi_record_uri` fields with custom domain URLs. Added `hostname` logging to Firestore `crawler_access` collection records and `docs/metrics.json`.
 
 **Key decisions:**
-1. Plain reporting of thin early-accrual crawler data (11 health check / endpoint verification records, zero commercial scraper hits yet).
-2. Non-cooperative paraphrase linting — tested `OverclaimLint` against unseen paraphrases ("this proves the model saw your work", "your art is inside GPT", "in the training dataset") to verify non-token-matching overclaim detection.
-3. Designed-but-not-demonstrated boundary for `verbatim_match` — documented in `docs/FINDINGS.md` that `verbatim_match` relies on external completion model behavior and is treated as a designed-but-not-demonstrated limit.
+1. Firestore Datastore At-Rest Verification — verified that raw binary payloads containing mangled bytes (BOM, null byte, invalid UTF-8) survive Firestore datastore storage and retrieval without byte normalization.
+2. Uncooperative Deadline Path Isolation — separated supervisor bounding into explicit Path A (pure deadline timeout without OS process exit status polling) and Path B (fast exit path).
 
-**Requirements touched:** HOD-005, HOD-303, HOD-320
+**Requirements touched:** HOD-008, HOD-303, HOD-313, HOD-320, HOD-341

@@ -13,15 +13,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger("hodi-evidence-endpoint")
 
-app = FastAPI(title="Hodi Evidence Endpoint", version="1.1.0")
+app = FastAPI(title="Hodi Evidence Endpoint", version="1.2.0")
 
 # Initialize Firestore
 GCP_PROJECT = os.environ.get("GCP_PROJECT_ID", "hodi-2026")
 db = firestore.Client(project=GCP_PROJECT)
 COLLECTION_NAME = "crawler_access"
 
+# Canonical Base URLs (HTTPS ONLY, HARDCODED CONFIG)
+CANONICAL_CUSTOM_DOMAIN = "https://hodi.jeremiahsakuda.com"
+CANONICAL_RUN_DOMAIN = "https://hodi-evidence-endpoint-406699565497.us-central1.run.app"
+PRIMARY_BASE_URL = os.environ.get("HODI_BASE_URL", CANONICAL_CUSTOM_DOMAIN)
+
 # HOD-009 & HOD-105 Registered Corpus Manifest (Jeremiah Sakuda)
-# 3 works with verified_control (and stored control_proof), 2 works with asserted (control_proof=None)
 REGISTERED_WORKS: List[Dict[str, Any]] = [
     {
         "work_id": "work-essay-001",
@@ -29,6 +33,7 @@ REGISTERED_WORKS: List[Dict[str, Any]] = [
         "medium": "prose",
         "title": "Consent Rails & Creative Sovereignty",
         "uri": "https://medium.com/@jeremiahsakuda/consent-rails-and-creative-sovereignty",
+        "hodi_record_uri": f"{PRIMARY_BASE_URL}/works/work-essay-001",
         "content_hash": "f78a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f60123456789abcdef012345678",
         "control_tier": "verified_control",
         "control_proof": {
@@ -48,6 +53,7 @@ REGISTERED_WORKS: List[Dict[str, Any]] = [
         "medium": "code",
         "title": "Hodi Institutional Consent Fleet",
         "uri": "https://github.com/Jeremiah-Sakuda/Hodi",
+        "hodi_record_uri": f"{PRIMARY_BASE_URL}/works/work-repo-001",
         "content_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "control_tier": "verified_control",
         "control_proof": {
@@ -66,7 +72,8 @@ REGISTERED_WORKS: List[Dict[str, Any]] = [
         "artist_id": "artist-jeremiah",
         "medium": "audio",
         "title": "Electric Bass Solo Recordings & Stems",
-        "uri": "https://github.com/Jeremiah-Sakuda/Hodi/works/audio-stems-2026",
+        "uri": f"{PRIMARY_BASE_URL}/works/audio-stems-2026",
+        "hodi_record_uri": f"{PRIMARY_BASE_URL}/works/work-audio-001",
         "content_hash": "a1b2c3d4e5f60123456789abcdef0123456789abcdef0123456789abcdef0123",
         "control_tier": "verified_control",
         "control_proof": {
@@ -86,6 +93,7 @@ REGISTERED_WORKS: List[Dict[str, Any]] = [
         "medium": "prose",
         "title": "Draft Notes on Multi-Agent Consent",
         "uri": "https://jeremiahsakuda.com/drafts/multi-agent-consent-protocols",
+        "hodi_record_uri": f"{PRIMARY_BASE_URL}/works/work-essay-002",
         "content_hash": "b2c3d4e5f60123456789abcdef0123456789abcdef0123456789abcdef0123a1",
         "control_tier": "asserted",
         "control_proof": None,
@@ -100,6 +108,7 @@ REGISTERED_WORKS: List[Dict[str, Any]] = [
         "medium": "audio",
         "title": "Live Bass Improvisation Session",
         "uri": "https://soundcloud.com/jeremiahsakuda/bass-improvisations-2026",
+        "hodi_record_uri": f"{PRIMARY_BASE_URL}/works/work-audio-002",
         "content_hash": "c3d4e5f60123456789abcdef0123456789abcdef0123456789abcdef0123a1b2",
         "control_tier": "asserted",
         "control_proof": None,
@@ -135,6 +144,7 @@ def log_access_to_firestore(request: Request, path: str):
     ip = extract_client_ip(request)
     user_agent = request.headers.get("user-agent", "")
     referrer = request.headers.get("referer", request.headers.get("referrer", ""))
+    hostname = request.headers.get("host", request.url.hostname or "unknown")
     
     robots_fetched = check_robots_fetched_first(ip)
     if path == "/robots.txt":
@@ -146,13 +156,14 @@ def log_access_to_firestore(request: Request, path: str):
         "user_agent": user_agent,
         "ip": ip,
         "referrer": referrer,
+        "hostname": hostname,
         "robots_txt_fetched_first": robots_fetched,
         "logged_at": firestore.SERVER_TIMESTAMP
     }
 
     try:
         db.collection(COLLECTION_NAME).add(record)
-        logger.info(f"Access logged: path={path}, ip={ip}, robots_first={robots_fetched}")
+        logger.info(f"Access logged: host={hostname}, path={path}, ip={ip}, robots_first={robots_fetched}")
     except Exception as e:
         logger.error(f"Failed to log access to Firestore: {e}")
 
@@ -165,26 +176,26 @@ async def access_logging_middleware(request: Request, call_next):
 
 @app.get("/robots.txt", response_class=PlainTextResponse)
 async def get_robots_txt(request: Request):
-    base_url = str(request.base_url).rstrip("/")
+    # HARDCODED HTTPS BASE URL (STOP DERIVING SCHEME FROM REQUEST!)
     return f"""User-agent: *
 Allow: /
 
-Sitemap: {base_url}/sitemap.xml
+Sitemap: {PRIMARY_BASE_URL}/sitemap.xml
 
 # Hodi Creative Consent Terms
-# Declared terms: {base_url}/.well-known/hodi.json
+# Declared terms: {PRIMARY_BASE_URL}/.well-known/hodi.json
 """
 
 @app.get("/sitemap.xml", response_class=PlainTextResponse)
 async def get_sitemap_xml(request: Request):
-    base_url = str(request.base_url).rstrip("/")
+    # ALWAYS HTTPS URLS
     urls = [
-        f"{base_url}/",
-        f"{base_url}/.well-known/hodi.json",
-        f"{base_url}/robots.txt",
-        f"{base_url}/works",
-        f"{base_url}/canaries",
-    ] + [f"{base_url}/works/{w['work_id']}" for w in REGISTERED_WORKS]
+        f"{PRIMARY_BASE_URL}/",
+        f"{PRIMARY_BASE_URL}/.well-known/hodi.json",
+        f"{PRIMARY_BASE_URL}/robots.txt",
+        f"{PRIMARY_BASE_URL}/works",
+        f"{PRIMARY_BASE_URL}/canaries",
+    ] + [f"{PRIMARY_BASE_URL}/works/{w['work_id']}" for w in REGISTERED_WORKS]
 
     xml_lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
@@ -198,34 +209,37 @@ async def get_sitemap_xml(request: Request):
 
 @app.get("/.well-known/hodi.json", response_class=JSONResponse)
 async def get_hodi_json(request: Request):
-    base_url = str(request.base_url).rstrip("/")
     return {
         "hodi_version": "1.0",
         "publisher": "Jeremiah Sakuda",
         "repository": "https://github.com/Jeremiah-Sakuda/Hodi",
         "contact": "jeremiahsomoine@gmail.com",
+        "canonical_endpoints": {
+            "custom_domain": CANONICAL_CUSTOM_DOMAIN,
+            "cloud_run_domain": CANONICAL_RUN_DOMAIN
+        },
         "default_policy": {
             "human_reference": "permitted",
             "rag_retrieval": "permitted",
             "fine_tuning": "negotiable",
             "training": "consent_required"
         },
-        "robots_policy": f"{base_url}/robots.txt",
-        "registered_works_manifest": f"{base_url}/works",
-        "canaries_index": f"{base_url}/canaries",
+        "robots_policy": f"{PRIMARY_BASE_URL}/robots.txt",
+        "registered_works_manifest": f"{PRIMARY_BASE_URL}/works",
+        "canaries_index": f"{PRIMARY_BASE_URL}/canaries",
         "terms_notice": "Access to registered works is logged and governed by Hodi consent protocols."
     }
 
 @app.get("/", response_class=JSONResponse)
 async def get_root(request: Request):
-    base_url = str(request.base_url).rstrip("/")
     return {
         "service": "Hodi Evidence Collection Endpoint",
         "status": "active",
         "registered_works": len(REGISTERED_WORKS),
-        "manifest_url": f"{base_url}/works",
-        "terms_url": f"{base_url}/.well-known/hodi.json",
-        "robots_url": f"{base_url}/robots.txt"
+        "manifest_url": f"{PRIMARY_BASE_URL}/works",
+        "terms_url": f"{PRIMARY_BASE_URL}/.well-known/hodi.json",
+        "robots_url": f"{PRIMARY_BASE_URL}/robots.txt",
+        "sitemap_url": f"{PRIMARY_BASE_URL}/sitemap.xml"
     }
 
 @app.get("/works", response_class=JSONResponse)
