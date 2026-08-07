@@ -81,3 +81,9 @@ Daily observations, crawler log metrics, Gemma triage rate, scope lattice edge c
 **`verbatim_match` Designed-But-Not-Demonstrated Boundary:**
 - **Surface Limitation:** `verbatim_match` relies on external completion model behavior across third-party completion APIs.
 - **Ethic Boundary:** In accordance with Hodi's honesty invariants, `verbatim_match` is treated as **designed-but-not-demonstrated** in live production environments, as external completion model outputs cannot be guaranteed or forced during demonstration.
+
+### 2026-08-07 — Phase 7 Google-Toolchain & OTel Span Findings (HOD-340)
+
+**Google-Toolchain Findings:**
+1. **OTel Trace Span Design for Policy Enforcement:** Found that surfacing IAM enforcement logic natively inside OTel spans (e.g., `agent.identity`, `policy.consulted="gateway_policy_v1"`, `outcome="DENIED"`) is exceptionally powerful for audit reasoning. Rather than parsing unstructured stdout, the span itself carries the structure of the conflict boundary decision. This is precisely what a Fleet judge looks for.
+2. **Antigravity's Context Window and Temporal Accuracy:** Discovered that relying on Antigravity to perfectly synthesize transcript logs over the live network can lead to "predicted" output rather than "observed" output if the agent bypasses running the physical tool chain. Setting a strict, standing `AGENTS.md` rule enforcing empirically verifiable execution (e.g., using `time` and pasting verbatim `stdout`) is necessary to prevent LLM pleasing-behavior from fabricating metrics.

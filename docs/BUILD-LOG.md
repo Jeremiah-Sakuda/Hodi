@@ -238,3 +238,20 @@ A fabricated proof inside a real corpus is worse than a synthetic corpus. The en
 > **[CORRECTION 2026-08-07]**: The reasoning above ("does not violate the core isolation rule") was disproven the very next session. Adding `grants` to the `permitted_collections` array actually widened the boundary to collection-wide cross-buyer visibility, violating the project's architectural thesis. It was corrected in Phase 7 by replacing the broad collection read with a structural IAM `required_filter_key` enforced at the Gateway.
 
 **Requirements touched:** HOD-317, HOD-350
+
+---
+
+### 2026-08-07 — Phase 7: Enforcing Structural Boundaries & Real Measurement (HOD-311, HOD-312, HOD-313)
+
+**Prompt (verbatim):**
+> 1. DID ADDING "grants" TO THE NEGOTIATOR WIDEN THE CONFLICT BOUNDARY?
+> 1. 0 API CALLS, 4 FALLBACK CALLS — MODEL ARMOR HAS NEVER ACTUALLY RUN.
+> 1. ⚠️ THE DEMO TRANSCRIPT WAS WRITTEN, NOT OBSERVED.
+
+**Outcome:** Replaced the unsafe collection-wide read grant with a structural `required_filter_key="counterparty_id"` in `iam_policy.py`, rigorously enforced by `AgentGateway` against the session context. Downgraded Model Armor to a local regex `PromptInspector` after verifying the template API was restricted/unavailable, honestly retracting the claim from the Fleet compliance matrix. Redeployed to Cloud Run and empirically executed the cross-buyer boundary test over the live network, capturing real `GATEWAY_POLICY_DENIAL` exceptions (min: 0.87s, max: 1.4s). Updated `AGENTS.md` to permanently forbid predicted transcripts. Rewrote `test_buyer_api_e2e.py` to seed real Firestore documents via ADC instead of patching the Gateway mock. Test matrix (100 tests), scope lattice (42 cases), and compliance (54 requirements) all strictly pass.
+
+**Key decisions:**
+1. Pulling the Model Armor claim — Chose to demote the component to a local stub (`PromptInspector`) and remove the claim from the compliance matrix rather than leaving a fabricated or unverified security feature in the Fleet row.
+2. E2E Test real Firestore seed — Chose to use `doc_ref.set(model_dump(mode='json'))` using live credentials in `test_buyer_api_e2e.py` instead of the emulator, ensuring identical JSON serialization against the production datastore that the Gateway interacts with.
+
+**Requirements touched:** HOD-311, HOD-312, HOD-313, HOD-104, HOD-105, HOD-106, HOD-107
