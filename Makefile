@@ -4,7 +4,7 @@ demo:
 	HODI_OFFLINE=1 python3 scripts/demo.py
 
 test:
-	HODI_OFFLINE=1 python3 -m unittest discover -s tests -t .
+	HODI_OFFLINE=1 python3 -m unittest discover -s tests
 
 demo-live:
 	time python3 scripts/test_live_cross_counterparty.py
