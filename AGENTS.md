@@ -37,6 +37,7 @@ Everything else in this system is ordinary engineering. These three are why it i
 - **`resolve(grant_id, at=t)` is the single read path** for grant state. Current state and historical state are the same fold with a different timestamp. Never add a second read path or a convenience cache the UI reads instead.
 - **No aggregate across evidence classes.** No numeric field on `EvidenceRecord`, no scoring, no ordering, no total. Honest tiers collapse into a dishonest number the moment someone sums them.
 - **Gateway denials are logged as events.** Never a silent refusal — a denial nobody can see is indistinguishable from a bug.
+- **Truthful Build Log & Verification Rule.** An outcome in `docs/BUILD-LOG.md` may ONLY report what was empirically verified. Any infrastructure or command step whose success was not confirmed (or where errors were masked) MUST be logged strictly as `attempted-and-unverified`. Never use `|| true` on infrastructure commands whose failure changes application behavior.
 
 ---
 
