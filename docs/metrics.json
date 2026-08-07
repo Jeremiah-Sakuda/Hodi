@@ -1,5 +1,20 @@
 {
-  "timestamp": "2026-08-06T20:06:45Z",
+  "timestamp": "2026-08-07T01:23:30Z",
+  "phase_5_evidence_metrics": {
+    "firestore_crawler_access_total_records": 11,
+    "distinct_user_agents_count": 2,
+    "distinct_user_agents": ["Python-urllib/3.14", "curl/8.7.1"],
+    "robots_txt_fetched_first_count": 0,
+    "time_span_start_utc": "2026-08-06T17:32:36.440229+00:00",
+    "time_span_end_utc": "2026-08-06T20:06:47.371525+00:00",
+    "gemma_triage_summary": {
+      "total_records_processed": 11,
+      "bot_classified_records": 11,
+      "human_classified_records": 0,
+      "unknown_classified_records": 0,
+      "volume_reduction_rate_pct": 100.0
+    }
+  },
   "phase_2_latency_benchmarks": {
     "target": "Deployed Cloud Run / Vertex AI Agent Path",
     "samples_ms": [1569.23, 2354.28, 2939.41],

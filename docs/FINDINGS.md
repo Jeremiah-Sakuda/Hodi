@@ -18,7 +18,7 @@ Daily observations, crawler log metrics, Gemma triage rate, scope lattice edge c
 **Explicit Limitation & Boundaries:**
 - **Temporal Bound:** Canary strings only protect items published *after* the planting date (`2026-08-06T12:40:00Z`).
 - **No Retroactive Coverage:** Canaries cannot detect scrapes or training ingest that occurred prior to planting. Hodi structurally enforces this boundary and makes no claim of retroactive detection for pre-existing corpus access.
-- **Proof-of-Control Enforcement (HOD-105):** All 3 works at `verified_control` carry stored `control_proof` records (`well_known_file`, `signed_commit`, `platform_oauth`). Two works (`work-essay-002`, `work-audio-002`) are deliberately registered at `asserted` with `control_proof = None` to ensure all 3 control tiers are available for console and API rendering from real corpus data.
+- **Proof-of-Control Enforcement (HOD-105):** All 3 works at `verified_control` carry stored `control_proof` records (`well_known_file`, `signed_commit`, `platform_oauth`). Two works (`work-audio-002`, `work-essay-002`) are deliberately registered at `asserted` with `control_proof = None` to ensure all 3 control tiers are available for console and API rendering from real corpus data.
 
 ---
 
@@ -56,3 +56,18 @@ Daily observations, crawler log metrics, Gemma triage rate, scope lattice edge c
 - **No Headless Server Import (`google.antigravity`):** Antigravity is an IDE/pair-programming agentic assistant, not a deployable server-side Python SDK module for headless multi-agent execution in Cloud Run Jobs or Vertex AI containers.
 - **No Native Per-Agent GCP Service Account Switching:** Antigravity does not support spawning sub-agents in headless server runtime where each sub-agent executes under a distinct GCP Service Account identity (`agent-delegator@...` vs `agent-worker@...`).
 - **Architectural Consequence:** Runtime multi-agent execution branches to **ADK (Google Agent Development Kit / OpenTelemetry SDK)**, while Antigravity remains the primary architecture, code generation, and pair-programming assistant.
+
+---
+
+### 2026-08-07 — Phase 5 Live Firestore Access Log Audit & Verbatim Match Surface Limits (HOD-303, HOD-320)
+
+**Live `crawler_access` Collection Audit (HOD-320):**
+- **Total Accrued Records:** `11` (accrued since deployment on Aug 6, 2026).
+- **Observed User-Agents:** `Python-urllib/3.14` and `curl/8.7.1` (automated deployment health checks & verification requests).
+- **Robots.txt Pre-fetch:** `0 / 11` (0% fetched `robots.txt` prior to accessing registered work endpoints).
+- **Time Spread:** `2026-08-06T17:32:36Z` to `2026-08-06T20:06:47Z`.
+- **Honesty Assessment:** Zero commercial AI scraper user-agents (`GPTBot`, `CCBot`, `Bytespider`) have accessed the live Cloud Run endpoint yet. Hodi operates directly on this real, un-inflated dataset without artificial fixture padding.
+
+**`verbatim_match` Designed-But-Not-Demonstrated Boundary:**
+- **Surface Limitation:** `verbatim_match` relies on external completion model behavior across third-party completion APIs.
+- **Ethic Boundary:** In accordance with Hodi's honesty invariants, `verbatim_match` is treated as **designed-but-not-demonstrated** in live production environments, as external completion model outputs cannot be guaranteed or forced during demonstration.
