@@ -44,7 +44,26 @@ class GemmaTriageEngine:
             if re.search(pattern, ua_lower):
                 return "self_deploy_check"
 
-        # 2. Try local Ollama Gemma inference (Non-load-bearing!)
+        # 2. Try serverless Gemma on Vertex AI (gemma-4-26b-a4b-it-maas, pinned;
+        #    probed reachable 2026-08-07 — see docs/FINDINGS.md). Non-load-bearing:
+        #    any failure falls through to Ollama, then to the heuristic.
+        try:
+            from src.llm.vertex_gemini import VertexGeminiClient, PINNED_GEMMA_TRIAGE_MODEL
+            response_text = VertexGeminiClient().generate(
+                f"Classify this web access user-agent string as 'bot', 'human', or 'unknown'. "
+                f"User-Agent: '{user_agent}'. Output single word classification only.",
+                model_id=PINNED_GEMMA_TRIAGE_MODEL
+            ).strip().lower()
+            if "bot" in response_text:
+                return "bot"
+            elif "human" in response_text:
+                return "human"
+            elif "unknown" in response_text:
+                return "unknown"
+        except Exception:
+            pass  # Gemma MaaS offline/unavailable — NON-LOAD-BEARING
+
+        # 3. Try local Ollama Gemma inference (Non-load-bearing!)
         try:
             url = f"{self.ollama_host}/api/generate"
             payload = {

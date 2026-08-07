@@ -353,6 +353,47 @@ async def get_canaries(request: Request):
         "canaries": canaries
     }
 
+@app.get("/internal/accrual_audit", response_class=JSONResponse)
+async def run_accrual_audit(request: Request):
+    """
+    Daily accrual audit (HOD-320), invoked by Cloud Scheduler job
+    `hodi-daily-accrual-audit`. Counts crawler_access records, classifies them
+    with the Gemma triage engine (self / bot / human / unknown), and persists
+    an audit document to `accrual_audits` so audit history accumulates
+    alongside Scheduler execution history. Read-only over crawler_access;
+    idempotent; every number is computed from Firestore at call time.
+    """
+    from src.evidence.gemma_triage import GemmaTriageEngine
+    try:
+        docs = [d.to_dict() for d in db.collection(COLLECTION_NAME).stream()]
+    except Exception as e:
+        logger.error(f"Accrual audit failed to read crawler_access: {e}")
+        return JSONResponse(status_code=503, content={"status": "unavailable", "error": str(e)})
+
+    engine = GemmaTriageEngine()
+    distribution = {"self_deploy_check": 0, "bot": 0, "human": 0, "unknown": 0}
+    hostnames = {}
+    for rec in docs:
+        cls = engine.triage_record(rec)
+        distribution[cls] += 1
+        host = rec.get("hostname", "unknown")
+        hostnames[host] = hostnames.get(host, 0) + 1
+
+    audit = {
+        "audit_timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "total_accrued_records": len(docs),
+        "routing_distribution": distribution,
+        "third_party_attributable": distribution["bot"] + distribution["human"] + distribution["unknown"],
+        "hostname_breakdown": hostnames,
+        "triggered_by": request.headers.get("user-agent", "unknown"),
+    }
+    try:
+        db.collection("accrual_audits").add(audit)
+    except Exception as e:
+        logger.error(f"Accrual audit failed to persist: {e}")
+        return JSONResponse(status_code=503, content={"status": "unavailable", "error": str(e)})
+    return {"status": "ok", **audit}
+
 @app.get("/evidence-counts", response_class=JSONResponse)
 async def get_evidence_counts(request: Request):
     """

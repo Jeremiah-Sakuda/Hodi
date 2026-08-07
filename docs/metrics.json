@@ -77,5 +77,19 @@
       292.4062079982832
     ],
     "warm_avg_ms": 286.7337776697241
+  },
+  "natural_language_license_path": {
+    "measurement_surface": "deployed-over-network",
+    "endpoint": "/api/v1/license/natural",
+    "interpreter_model": "gemini-3.5-flash",
+    "vertex_location": "global",
+    "measured_at_utc": "2026-08-07T18:43:00Z",
+    "warm_runs_ms": [
+      3095.11,
+      3127.29,
+      3302.42
+    ],
+    "warm_avg_ms": 3174.94,
+    "note": "each request includes one server-side Vertex AI generateContent call (scope interpretation)"
   }
 }

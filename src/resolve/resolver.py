@@ -64,3 +64,23 @@ def resolve(
             state.status = "expired"
 
     return state
+
+
+def active_grant_events(events: List[GrantEvent], at: Optional[datetime] = None) -> List[GrantEvent]:
+    """
+    Folds an append-only event list and returns, for each grant that is ACTIVE
+    at `at`, the event that defines its current scope.
+
+    permits() takes ACTIVE grants, not raw events. In an append-only log a
+    revoked grant's original `granted` event is still present — passing raw
+    events to permits() would let a revoked grant keep permitting requests.
+    Every caller that reads events from the log MUST fold through here first;
+    resolve() remains the single read path and this is a thin projection of it.
+    """
+    result: List[GrantEvent] = []
+    for gid in sorted({e.grant_id for e in events}):
+        state = resolve(gid, at=at, events=[e for e in events if e.grant_id == gid])
+        if state.status == "active" and state.active_scope is not None:
+            defining = [e for e in state.history_events if e.kind in ("granted", "superseded")][-1]
+            result.append(defining)
+    return result

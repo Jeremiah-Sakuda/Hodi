@@ -110,3 +110,25 @@ Daily observations, crawler log metrics, Gemma triage rate, scope lattice edge c
 - **Observed (2026-08-07, Vertex AI `generateContent` REST, project `hodi-2026`):** `gemini-2.5-flash` in `us-central1` returned HTTP 200 (`"modelVersion": "gemini-2.5-flash"`). `gemini-3.5-pro` and `gemini-3.5-flash` returned HTTP 404 (`Publisher model ... was not found or your project does not have access to it`) in both `us-central1` and `global`.
 - **Repo state:** the only Gemini artifact in the codebase is a mocked client in `tests/test_vertex_gemma.py` pinning `gemini-1.5-pro` / `gemini-1.5-flash` literals; no runtime code path calls Vertex AI.
 - **Implication:** the compliance matrix row "Gemini 3.5+ via Vertex AI" is not currently backed by a reachable model or a runtime integration. This is recorded as an open item, not resolved silently.
+
+---
+
+### 2026-08-07 (session 2) — Gemini Runtime Integration, Model Availability Probe (Corrected), Fold-Before-Containment Defect, Scheduler First Executions (HOD-301, HOD-303, HOD-005, HOD-106, HOD-107)
+
+**Gemini Model Availability — CORRECTED probe (supersedes the earlier same-day entry):**
+The earlier probe's `global` results were invalid — it used a nonexistent host (`global-aiplatform.googleapis.com`) instead of `aiplatform.googleapis.com` with location `global`. Corrected results (Vertex `generateContent`, project `hodi-2026`, 2026-08-07):
+- **HTTP 200:** `gemini-3.5-flash` @ global (`modelVersion=gemini-3.5-flash`); `gemini-3.5-flash-lite` @ global; `gemini-3.6-flash` @ global; `gemini-3.1-pro-preview` @ global; `gemini-3-flash-preview` @ global; `gemini-2.5-pro` and `gemini-2.5-flash` @ us-central1, us-east4, and global.
+- **HTTP 404 everywhere probed:** `gemini-3.5-pro` (also absent from the 126-model publisher catalog listing); `gemini-3-pro-preview` (listed in the catalog but 404 on generateContent).
+- **Model selection:** `gemini-3.5-flash` (interpreter) and `gemini-3.5-flash-lite` (triage tier) — the newest stable non-preview 3.5-generation IDs reachable. Preview IDs excluded because they roll and judging runs to Oct 1. The hackathon's Gemini 3.5+ mandate is satisfied by running code, not a plan.
+
+**Serverless Gemma (HOD-303, HOD-005):** `gemma-4-26b-a4b-it-maas` @ global returns HTTP 200 (observed classifying `GPTBot/1.2` → `bot`). Serverless per-token Gemma makes the fenced GPU project design unnecessary — the triage tier now calls Vertex Gemma with Ollama and heuristic fallbacks, and classified a live record (`human`) inside the deployed accrual audit.
+
+**Fold-Before-Containment Defect (HOD-106/HOD-107, live path):** `permits()` takes ACTIVE grants, but the API handed it raw grant events. In an append-only log a revoked grant's original `granted` event is still present, so **a revoked grant would still have permitted requests on the live path**. Surfaced by the demo's natural-language beat asserting the poisoned request must be denied. Fixed with `active_grant_events()` in `src/resolve/resolver.py` (a projection of `resolve()`, preserving it as the single read path); every log reader now folds before containment; truth-table cases 46–47 cover it, including the precondition test proving raw events would wrongly permit.
+
+**Structural property of the interpreter (HOD-301/HOD-311):** the model interprets intent, the lattice decides permission. Tests assert: an interpretation smuggling `{"permitted": true}` is REJECTED (not stripped); a maximal valid interpretation is still denied by the lattice; the recorded poisoned-fixture interpretation came back BROADER (worldwide) and was therefore denied — the injection cannot expand permission.
+
+**Cloud Scheduler first executions (observed):**
+- `hodi-daily-accrual-audit` (0 9 * * * UTC): lastAttemptTime `2026-08-07T18:42:13Z`, wrote `accrual_audits` doc `2026-08-07T18:42:14Z` with `triggered_by: Google-Cloud-Scheduler`, total_accrued_records 178.
+- `hodi-nightly-teardown-trigger` (0 23 * * * UTC): lastAttemptTime `2026-08-07T18:42:12Z`, spawned Cloud Run Job execution `hodi-nightly-teardown-n8rhx`; the manual first execution `d9grm` logged `[VERIFIED NO-OP] Project hodi-gemma-2026 does not exist` and exited 0.
+
+**Deployed natural-language path latency** (`deployed-over-network`, includes one server-side Gemini call per request): 3095.11 / 3127.29 / 3302.42 ms, avg 3174.94 ms — recorded in `docs/metrics.json`. Live outcomes observed: in-grant request permitted with receipt; broad commercial-training request interpreted as `training/proprietary_frontier/WW` and denied by the lattice.

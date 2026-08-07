@@ -60,7 +60,7 @@ Runs the three-call boundary test against the **deployed** Cloud Run service: a 
 make verify-scopes
 ```
 
-Prints the lattice table from its declaration as data and runs the 45-case containment truth table across all five gating dimensions simultaneously (use-type, model class, commercial status, territory, temporal validity), including empty-territory semantics and union-across-grants cases.
+Prints the lattice table from its declaration as data and runs the 47-case containment truth table across all five gating dimensions simultaneously (use-type, model class, commercial status, territory, temporal validity), including empty-territory semantics, union-across-grants cases, and the fold-before-containment cases (a revoked grant's original event in the append-only log must never permit a request).
 
 ```bash
 make verify-manifest
@@ -84,6 +84,7 @@ Extracts every requirement ID from the PRD and diffs §4 against the §2 complia
 | Machine-readable consent terms at a well-known URI | `curl https://hodi-evidence-endpoint-406699565497.us-central1.run.app/.well-known/hodi.json` |
 | The four conflict walls denying forbidden reads, with structured denial events | `make demo` (Beat 5, in-process) and `make demo-live` (deployed path) |
 | Live buyer scope request; Prompt Inspector catches the poisoned document; request proceeds under original scope | `make demo` (Beat 4, fixture path) — live path: `POST /api/v1/license` with [fixtures/buyer_request_poisoned.json](fixtures/buyer_request_poisoned.json) |
+| Natural-language request → Gemini structures a typed Scope → the lattice decides | `make demo` (Beat 4B, replaying the recorded model response) — live path: `POST /api/v1/license/natural` |
 | Revocation narrows the present, never the past; all events remain visible | `make demo` (Beat 3) — live cascade: `POST /api/v1/revoke` |
 | OTel span per agent decision, carrying agent identity, policy consulted, outcome | `python3 src/harness/main.py` (prints span payloads; exits 1 by design, recording the HOD-020 result) |
 | The honesty beat: what Hodi will not say | `make demo` (Beat 6) and Diagram B in [docs/architecture/](docs/architecture/) |
@@ -117,10 +118,11 @@ Build history and daily findings are first-class artifacts here, including the c
 **[docs/FINDINGS.md](docs/FINDINGS.md)** — daily observations: crawler-log audits, scope-lattice edge cases, and the Google-toolchain findings, including the Antigravity headless/OTel result below.
 
 - **ADK (Google Agent Development Kit) + OpenTelemetry** — the runtime agent framework: four role-separated agent classes under four distinct service accounts, every agent decision exporting a span carrying `agent.identity`, `policy.consulted`, and `outcome`. Chosen by the pre-committed branch documented in [docs/antigravity/decision.md](docs/antigravity/decision.md).
-- **Gemini via Vertex AI** — the fleet's model tier (HOD-301: pinned model ID literals, temperature 0, shared response cache). Honest status, per [docs/FINDINGS.md](docs/FINDINGS.md): as of the Aug 7, 2026 probe, this project reaches Gemini 2.5-generation models on Vertex (observed HTTP 200 from `gemini-2.5-flash`); Gemini 3.5-generation model IDs returned 404 in both `us-central1` and `global`. Model IDs are pinned as exact literals, never rolling aliases.
-- **Gemma (local, via Ollama)** — first-pass triage of crawler access records (bot / human / unknown) before anything reaches Gemini. Deliberately non-load-bearing: if Gemma inference is offline, a heuristic fallback classifies, and evidence records are still produced.
+- **Gemini 3.5 Flash via Vertex AI** (`gemini-3.5-flash`, `global` endpoint, temperature 0) — natural-language scope interpretation in the buyer API (`POST /api/v1/license/natural`): **the model interprets intent, the lattice decides permission.** Gemini's only power is to produce a schema-validated `Scope`; a malformed, out-of-vocabulary, or extra-field interpretation is rejected (HTTP 422), never coerced, and `permits()` remains the sole authority — a test asserts the model's output cannot influence the permission decision except by producing a valid Scope. Gemini also drafts revocation notices, gated by the deterministic `RevocationLint` with a linted template fallback. Why this exact model: availability was probed empirically on Aug 7, 2026 ([docs/FINDINGS.md](docs/FINDINGS.md)) — `gemini-3.5-flash` is the newest stable, non-preview ID this project can reach (`gemini-3.5-pro` is absent from the publisher catalog and 404s everywhere; pro-class 3.x IDs are all previews, which roll, and judging runs to Oct 1). IDs are pinned as exact literals with a committed response cache ([fixtures/gemini_response_cache.json](fixtures/gemini_response_cache.json)) so `make demo` replays real recorded responses with zero credentials.
+- **Gemma, serverless on Vertex AI** (`gemma-4-26b-a4b-it-maas`, pinned) — first-pass triage of crawler access records (bot / human / unknown) before anything reaches Gemini, running in the scheduled daily accrual audit. Deliberately non-load-bearing: if Gemma is unreachable, Ollama and then a heuristic classify, and evidence records are still produced.
 - **Firestore** — the append-only grant-event log. Deterministic event IDs, `create()`-only discipline, custom IAM role withholding `update`/`delete` from every agent SA. State is always a fold over events.
-- **Cloud Run** — the deployed evidence endpoint and buyer API (services), and the headless verification harness (jobs). `min-instances=0`, max capped.
+- **Cloud Run** — the deployed evidence endpoint and buyer API (services), and the headless verification harness plus nightly teardown (jobs). `min-instances=0`, max capped.
+- **Cloud Scheduler** — two jobs with visible execution history: `hodi-daily-accrual-audit` (09:00 UTC, runs the crawler-access audit with Gemma triage and persists it to `accrual_audits`) and `hodi-nightly-teardown-trigger` (23:00 UTC, executes the Gemma-project teardown Cloud Run Job, whose no-op paths are empirically verified).
 - **Cloud Logging** — gateway policy denials land as structured `jsonPayload` events (severity WARNING), queryable by calling SA, collection, and policy — the same event object the API returns.
 
 ---
@@ -141,7 +143,7 @@ This is a finding about the SDK's current headless surface, published rather tha
 
 - **First commit:** `76392260f65c4e253d82db530a36d456cc0768ce` at `2026-08-06T12:37:20-05:00` (`2026-08-06T17:37:20Z`).
 - **Public, unsquashed history** at [github.com/Jeremiah-Sakuda/Hodi](https://github.com/Jeremiah-Sakuda/Hodi) from the first commit onward. All code was authored inside the submission period.
-- **Relationship to my other submissions:** this project shares an append-only claim-record/event-log lineage with the author's other hackathon submissions. The axes of difference are the user (artist-side principals), the data (this project's corpus is the author's own published work — real essays, repos, and bass recordings, never synthetic), the governance regime (consent and licensing), and the agent topology (four agents separated by conflict of interest).
+- **Relationship to my other submissions:** there is no shared lineage to disclose in this direction — **Hodi was built first.** The claim-record, append-only event-log, and provenance patterns originate in this repository; no code was copied into it from any other submission. Any later submission of mine that reuses this spine will disclose the direction of the copy (from Hodi, with paths and dates). The evidence is the public unsquashed history from the first commit onward.
 
 ---
 
@@ -161,4 +163,4 @@ This is a finding about the SDK's current headless surface, published rather tha
 - Canaries index: [`/canaries`](https://hodi-evidence-endpoint-406699565497.us-central1.run.app/canaries)
 - Evidence counts by class (no totals, by design): [`/evidence-counts`](https://hodi-evidence-endpoint-406699565497.us-central1.run.app/evidence-counts)
 
-Deployed-path timings (measurement surface: `deployed-over-network`, from [docs/metrics.json](docs/metrics.json)): buyer API 896 ms cold / 560 ms warm average; revocation cascade 467 ms cold / 287 ms warm average; supervisor deadline 5.0 s, derived from an observed p95 of 2939 ms with 1.7× headroom.
+Deployed-path timings (measurement surface: `deployed-over-network`, from [docs/metrics.json](docs/metrics.json)): buyer API 896 ms cold / 560 ms warm average; revocation cascade 467 ms cold / 287 ms warm average; natural-language license path 3175 ms warm average (each request includes one server-side Gemini call); supervisor deadline 5.0 s, derived from an observed p95 of 2939 ms with 1.7× headroom.
