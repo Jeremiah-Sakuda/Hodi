@@ -14,7 +14,7 @@ This table is lifted verbatim from the PRD (§3.4). Every enforcement mechanism 
 
 | Invariant | Enforcement mechanism (checkable in this repo) |
 |---|---|
-| No agent can read another buyer's terms | Per-agent service accounts + gateway policy; the negotiator's SA is scoped to one `counterparty_id` per session. Negative-test matrix asserts `PERMISSION_DENIED` on cross-buyer reads. |
+| No agent can read another buyer's terms | Per-agent service accounts + gateway policy; the negotiator's SA is scoped to one `counterparty_id` per session, and that session id comes from a verified request credential, never from the request body. Negative-test matrix asserts `PERMISSION_DENIED` on cross-buyer reads, and an attack suite replays the real exploit that broke this in production. |
 | No verdict about training-set membership can exist | The `class` enum has no such value; the schema cannot express it. Every `EvidenceRecord` carries a literal `claim_limit` string. A render-time lint rejects the phrases "trained on", "was in the training set", "proves training" in any generated text. |
 | Evidence classes never aggregate | No numeric field on `EvidenceRecord`; no summing, scoring, or ordering across classes anywhere; the renderer groups by class and refuses a total. |
 | Grants are never mutated | Append-only `create()`-only event log with deterministic IDs; revocation is a **new event that supersedes**; the original grant remains visible with a strikethrough, never deleted. |
@@ -23,6 +23,18 @@ This table is lifted verbatim from the PRD (§3.4). Every enforcement mechanism 
 | Untrusted documents cannot redirect the fleet | Prompt Inspector (local regex) on post-extraction bytes of every inbound buyer/scope document; detection emits an event and an anomaly item and the request **proceeds** under its original scope. |
 | A looping or hallucinating worker cannot stall the fleet | Supervisor with per-agent deadline and circuit breaker; quarantine + reroute; `TaskAbandoned` events; every decision carries an OTel span. |
 | Least privilege | One SA per agent, per the conflict boundaries below; no SA holds two of {identity, buyer terms, evidence, revocation}. |
+
+---
+
+## Architecture
+
+![The Hodi fleet: four agents, four conflict walls, the ADK orchestration layer with its OTel exporter, and the deployed Cloud Run surfaces](docs/architecture/diagram_a_the_fleet.png)
+
+*Source: [diagram_a_the_fleet.mmd](docs/architecture/diagram_a_the_fleet.mmd). Every number traces to [docs/metrics.json](docs/metrics.json).*
+
+![What Hodi will not say: four typed evidence classes, and a struck-through fifth column labelled training-set membership — not determinable](docs/architecture/diagram_b_what_hodi_will_not_say.png)
+
+*Source: [diagram_b_what_hodi_will_not_say.mmd](docs/architecture/diagram_b_what_hodi_will_not_say.mmd).*
 
 ---
 
@@ -54,7 +66,7 @@ make demo
 make demo-live
 ```
 
-Runs the three-call boundary test against the **deployed** Cloud Run service: a properly scoped read that succeeds with real grant documents, an unfiltered read that is denied, and a cross-counterparty read that is denied — each denial returned and logged as the same structured event. Public endpoint, no credentials; wall-clock time is printed (about 1 second warm).
+Proves the cross-buyer boundary against the **deployed** service in two independent places. Part A exercises the gateway policy layer: a properly scoped read that succeeds with real grant documents, an unfiltered read that is denied, and a cross-counterparty read that is denied, each returned and logged as the same structured event. Part B exercises the **production request path**, replaying the unauthenticated cross-buyer exploit that worked on 2026-08-07 and asserting it is now refused. Public endpoint, no credentials; wall-clock time is printed (about 2 seconds warm).
 
 ```bash
 make verify-scopes
@@ -67,6 +79,12 @@ make verify-manifest
 ```
 
 Fetches the **live** `/works` manifest and verifies the corpus-integrity properties: the 5-work registered corpus is served, every `verified_control` work has a stored proof whose URI resolves with HTTP 200, and every work carries its canary string and plant date.
+
+```bash
+make test
+```
+
+Runs the full offline suite — 153 tests, credential-free, including the cross-buyer attack suite, the containment truth table, and the ADK delegation.
 
 ```bash
 make compliance
@@ -83,10 +101,11 @@ Extracts every requirement ID from the PRD and diffs §4 against the §2 complia
 | The author's registered works, terms attached, control tiers rendered distinctly | `curl https://hodi-evidence-endpoint-406699565497.us-central1.run.app/works` (or `make verify-manifest`) |
 | Machine-readable consent terms at a well-known URI | `curl https://hodi-evidence-endpoint-406699565497.us-central1.run.app/.well-known/hodi.json` |
 | The four conflict walls denying forbidden reads, with structured denial events | `make demo` (Beat 5, in-process) and `make demo-live` (deployed path) |
+| Agent-to-agent delegation across three service accounts, addressed by role-scoped registry discovery | `make demo` (Beat 5B — real ADK runner, one OTel trace) |
 | Live buyer scope request; Prompt Inspector catches the poisoned document; request proceeds under original scope | `make demo` (Beat 4, fixture path) — live path: `POST /api/v1/license` with [fixtures/buyer_request_poisoned.json](fixtures/buyer_request_poisoned.json) |
 | Natural-language request → Gemini structures a typed Scope → the lattice decides | `make demo` (Beat 4B, replaying the recorded model response) — live path: `POST /api/v1/license/natural` |
 | Revocation narrows the present, never the past; all events remain visible | `make demo` (Beat 3) — live cascade: `POST /api/v1/revoke` |
-| OTel span per agent decision, carrying agent identity, policy consulted, outcome | `python3 src/harness/main.py` (prints span payloads; exits 1 by design, recording the HOD-020 result) |
+| OTel span per agent decision, carrying agent identity, policy consulted, outcome | `make demo` (Beat 5B emits one trace across the delegation); the HOD-020 harness is `python3 src/harness/main.py` (exits 1 by design, recording the Antigravity result) |
 | The honesty beat: what Hodi will not say | `make demo` (Beat 6) and Diagram B in [docs/architecture/](docs/architecture/) |
 
 ---
@@ -117,7 +136,8 @@ Build history and daily findings are first-class artifacts here, including the c
 **[docs/BUILD-LOG.md](docs/BUILD-LOG.md)** — every session's verbatim prompt, outcome, and forked decisions, including dated correction notes where earlier entries overclaimed and were struck.
 **[docs/FINDINGS.md](docs/FINDINGS.md)** — daily observations: crawler-log audits, scope-lattice edge cases, and the Google-toolchain findings, including the Antigravity headless/OTel result below.
 
-- **ADK (Google Agent Development Kit) + OpenTelemetry** — the runtime agent framework: four role-separated agent classes under four distinct service accounts, every agent decision exporting a span carrying `agent.identity`, `policy.consulted`, and `outcome`. Chosen by the pre-committed branch documented in [docs/antigravity/decision.md](docs/antigravity/decision.md).
+- **ADK (Google Agent Development Kit), `google-adk==2.6.2`** — the runtime agent framework, and it executes: [src/fleet/adk_fleet.py](src/fleet/adk_fleet.py) defines the fleet as real `google.adk.agents.BaseAgent` subclasses and drives them through a real `google.adk.runners.Runner`. One delegation crosses three distinct service accounts — negotiator → (registry discovery denied) → rights custodian → (registry discovery granted) → revocation propagator — and the ADK event stream is what the caller consumes. The agents extend `BaseAgent` rather than `LlmAgent` deliberately: each hop is a deterministic authority decision, and putting a model in that path would be the opposite of this project's thesis. Run it with `make demo` (Beat 5B). Chosen by the pre-committed branch documented in [docs/antigravity/decision.md](docs/antigravity/decision.md).
+- **OpenTelemetry** — every agent decision emits a span carrying `agent.identity`, `policy.consulted`, and `outcome`, nested inside ADK's own `invoke_agent` spans, so a whole delegation reads as a single trace.
 - **Gemini 3.5 Flash via Vertex AI** (`gemini-3.5-flash`, `global` endpoint, temperature 0) — natural-language scope interpretation in the buyer API (`POST /api/v1/license/natural`): **the model interprets intent, the lattice decides permission.** Gemini's only power is to produce a schema-validated `Scope`; a malformed, out-of-vocabulary, or extra-field interpretation is rejected (HTTP 422), never coerced, and `permits()` remains the sole authority — a test asserts the model's output cannot influence the permission decision except by producing a valid Scope. Gemini also drafts revocation notices, gated by the deterministic `RevocationLint` with a linted template fallback. Why this exact model: availability was probed empirically on Aug 7, 2026 ([docs/FINDINGS.md](docs/FINDINGS.md)) — `gemini-3.5-flash` is the newest stable, non-preview ID this project can reach (`gemini-3.5-pro` is absent from the publisher catalog and 404s everywhere; pro-class 3.x IDs are all previews, which roll, and judging runs to Oct 1). IDs are pinned as exact literals with a committed response cache ([fixtures/gemini_response_cache.json](fixtures/gemini_response_cache.json)) so `make demo` replays real recorded responses with zero credentials.
 - **Gemma, serverless on Vertex AI** (`gemma-4-26b-a4b-it-maas`, pinned) — first-pass triage of crawler access records (bot / human / unknown) before anything reaches Gemini, running in the scheduled daily accrual audit. Deliberately non-load-bearing: if Gemma is unreachable, Ollama and then a heuristic classify, and evidence records are still produced.
 - **Firestore** — the append-only grant-event log. Deterministic event IDs, `create()`-only discipline, custom IAM role withholding `update`/`delete` from every agent SA. State is always a fold over events.
@@ -149,6 +169,7 @@ This is a finding about the SDK's current headless surface, published rather tha
 
 ## Security & data integrity
 
+- **Buyer requests are authenticated, and identity comes from the credential.** Each counterparty holds a shared secret registered under a `key_id`; requests carry `X-Hodi-Key-Id`, `X-Hodi-Timestamp`, and an `X-Hodi-Signature` HMAC-SHA256 over the raw request body, checked inside a 300-second freshness window. The `counterparty_id` used for every read, filter, session context, and receipt is the one bound to the verified credential — a `counterparty_id` in the request body is only ever compared, never trusted, and a mismatch is refused and logged as a structured denial event. **This is a fix, not a design note:** until 2026-08-07 the API took `counterparty_id` from the body and used it as both the query filter and the session context the gateway checked that filter against, so an anonymous caller could read another counterparty's grants. The attack suite in [tests/test_buyer_api_auth.py](tests/test_buyer_api_auth.py) replays that exploit and its variants, `make demo-live` replays it against the deployed service, and the incident is recorded in [docs/BUILD-LOG.md](docs/BUILD-LOG.md).
 - **Prompt inspection is local, and labelled as such.** The managed Model Armor guardrail could not be used: the API is in restricted preview and template creation returned HTTP 403 for this project. The claim was pulled rather than shipped under a Google product's name. Prompt inspection is implemented as a local regex and is labelled `local_regex_inspector` everywhere it appears — in code, in API responses, and in the evidence counts endpoint.
 - **The security posture rests on IAM boundaries, gateway policy enforcement, and audit traces.** Four service accounts, no SA holding two conflict domains, a custom Firestore role that cannot update or delete grant events, and a gateway that converts every policy violation into a structured, logged `PolicyDenialEvent`.
 - **`/api/v1/debug/compromised_agent_read` is a public endpoint on purpose.** It simulates a compromised licensing negotiator attempting three reads: one properly scoped to its own session counterparty (which succeeds, returning that counterparty's grants — data the negotiator is entitled to), one unfiltered, and one cross-counterparty. The last two are structurally guaranteed denials: the gateway consults the same policy data as production traffic, so the endpoint can only produce denial events plus the one read the caller was always allowed. It exists so a reviewer can verify the cross-buyer confidentiality boundary over the public network in under a minute, without credentials. Run it: `make demo-live`.

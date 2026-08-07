@@ -12,7 +12,7 @@ This document is **GENERATED** directly from `src/schema/iam_policy.py`. Do not 
 | Agent Role | Service Account Email | Conflict Domain | Permitted Collections (Positive) | Denied Collections (Negative) |
 |---|---|---|---|---|
 | **Rights Custodian** | `rights-custodian-sa@hodi-2026.iam.gserviceaccount.com` | `identity` | `works`<br>`artists`<br>`control_proofs` | `buyer_terms`<br>`crawler_access`<br>`canaries`<br>`revocation_notices` |
-| **Licensing Negotiator** | `licensing-negotiator-sa@hodi-2026.iam.gserviceaccount.com` | `buyer_terms` | `buyer_terms/{counterparty_id}`<br>`receipts`<br>`grants` (Requires filter: `counterparty_id`)  | `artists`<br>`works`<br>`crawler_access`<br>`canaries`<br>`revocation_notices` |
+| **Licensing Negotiator** | `licensing-negotiator-sa@hodi-2026.iam.gserviceaccount.com` | `buyer_terms` | `buyer_terms` (Requires filter: `counterparty_id`) <br>`receipts`<br>`grants` (Requires filter: `counterparty_id`)  | `artists`<br>`works`<br>`crawler_access`<br>`canaries`<br>`revocation_notices` |
 | **Evidence Agent** | `evidence-agent-sa@hodi-2026.iam.gserviceaccount.com` | `evidence` | `crawler_access`<br>`canaries`<br>`evidence_records` | `artists`<br>`buyer_terms`<br>`grants`<br>`revocation_notices` |
 | **Revocation Propagator** | `revocation-propagator-sa@hodi-2026.iam.gserviceaccount.com` | `revocation` | `grants`<br>`revocation_notices` | `artists`<br>`buyer_terms`<br>`crawler_access`<br>`canaries` |
 

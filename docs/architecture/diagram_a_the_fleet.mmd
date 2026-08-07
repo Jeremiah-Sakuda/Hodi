@@ -9,16 +9,19 @@ flowchart TB
 
     REG --> GW
 
-    subgraph ADK["ADK (Google Agent Development Kit) — orchestration layer"]
+    subgraph ADK["ADK google-adk 2.6.2 — orchestration layer (src/fleet/adk_fleet.py)"]
         direction LR
-        RC["RIGHTS CUSTODIAN<br/>artist identity, works, terms<br/>SA: rights-custodian-sa@"]
+        RC["RIGHTS CUSTODIAN<br/>artist identity, works, terms<br/>initiates revocation<br/>SA: rights-custodian-sa@"]
         LN["LICENSING NEGOTIATOR<br/>ONE counterparty per session<br/>SA: licensing-negotiator-sa@"]
         EV["EVIDENCE AGENT<br/>crawler logs, canaries<br/>never claims training membership<br/>SA: evidence-agent-sa@"]
         RP["REVOCATION PROPAGATOR<br/>signed notices + receipts<br/>SA: revocation-propagator-sa@"]
     end
 
-    OTEL(["OTel exporter<br/>span per agent decision:<br/>agent.identity · policy.consulted · outcome"])
+    OTEL(["OTel exporter<br/>span per agent decision:<br/>agent.identity · policy.consulted · outcome<br/>one trace per delegation"])
     ADK -.exports.-> OTEL
+
+    RC -. "discovers by role<br/>(registry permits)" .-> RP
+    LN -. "discovery DENIED<br/>returns [ ]" .-x RP
 
     GW --> RC
     GW --> LN
@@ -43,7 +46,25 @@ flowchart TB
     RP --> LOG
 
     SUP["SUPERVISOR<br/>deadline 5.0 s (derived from observed p95 2939 ms, ×1.7 headroom — metrics.json)<br/>quarantine · reroute · circuit-break · TaskAbandoned"]
-    SUP -.watches.-> ADK
+    SUP -.bounds.-> ADK
+
+    subgraph DEPLOYED["Deployed on Cloud Run — hodi-evidence-endpoint (min-instances=0)"]
+        API["BUYER API<br/>signed requests: X-Hodi-Key-Id / Timestamp / Signature<br/>HMAC over raw body; identity from the CREDENTIAL<br/>/api/v1/license · /api/v1/license/natural · /api/v1/revoke"]
+        PUB["PUBLIC SURFACES<br/>/.well-known/hodi.json · /robots.txt<br/>/works · /canaries · /evidence-counts"]
+        CON["ARTIST CONSOLE<br/>register · scope · revoke<br/>evidence by class, no total"]
+    end
+
+    GEM(["GEMINI 3.5 FLASH via Vertex AI (global, temp 0, pinned)<br/>interprets natural language into a typed Scope<br/>THE MODEL INTERPRETS INTENT — THE LATTICE DECIDES PERMISSION"])
+    GMA(["GEMMA gemma-4-26b-a4b-it-maas<br/>crawler-log triage: bot / human / unknown"])
+    SCH["CLOUD SCHEDULER<br/>09:00 UTC accrual audit · 23:00 UTC teardown"]
+
+    API --> GEM
+    GEM -- "validated Scope only" --> GW
+    API --> GW
+    CON --> GW
+    PUB --> LOG
+    EV --> GMA
+    SCH -.triggers.-> PUB
 
     NOTE["No SA holds two of {identity, buyer terms, evidence, revocation}.<br/>A monolith here would itself be the violation.<br/>Numbers trace to /docs/metrics.json (2026-08-07 audit)."]
 
@@ -51,8 +72,12 @@ flowchart TB
     classDef agent fill:#eef6ff,stroke:#3367d6,stroke-width:1.5px,color:#111
     classDef infra fill:#fff8e6,stroke:#b8860b,color:#111
     classDef note fill:#f3f3f3,stroke:#999,stroke-dasharray:4 3,color:#111
+    classDef model fill:#eafaf1,stroke:#0b8043,stroke-width:2px,color:#111
+    classDef deployed fill:#f0f4ff,stroke:#3367d6,stroke-width:2px,color:#111
 
     class W1,W2,W3,W4 wall
     class RC,LN,EV,RP agent
-    class REG,GW,LOG,SUP,OTEL infra
+    class REG,GW,LOG,SUP,OTEL,SCH infra
+    class GEM,GMA model
+    class API,PUB,CON deployed
     class NOTE note

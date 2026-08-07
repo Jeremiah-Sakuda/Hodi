@@ -1,8 +1,9 @@
 import uuid
 import base64
+import hashlib
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
 
@@ -13,6 +14,10 @@ from src.resolve.resolver import active_grant_events
 from src.gateway.prompt_inspector import PromptInspector
 from src.gateway.gateway import AgentGateway, GatewayPolicyDenial
 from src.agents.revocation_propagator import RevocationPropagatorAgent, CascadeResult
+from src.api.auth import (
+    AuthenticatedCounterparty, CredentialStore, RequestAuthenticationError, authenticate,
+    HEADER_KEY_ID, HEADER_TIMESTAMP, HEADER_SIGNATURE
+)
 
 router = APIRouter()
 armor = PromptInspector()
@@ -20,10 +25,57 @@ armor = PromptInspector()
 # The licensing negotiator agent acts under its own service account
 NEGOTIATOR_SA = "licensing-negotiator@hodi-2026.iam.gserviceaccount.com"
 
+# Injectable so tests never touch the production credential collection.
+_credential_store = CredentialStore()
+
+def set_credential_store(store) -> None:
+    """Replaces the credential store (tests, offline runs)."""
+    global _credential_store
+    _credential_store = store
+
+
+async def _authenticate_or_403(request: Request,
+                               claimed_counterparty_id: Optional[str]) -> AuthenticatedCounterparty:
+    """
+    Authenticates the caller from the signed-request headers and the RAW body
+    bytes, and returns the VERIFIED counterparty.
+
+    A body that claims a different counterparty than the credential is bound to
+    is the cross-buyer attack; it is refused and logged as a structured denial
+    event rather than silently downgraded to the caller's own identity.
+    """
+    try:
+        auth = authenticate(
+            key_id=request.headers.get(HEADER_KEY_ID, ""),
+            issued_at=request.headers.get(HEADER_TIMESTAMP, ""),
+            signature=request.headers.get(HEADER_SIGNATURE, ""),
+            body=await request.body(),
+            store=_credential_store,
+        )
+    except RequestAuthenticationError as e:
+        raise HTTPException(status_code=403, detail=f"Request authentication failed: {e}")
+
+    if claimed_counterparty_id is not None and claimed_counterparty_id != auth.counterparty_id:
+        AgentGateway().log_identity_claim_denial(
+            calling_sa=NEGOTIATOR_SA,
+            authenticated_counterparty_id=auth.counterparty_id,
+            claimed_counterparty_id=claimed_counterparty_id,
+            key_id=auth.key_id,
+        )
+        raise HTTPException(
+            status_code=403,
+            detail=("Request authentication failed: the credential is not bound to the "
+                    "claimed counterparty_id."),
+        )
+    return auth
+
+
 class ScopeRequest(BaseModel):
-    counterparty_id: str
+    # Optional and NEVER trusted: if present it must match the authenticated
+    # identity, which is derived from the verified credential (see the
+    # X-Hodi-* signed-request headers on src/api/auth.py).
+    counterparty_id: Optional[str] = None
     requested_scope: Scope
-    signature: str = Field(..., description="Cryptographic signature of the request")
     raw_document_b64: str = Field(..., description="Base64 encoded raw buyer document bytes")
 
 class LicenseResponse(BaseModel):
@@ -35,28 +87,28 @@ class LicenseResponse(BaseModel):
     inspector_engine: str = "unknown"
 
 @router.post("/api/v1/license", response_model=LicenseResponse)
-def request_license(req: ScopeRequest):
-    # 1. Verify signature (Reject unsigned)
-    if not req.signature:
-        raise HTTPException(status_code=400, detail="Unsigned request rejected.")
-        
-    # 2. Route raw post-extraction bytes through ModelArmor
+async def request_license(req: ScopeRequest, request: Request):
+    # 1. Authenticate. The counterparty identity used everywhere below comes
+    #    from the VERIFIED CREDENTIAL — never from the request body.
+    auth = await _authenticate_or_403(request, claimed_counterparty_id=req.counterparty_id)
+
+    # 2. Route raw post-extraction bytes through the Prompt Inspector
     try:
         raw_bytes = base64.b64decode(req.raw_document_b64)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid base64 document.")
-        
+
     armor_result = armor.inspect(raw_bytes)
     anomaly_detected = armor_result.injection_detected
-    
+
     # 3. Read active grants from real Firestore via AgentGateway
     gateway = AgentGateway()
     raw_grants = gateway.read_collection(
         calling_sa=NEGOTIATOR_SA,
         calling_role_key="licensing_negotiator",
         target_collection="grants",
-        filters={"counterparty_id": req.counterparty_id},
-        session_context={"counterparty_id": req.counterparty_id}
+        filters={"counterparty_id": auth.counterparty_id},
+        session_context={"counterparty_id": auth.counterparty_id}
     )
     # Parse back to Pydantic models, then FOLD: the log is append-only, so a
     # revoked grant's original `granted` event is still present — permits()
@@ -71,12 +123,12 @@ def request_license(req: ScopeRequest):
         receipt = Receipt(
             receipt_id=str(uuid.uuid4()),
             grant_id=eval_result.matching_grant_id or "unknown",
-            counterparty_id=req.counterparty_id,
-            payload_hash="real_hash",
+            counterparty_id=auth.counterparty_id,
+            payload_hash=hashlib.sha256(await request.body()).hexdigest(),
             issued_at=datetime.now(timezone.utc),
             signature="SIG_RECEIPT"
         )
-        
+
         granted_scope = next((g.scope for g in active_grants if g.grant_id == eval_result.matching_grant_id), None)
         licensable_set = [granted_scope.use_type, granted_scope.model_class] if granted_scope else []
             
@@ -99,9 +151,9 @@ def request_license(req: ScopeRequest):
         )
 
 class NaturalScopeRequest(BaseModel):
-    counterparty_id: str
+    # Optional and NEVER trusted — see ScopeRequest.
+    counterparty_id: Optional[str] = None
     request_text: str = Field(..., description="Natural-language license request from the counterparty")
-    signature: str = Field(..., description="Cryptographic signature of the request")
 
 class NaturalLicenseResponse(BaseModel):
     permitted: bool
@@ -114,7 +166,7 @@ class NaturalLicenseResponse(BaseModel):
     inspector_engine: str = "unknown"
 
 @router.post("/api/v1/license/natural", response_model=NaturalLicenseResponse)
-def request_license_natural(req: NaturalScopeRequest):
+async def request_license_natural(req: NaturalScopeRequest, request: Request):
     """
     THE MODEL INTERPRETS INTENT. THE LATTICE DECIDES PERMISSION.
 
@@ -127,8 +179,9 @@ def request_license_natural(req: NaturalScopeRequest):
     from src.llm.scope_interpreter import ScopeInterpreter, ScopeInterpretationError
     from src.llm.vertex_gemini import GeminiUnavailableError
 
-    if not req.signature:
-        raise HTTPException(status_code=400, detail="Unsigned request rejected.")
+    # Authenticate first: identity comes from the verified credential, and the
+    # model never sees a request that has not been attributed to a real caller.
+    auth = await _authenticate_or_403(request, claimed_counterparty_id=req.counterparty_id)
 
     # Untrusted inbound buyer document: inspect post-extraction bytes (HOD-313).
     # Detection is logged and the request PROCEEDS under its original scope.
@@ -147,8 +200,8 @@ def request_license_natural(req: NaturalScopeRequest):
         calling_sa=NEGOTIATOR_SA,
         calling_role_key="licensing_negotiator",
         target_collection="grants",
-        filters={"counterparty_id": req.counterparty_id},
-        session_context={"counterparty_id": req.counterparty_id}
+        filters={"counterparty_id": auth.counterparty_id},
+        session_context={"counterparty_id": auth.counterparty_id}
     )
     # Fold before containment: permits() must only see active grants (HOD-107).
     active_grants = active_grant_events([GrantEvent(**g) for g in raw_grants])
@@ -164,8 +217,8 @@ def request_license_natural(req: NaturalScopeRequest):
         receipt = Receipt(
             receipt_id=str(uuid.uuid4()),
             grant_id=eval_result.matching_grant_id or "unknown",
-            counterparty_id=req.counterparty_id,
-            payload_hash="real_hash",
+            counterparty_id=auth.counterparty_id,
+            payload_hash=hashlib.sha256(await request.body()).hexdigest(),
             issued_at=datetime.now(timezone.utc),
             signature="SIG_RECEIPT"
         )

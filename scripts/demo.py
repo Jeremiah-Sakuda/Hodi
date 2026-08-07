@@ -190,6 +190,36 @@ def beat_5_conflict_walls():
     print(f"  PASS: {denied}/{len(attempts)} forbidden reads denied, each with a structured PolicyDenialEvent.")
 
 
+def beat_5b_adk_delegation(events):
+    rule("BEAT 5B — ADK FLEET DELEGATION: THREE SERVICE ACCOUNTS, ONE TRACE (HOD-302/330/340)")
+    import io
+    from contextlib import redirect_stdout
+    from src.fleet.adk_fleet import run_revocation_delegation
+
+    # The console span exporter is noisy; the assertions below are the proof.
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        result = run_revocation_delegation(
+            counterparty_id="acme-intelligence-labs",
+            work_id="work-essay-001",
+            revoked_use_type="training",
+            fallback_events=events,
+        )
+
+    for entry in result["transcript"]:
+        print(f"  [{entry['author']:<22}] {entry['text']}")
+
+    assert result["negotiator_discovered"] == [], \
+        "A buyer's negotiator must not be told the revocation propagator exists."
+    assert result["discovered"] == ["revocation_propagator-v1"], \
+        "The artist's rights custodian must be able to discover the propagator by role."
+    assert result["cascade"] is not None and result["cascade"].affected_grants, \
+        "The discovered propagator must have executed the cascade."
+    print("  PASS: agent-to-agent addressing goes through role-scoped registry discovery —")
+    print("        denied for the negotiator, granted for the custodian — and the cascade ran")
+    print("        under a third service account holding neither identity nor buyer terms.")
+
+
 def beat_6_honesty_invariants():
     rule("BEAT 6 — HONESTY INVARIANTS: THE SCHEMA CANNOT SAY IT, THE LINT WON'T LET IT (HOD-320)")
     from src.schema.evidence import EvidenceRecord, CLAIM_LIMIT_LITERAL
@@ -225,6 +255,7 @@ def main():
     beat_4_poisoned_request(events)
     beat_4b_natural_language_interpretation(events)
     beat_5_conflict_walls()
+    beat_5b_adk_delegation(events)
     beat_6_honesty_invariants()
     print("\nALL DEMO BEATS PASSED.")
 
