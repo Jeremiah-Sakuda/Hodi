@@ -4,8 +4,6 @@ title: "Seven ways to lie to yourself in code"
 description: "A defect ledger from building a system whose premise is refusing to assert what it cannot verify."
 ---
 
-# Seven ways to lie to yourself in code
-
 *Created for the All Things Agentic Hackathon.*
 
 I built a system whose entire premise is refusing to assert what it cannot verify. Then I kept a ledger of every place it lied to me anyway.
