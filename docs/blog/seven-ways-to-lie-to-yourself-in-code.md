@@ -10,7 +10,7 @@ I built a system whose entire premise is refusing to assert what it cannot verif
 
 The project is called Hodi — *hodi* is what you call at someone's door before entering. It's a governed fleet of agents that administers creative consent: registering works with proof of control, expressing machine-readable licensing terms, negotiating with buyers under confidentiality, propagating revocations. Four agents separated by conflict of interest, an append-only event log, and a set of honesty invariants that are supposed to be enforced by structure rather than by good intentions.
 
-Over about seventy-two hours it produced fourteen real defects. They sort into seven classes. **Three of those classes recurred after being fixed once** — which is the actually interesting part, because a bug you fix twice is telling you something a bug you fix once is not.
+Over about seventy-two hours it produced fifteen real defects. They sort into seven classes. **Three of those classes recurred after being fixed once** — which is the actually interesting part, because a bug you fix twice is telling you something a bug you fix once is not.
 
 Before the ledger, the one idea worth understanding, because most of what follows only lands if you have it.
 
@@ -63,6 +63,40 @@ And then it happened a third time. The final verification pass, days later, foun
 There's a coda. After fixing the list, ten non-self records remained. I nearly wrote them up as third-party hits. Then I looked: nine arrived within a single second, from cloud IPs, and one of them requested `/api/v1/debug/compromised_agent_read` — a path no sitemap advertises and no crawler would care about. That's someone inspecting the service. Not a crawler.
 
 Reporting those ten as crawler access would have been exactly the fabricated finding the project exists to refuse, arrived at from the opposite direction. So the metric changed shape rather than value: there's now a field called `known_crawler_ua_matches`, currently zero, and it's the only number this project will describe as crawler access. Everything else non-self is labelled *unattributed*, with a note in the metrics file itself saying that a count of requests I didn't make is not a count of crawlers.
+
+---
+
+## The one where the guard passed perfectly and the property was false
+
+This is the last defect I found, and it is the one I would keep if I could only keep one.
+
+`resolve()` is the single read path for grant state — a pure fold over an append-only event log. Its acceptance criterion, written early and taken seriously, was **byte-stable replay**: shuffle the event log any way you like, fold it, and the resulting state must be byte-for-byte identical. The demo proves it on every run by hashing the output of an ordered fold against a shuffled one. It has never once disagreed.
+
+The fold sorted events by `issued_at.isoformat()` — the ISO *string*, not the instant it denotes.
+
+For a log where everything is in UTC, those are the same thing. For a log with mixed offsets they are not, because string comparison is lexicographic and time zones are not:
+
+```
+granted at 2026-08-05T12:00:00+00:00   ->  12:00Z
+revoked at 2026-08-05T09:00:00-05:00   ->  14:00Z   (later!)
+```
+
+`"2026-08-05T09..."` sorts before `"2026-08-05T12..."`, so the revocation folds in *ahead of the grant it revokes*. The grant comes out the other side alive:
+
+```
+resolve() status    : active     (should be revoked)
+permits(training)   : True       <-- on a grant that was revoked
+```
+
+Now the part worth the section. **The byte-stability check passed the entire time, and it was right to.** The fold was not unstable. It was *deterministically wrong* — it produced the same incorrect answer from every input ordering, which is exactly what a consistency check is designed to see as healthy. The guard was working. It just could not see this.
+
+> A test that proves consistency is not a test that proves correctness.
+
+That is the meta-pattern of this whole ledger eating the mechanism built to prevent it. I had written down a property, built a mechanism that genuinely enforced it, and wired the two together — and the property I chose to enforce was adjacent to the one I actually needed. Determinism is not accuracy. A system can be perfectly reproducible and perfectly wrong, and reproducibility will report success in a confident voice.
+
+Two footnotes that matter for how alarmed to be, in both directions. It was **not reachable through Firestore**, which normalises timestamps to UTC before they are stored, so the live grant path never had mixed offsets to trip over. But it *was* reachable through any JSON-sourced log — which is the committed fixture log and the failure-tolerance drill, the two paths the demo and the delegation exercise. So it was live in the parts of the system I point at when I want to show the thing working.
+
+The fix is one line: sort on `issued_at.astimezone(timezone.utc)` instead of on its rendering. The tiebreak on `event_id` stays, because byte-stable replay still depends on it — the criterion was never wrong, only insufficient.
 
 ---
 
