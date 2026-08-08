@@ -164,3 +164,53 @@ The earlier probe's `global` results were invalid — it used a nonexistent host
 **Evidence records are attributable, not authenticated.** `extract_client_ip` read the LEFTMOST `X-Forwarded-For` entry, which is entirely client-supplied — anyone could stamp a `crawler_access` record with an arbitrary source IP. Now reads the hop Cloud Run's front end appends. User agents remain self-declared and unverifiable, so these records evidence *that a request was made*, never *who made it*; stated in the README rather than left implicit.
 
 **Two guarantees had guardians that could not fail.** Prompt-injection detection lived entirely inside a `@skipUnless(HODI_E2E)` class, so emptying the pattern list broke nothing in the default suite or `make demo` — Beat 4 compared only the two licensable outcomes, which are identical whether detection works or not. And the `(issued_at, event_id)` sort tiebreak was never exercised because every fixture carried a distinct timestamp. Both now have tests, and the tiebreak test was **mutation-verified** by weakening the sort and confirming it fails. The general lesson: gating a test class for a real reason (Firestore at-rest byte identity genuinely needs Firestore) can silently strand the properties in that class that had no such requirement.
+
+---
+
+## Named finding — The confidentiality boundary was breakable, and it was broken
+
+**Dates:** introduced on or before 2026-08-06 · exploited and fixed 2026-08-07 · second instance of the same class found and fixed 2026-08-08
+**Requirements:** HOD-311, HOD-312, HOD-360
+**Status:** closed, with the exploit retained as a permanent regression test
+
+Hodi's first invariant — *"No agent can read another buyer's terms"* — is the project's architectural thesis. It is the first row of the invariant table, the reason the fleet is four agents instead of one, and a video beat. **It was breakable over the public internet by an unauthenticated caller, and it was broken.**
+
+**The defect.** `POST /api/v1/license` took `counterparty_id` from the request body and used that same value as *both* the Firestore query filter and the `session_context` the Agent Gateway validated that filter against. The Gateway compared the caller's claim to itself and always agreed. The `signature` field was tested only for truthiness — any non-empty string passed.
+
+**What was exposed.** A single unauthenticated `curl`, with `signature: "NOT-A-REAL-SIGNATURE"` and `counterparty_id: "buyer-acme-2"`, returned HTTP 200 carrying that counterparty's grant id (`grant-seed-2`), its negotiated scope (`training` / `all_models`, commercial), and a signed receipt issued in that counterparty's name. Any counterparty id was substitutable; work ids and counterparty ids are discoverable from the public surfaces.
+
+**Why the existing tests did not catch it.** `make demo-live` passed throughout. It exercised `/api/v1/debug/compromised_agent_read`, which supplies its own session context — so it could not fail the way production failed. **A boundary test that cannot fail the way production fails is not a boundary test.** The negotiator agent's own cross-buyer refusal, meanwhile, lived in a Python `if` inside `LicensingNegotiatorAgent`, off the enforcement path entirely; the class was correct-by-comment.
+
+**A second, independent hole in the same boundary.** `get_action_permission()` matched collections by prefix, so the permitted path template `buyer_terms/{counterparty_id}` — written to *express* per-counterparty scoping — also permitted an unfiltered read of the entire `buyer_terms` collection. `denied_collections` was declared in the policy data and consulted by no enforcement code. The policy document was correct; the enforcement quietly did not implement it.
+
+**The fix.** Identity now derives from a verified credential and never from request content: `X-Hodi-Key-Id` / `X-Hodi-Timestamp` / `X-Hodi-Signature`, HMAC-SHA256 over the **raw request body** inside a 300-second freshness window, with the `counterparty_id` read off the credential record. A body claiming a different counterparty is refused and logged as a structured `PolicyDenialEvent`. Collection matching is exact on the root segment; `denied_collections` is consulted first and is absolute; `BaseAgent` enforces the same filter rules as the Gateway; and the Gateway now **fails closed** when session context is absent, rather than skipping the comparison.
+
+**The recurrence, one day later.** `POST /api/v1/revoke` — three lines below the fixed handler, in the same file — took no `Request` and called no authenticator. Anyone could revoke any published `work_id`; the response disclosed every affected counterparty's id and full negotiated scope; and because the log is append-only with agent SAs holding neither `update` nor `delete`, **the writes were not undoable**. Fixing the reported route instead of asserting the property across every route is what allowed it.
+
+**What is now structural.** `tests/test_route_auth_coverage.py` enumerates the router's own routes and fails CI if any `POST`/`PUT`/`PATCH`/`DELETE` reaches an endpoint that never authenticates; exemptions must be added to a named list, in the diff, with a written reason. It is mutation-verified: adding an unauthenticated mutating route makes it fail. Revocation additionally requires an **artist** principal, so a buyer credential cannot terminate an artist's grants. `make demo-live` gained Part B and Part C, which replay the real historical exploits against the deployed service and assert HTTP 403.
+
+**Why this is published rather than quietly patched.** A boundary that was designed, advertised, broken, and then rebuilt with the exploit retained as a test is better evidence than a boundary that never had to survive contact. The claim "no agent can read another buyer's terms" now rests on a mechanism that has been attacked, failed, and been repaired — and on a test that fails if the same mistake is made a third time.
+
+---
+
+## Named finding — Our own Cloud Scheduler job was being counted as a third-party crawler
+
+**Dates:** introduced 2026-08-07 (when Cloud Scheduler was first enabled) · found and fixed 2026-08-08
+**Requirements:** HOD-303, HOD-320
+**Status:** closed, with a build-failing guard and a narrower claim
+
+This project's signature empirical finding is a negative result: *"I published machine-readable consent terms at a discoverable endpoint and no crawler asked."* Its evidential value depends entirely on the third-party count being real.
+
+**The defect.** `SELF_UA_PATTERNS` — the list of user agents belonging to our own tooling — omitted `Google-Cloud-Scheduler`. From the moment the daily accrual job began running, **the project's own scheduled infrastructure was classified as third-party crawler access.** The honesty finding was inverted into a fabricated positive, manufactured by the project itself.
+
+**How it surfaced.** Not from a test. The README and Diagram B stated "160 accrued records, zero attributable to third parties" while the project's own documented `make metrics` regenerated `docs/metrics.json` with a larger total and a non-zero third-party count. The docs and the tool disagreed, and the first thing a skeptical reader does is run the tool.
+
+**The root cause is duplication, and it had already fired once.** The self-UA list existed in **two files** — `scripts/daily_accrual_check.py` and `src/evidence/gemma_triage.py`. The same class of miss had occurred the previous day (`python-requests` from the live boundary test, `Hodi-Latency-Test` from the timing harness), and the fix then was to add the missing patterns to both copies rather than to remove the duplication. The comment directly above one of those lists warned that a missing pattern "inflates the third-party count into a fabricated finding." The warning was correct and did not prevent the recurrence, because a comment is not a mechanism.
+
+**Investigating the residue changed the claim.** After correcting the list, 10 non-self records remained. They were not crawlers: 9 arrived within a single second from cloud IPs and included a request to `/api/v1/debug/compromised_agent_read` — a path no sitemap advertises and no crawler would find interesting. That is inspection traffic. Reporting it as third-party crawler access would have been precisely the fabricated finding this project exists to refuse, arrived at from the opposite direction.
+
+So the metric changed shape, not just value. The audit now reports **`known_crawler_ua_matches`** — currently `0` — as the only figure this project will describe as crawler access, alongside `non_self_originated_requests_count` explicitly labelled *unattributed*, with a `claim_limit` string inside `metrics.json` itself stating that a count of requests we did not make is not a count of crawlers.
+
+**What is now structural.** One list, in `src/evidence/self_traffic.py`, imported by both consumers — the duplication that caused it twice is gone. `make check-docs` fails the build if any accrual number in the README or Diagram B disagrees with `metrics.json`, so prose and tool cannot drift apart silently again. It is wired into `make compliance`.
+
+**The general lesson.** The instrument that produces your evidence is part of your threat model, and *you* are the most likely contaminant of it. Every tool this project points at its own endpoint has to be declared, in one place, or the finding degrades quietly into its own opposite.

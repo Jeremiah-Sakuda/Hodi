@@ -58,7 +58,9 @@ class TestRevocationTemporalInteraction(unittest.TestCase):
             work_id="work-essay-001",
             counterparty_id="buyer-scraper-corp",
             scope=self.scope_narrow,
-            kind="superseded",
+            # A re-grant is a NEW `granted` event. `superseded` marks a grant as
+            # history and grants nothing — see test_superseded_semantics.py.
+            kind="granted",
             supersedes="grant-rev-200",
             issued_at=self.t_after,
             signature="sig-regrant"
@@ -84,14 +86,14 @@ class TestRevocationTemporalInteraction(unittest.TestCase):
     def test_regrant_narrower_resolves_to_narrower_scope(self):
         """Querying at t_after returns narrower scope and preserves full event log visibility."""
         state_after = resolve("grant-rev-200", at=self.t_after, events=self.log)
-        self.assertEqual(state_after.status, "superseded")
+        self.assertEqual(state_after.status, "active")
         self.assertEqual(state_after.active_scope.use_type, "fine_tuning")
         self.assertFalse(state_after.active_scope.commercial)
         self.assertEqual(len(state_after.history_events), 3)
 
         # Confirm all 3 historical events remain visible in append-only log
         event_kinds = [e.kind for e in state_after.history_events]
-        self.assertEqual(event_kinds, ["granted", "revoked", "superseded"])
+        self.assertEqual(event_kinds, ["granted", "revoked", "granted"])
 
 if __name__ == "__main__":
     unittest.main()

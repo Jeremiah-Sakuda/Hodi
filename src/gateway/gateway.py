@@ -80,12 +80,23 @@ class AgentGateway:
         if not permitted:
             reason = f"Calling SA '{calling_sa}' ({calling_role_key}) is denied access to target collection '{target_collection}'."
         elif required_filter_key:
+            # FAIL CLOSED. A missing session context is a denial, not a skip.
+            #
+            # This previously read `elif session_context and required_filter_key
+            # in session_context:` — the comparison only happened when the CALLER
+            # chose to supply context, so a call that simply omitted it was
+            # permitted. That is the same shape as both live auth defects
+            # (BUILD-LOG corrections #5 and #6): a check whose enforcement depends
+            # on the caller cooperating. The session scope is the boundary, so
+            # its absence cannot be the permissive case.
             if not filters or required_filter_key not in filters:
                 reason = f"Calling SA '{calling_sa}' ({calling_role_key}) MUST scope query to '{required_filter_key}' for collection '{target_collection}'."
-            elif session_context and required_filter_key in session_context:
-                # Gateway enforces the value matches the session context
-                if filters[required_filter_key] != session_context[required_filter_key]:
-                    reason = f"Calling SA '{calling_sa}' ({calling_role_key}) attempted to read '{required_filter_key}'='{filters[required_filter_key]}' outside of session context '{session_context[required_filter_key]}'."
+            elif not session_context or required_filter_key not in session_context:
+                reason = (f"Calling SA '{calling_sa}' ({calling_role_key}) supplied no session context for "
+                          f"'{required_filter_key}' on collection '{target_collection}'. A session-scoped "
+                          f"collection cannot be read without the session it is scoped to.")
+            elif filters[required_filter_key] != session_context[required_filter_key]:
+                reason = f"Calling SA '{calling_sa}' ({calling_role_key}) attempted to read '{required_filter_key}'='{filters[required_filter_key]}' outside of session context '{session_context[required_filter_key]}'."
 
         if reason:
             denial = PolicyDenialEvent(

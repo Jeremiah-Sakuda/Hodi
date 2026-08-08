@@ -31,19 +31,26 @@ class BaseAgent:
                 f"is denied access to collection '{collection_name}' under IAM conflict policy."
             )
 
+        # FAIL CLOSED, identically to the Gateway: absent session context is a
+        # denial, not a skip (see src/gateway/gateway.py).
         if required_filter_key:
             if not filters or required_filter_key not in filters:
                 raise PermissionError(
                     f"PERMISSION_DENIED: Service account '{self.sa_email}' ({self.role_name}) "
                     f"MUST scope its query to '{required_filter_key}' for collection '{collection_name}'."
                 )
-            if session_context and required_filter_key in session_context:
-                if filters[required_filter_key] != session_context[required_filter_key]:
-                    raise PermissionError(
-                        f"PERMISSION_DENIED: Service account '{self.sa_email}' ({self.role_name}) "
-                        f"attempted to read '{required_filter_key}'='{filters[required_filter_key]}' "
-                        f"outside of session context '{session_context[required_filter_key]}'."
-                    )
+            if not session_context or required_filter_key not in session_context:
+                raise PermissionError(
+                    f"PERMISSION_DENIED: Service account '{self.sa_email}' ({self.role_name}) "
+                    f"supplied no session context for '{required_filter_key}' on collection "
+                    f"'{collection_name}'."
+                )
+            if filters[required_filter_key] != session_context[required_filter_key]:
+                raise PermissionError(
+                    f"PERMISSION_DENIED: Service account '{self.sa_email}' ({self.role_name}) "
+                    f"attempted to read '{required_filter_key}'='{filters[required_filter_key]}' "
+                    f"outside of session context '{session_context[required_filter_key]}'."
+                )
 
         # The enforced filter is returned so callers and tests can assert that
         # scoping actually happened, rather than inferring it from a path string.

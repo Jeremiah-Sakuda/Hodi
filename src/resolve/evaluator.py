@@ -31,11 +31,25 @@ def permits(
     """
     eval_time = at or datetime.now(timezone.utc)
 
+    # THE DOOR IS CLOSED, not filtered — and it is checked BEFORE any matching,
+    # so a permissive answer can never be returned from a partly-invalid input.
+    #
+    # permits() takes the FOLDED ACTIVE state, never a raw event list. It used
+    # to accept `kind in ("granted", "superseded")` and silently skip anything
+    # else, which meant a caller passing raw append-only events got answers
+    # computed partly from revoked and superseded history. Skipping the wrong
+    # inputs quietly is how that survived; refusing them is how it stays fixed.
+    #
+    # Callers fold first: src/resolve/resolver.py::active_grant_events.
     for grant in active_grants:
-        # Check grant kind
-        if grant.kind not in ("granted", "superseded"):
-            continue
+        if grant.kind != "granted":
+            raise ValueError(
+                f"permits() received a '{grant.kind}' event for grant '{grant.grant_id}'. "
+                "It takes the folded ACTIVE grant state, not raw append-only events — "
+                "call active_grant_events(events, at=t) first (HOD-103, HOD-107)."
+            )
 
+    for grant in active_grants:
         g_scope = grant.scope
 
         # Dimension 5: Temporal Validity

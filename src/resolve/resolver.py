@@ -56,7 +56,15 @@ def resolve(
             state.active_scope = None
             state.status = "revoked"
         elif ev.kind == "superseded":
-            state.active_scope = ev.scope
+            # A superseded grant is NOT active. It is history.
+            #
+            # This previously returned the superseded scope as `active_scope`,
+            # so `resolve()` said "superseded" while handing back a live scope,
+            # `active_grant_events()` (correctly) returned nothing, and
+            # `permits()` (incorrectly) accepted the raw event — three
+            # components, three answers. The event stays in the log, readable
+            # and struck through; it simply does not grant anything.
+            state.active_scope = None
             state.status = "superseded"
             state.superseded_by = ev.supersedes
         elif ev.kind == "expired":

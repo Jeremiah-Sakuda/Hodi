@@ -62,7 +62,8 @@ class TestResolverReplay(unittest.TestCase):
             work_id="work-01",
             counterparty_id="buyer-acme",
             scope=self.scope_narrow,
-            kind="superseded",
+            # Re-grant after revocation is a new `granted` event (HOD-107).
+            kind="granted",
             supersedes="grant-100",
             issued_at=self.t3,
             signature="sig-3"
@@ -102,7 +103,7 @@ class TestResolverReplay(unittest.TestCase):
         self.assertIsNone(state_t2.active_scope)
 
         state_t3 = resolve("grant-100", at=self.t3, events=self.canonical_log)
-        self.assertEqual(state_t3.status, "superseded")
+        self.assertEqual(state_t3.status, "active")
         self.assertIsNotNone(state_t3.active_scope)
         self.assertEqual(state_t3.active_scope.use_type, "fine_tuning")
 

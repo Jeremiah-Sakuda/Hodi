@@ -64,6 +64,28 @@ def main() -> int:
             "metrics.json shows zero third-party accrual but README.md no longer states it."
         )
 
+    # The overclaim-lint hit rate is a measured number in the honesty section —
+    # the most expensive place in this repo for a stale figure.
+    lint = metrics.get("overclaim_lint_coverage")
+    if not lint:
+        failures.append("docs/metrics.json has no 'overclaim_lint_coverage' — run `make lint-coverage`.")
+    else:
+        lm = re.search(r"probe set of (\d+) paraphrases[^.]*?\*\*it rejects (\d+)\*\*", readme, re.DOTALL)
+        if not lm:
+            failures.append("README.md: could not find the measured overclaim-lint claim to check.")
+        else:
+            if int(lm.group(1)) != lint["probe_set_size"]:
+                failures.append(
+                    f"README.md cites a probe set of {lm.group(1)}; metrics.json says {lint['probe_set_size']}.")
+            if int(lm.group(2)) != lint["paraphrases_rejected"]:
+                failures.append(
+                    f"README.md claims the lint rejects {lm.group(2)}; metrics.json says "
+                    f"{lint['paraphrases_rejected']}.")
+        if "including paraphrases" in readme:
+            failures.append(
+                "README.md still claims the lint catches 'including paraphrases' — measured "
+                f"coverage is {lint['paraphrases_rejected']}/{lint['probe_set_size']}.")
+
     diagram = DIAGRAM_B.read_text()
     dm = re.search(r"(\d+)\s+records accrued", diagram)
     if not dm:

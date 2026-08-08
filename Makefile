@@ -1,4 +1,4 @@
-.PHONY: demo demo-live test verify-scopes verify-manifest metrics check-docs compliance
+.PHONY: demo demo-live test verify-scopes verify-manifest metrics lint-coverage check-docs compliance
 
 demo:
 	HODI_OFFLINE=1 python3 scripts/demo.py
@@ -17,6 +17,9 @@ verify-manifest:
 
 metrics:
 	python3 scripts/daily_accrual_check.py --write-metrics
+
+lint-coverage:
+	python3 scripts/measure_lint_coverage.py
 
 check-docs:
 	python3 scripts/check_doc_metrics.py
