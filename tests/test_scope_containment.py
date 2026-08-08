@@ -348,14 +348,19 @@ class TestScopeContainmentTruthTable(unittest.TestCase):
         return [broad, revoke, narrower]
 
     def test_case_46_revoked_grants_original_event_cannot_permit_after_fold(self):
-        """Raw events would permit commercial WW training via the revoked broad
-        grant; the folded active set must deny it."""
+        """Raw append-only events must be REFUSED by permits(), and the folded
+        active set must deny the broad request the revoked grant once allowed.
+
+        The door is closed rather than filtered: permits() used to skip
+        non-granted events silently, so a caller passing raw events got an
+        answer computed partly from revoked history. It now raises."""
         from src.resolve.resolver import active_grant_events
         events = self._revoked_then_narrower_log()
         r = self._make_request("training", commercial=True, territory=["WW"])
-        # The trap: raw events still contain the broad `granted` event.
-        self.assertTrue(permits(events, r, at=self.now).permitted,
-                        "Precondition: raw events would wrongly permit — the fold is what saves us.")
+
+        with self.assertRaises(ValueError, msg="permits() must refuse raw append-only events"):
+            permits(events, r, at=self.now)
+
         active = active_grant_events(events, at=self.now)
         self.assertFalse(permits(active, r, at=self.now).permitted)
 

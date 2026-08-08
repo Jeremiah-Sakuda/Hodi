@@ -99,5 +99,13 @@
     ],
     "warm_avg_ms": 3174.94,
     "note": "each request includes one server-side Vertex AI generateContent call (scope interpretation)"
+  },
+  "overclaim_lint_coverage": {
+    "measured_at_utc": "2026-08-08T01:18:25Z",
+    "probe_set_size": 12,
+    "paraphrases_rejected": 4,
+    "paraphrases_not_rejected": 8,
+    "probe_set_source": "scripts/measure_lint_coverage.py::PARAPHRASE_PROBES",
+    "claim_limit": "The lint is a backstop against the exact phrasings it enumerates, not a general paraphrase detector. The STRUCTURAL guarantee is the schema: EvidenceRecord.class has no training-membership value, so the system cannot emit the claim as data. The lint only reduces the chance of it appearing in free text."
   }
 }
