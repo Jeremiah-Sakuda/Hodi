@@ -11,6 +11,7 @@ fallback, so these tests are hermetic and credential-free.
 """
 
 import os
+import re
 import json
 import unittest
 
@@ -105,12 +106,23 @@ class TestHod303GemmaTriage(unittest.TestCase):
                 engine_says_self = self.engine.triage_record({"user_agent": ua}) == "self_deploy_check"
                 self.assertEqual(engine_says_self, is_self_originated(ua))
 
-    def test_crawler_signatures_name_no_real_company(self):
-        """Positioning rule: no real company appears anywhere in the repo."""
+    def test_crawler_signatures_are_generic_vocabulary_only(self):
+        """Positioning rule: no real company appears anywhere in the repo.
+
+        Asserted as an ALLOW-LIST of generic crawler vocabulary rather than a
+        blocklist of vendor names — a blocklist would have to spell the names it
+        forbids, which is the thing being forbidden.
+        """
+        allowed_words = {"bot", "crawler", "spider", "scraper", "fetcher", "indexer"}
         for pattern in GemmaTriageEngine.THIRD_PARTY_BOT_USER_AGENTS:
-            for vendor in ("gpt", "claude", "google", "bing", "yandex", "facebook",
-                           "ahrefs", "semrush", "bytedance", "duckduck"):
-                self.assertNotIn(vendor, pattern.lower())
+            # Strip regex escapes first: \b would otherwise tokenize as a stray "b".
+            literal = re.sub(r"\\[a-zA-Z]", " ", pattern.lower())
+            words = set(re.findall(r"[a-z]+", literal))
+            with self.subTest(pattern=pattern):
+                self.assertTrue(
+                    words and words <= allowed_words,
+                    f"signature {pattern!r} contains non-generic token(s): "
+                    f"{sorted(words - allowed_words)}")
 
     def test_heuristic_fallback_classifies_when_gemma_unavailable(self):
         self.assertEqual(self.engine.triage_record({"user_agent": "Mozilla/5.0 (compatible; GPTBot/1.0)"}), "bot")
