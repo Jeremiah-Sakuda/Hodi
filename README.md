@@ -104,6 +104,7 @@ Extracts every requirement ID from the PRD and diffs §4 against the §2 complia
 | Machine-readable consent terms at a well-known URI | `curl https://hodi-evidence-endpoint-406699565497.us-central1.run.app/.well-known/hodi.json` |
 | The four conflict walls denying forbidden reads, with structured denial events | `make demo` (Beat 5, in-process) and `make demo-live` (deployed path) |
 | Agent-to-agent delegation across three service accounts, addressed by role-scoped registry discovery | `make demo` (Beat 5B — real ADK runner, one OTel trace) |
+| A looping worker is quarantined and deregistered; the request still completes as a stated partial result | `make demo` (Beat 5C) — deployed path: `POST /api/v1/fleet/delegation_drill` (artist-credentialed) |
 | Live buyer scope request; Prompt Inspector catches the poisoned document; request proceeds under original scope | `make demo` (Beat 4, fixture path) — live path: `POST /api/v1/license` with [fixtures/buyer_request_poisoned.json](fixtures/buyer_request_poisoned.json) |
 | Natural-language request → Gemini structures a typed Scope → the lattice decides | `make demo` (Beat 4B, replaying the recorded model response) — live path: `POST /api/v1/license/natural` |
 | Revocation narrows the present, never the past; all events remain visible | `make demo` (Beat 3) — live cascade: `POST /api/v1/revoke` |
@@ -135,9 +136,13 @@ Stated plainly, without apology: these are the limits of what is checkable, and 
 
 ## Technologies used
 
-Build history and daily findings are first-class artifacts here, including the corrections:
-**[docs/BUILD-LOG.md](docs/BUILD-LOG.md)** — every session's verbatim prompt, outcome, and forked decisions, including dated correction notes where earlier entries overclaimed and were struck.
-**[docs/FINDINGS.md](docs/FINDINGS.md)** — daily observations: crawler-log audits, scope-lattice edge cases, and the Google-toolchain findings, including the Antigravity headless/OTel result below.
+Build history, findings, and the write-up are first-class artifacts here — including the corrections:
+
+- **[docs/BUILD-LOG.md](docs/BUILD-LOG.md)** — every session's verbatim prompt, outcome, and forked decisions, including seven dated correction notes where earlier entries overclaimed or reported unbuilt infrastructure as done, and were struck.
+- **[docs/FINDINGS.md](docs/FINDINGS.md)** — daily observations plus two long-form named findings: the live cross-buyer confidentiality breach (dates, exact exposure, why the existing boundary test could not catch it), and the day this project's own Cloud Scheduler job was counted as a third-party crawler, inverting its signature honesty claim.
+- **[docs/blog/seven-ways-to-lie-to-yourself-in-code.md](docs/blog/seven-ways-to-lie-to-yourself-in-code.md)** — the defect ledger as a write-up: fourteen defects, seven classes, the three that recurred, the meta-pattern behind all of them, and the four structural guards that answer it.
+- **[docs/social-posts.md](docs/social-posts.md)** — the launch posts.
+- **[docs/architecture/conflict_matrix.md](docs/architecture/conflict_matrix.md)** — generated from the policy module the Gateway reads.
 
 - **ADK (Google Agent Development Kit), `google-adk==2.6.2`** — the runtime agent framework, and it executes: [src/fleet/adk_fleet.py](src/fleet/adk_fleet.py) defines the fleet as real `google.adk.agents.BaseAgent` subclasses and drives them through a real `google.adk.runners.Runner`. One delegation crosses three distinct service accounts — negotiator → (registry discovery denied) → rights custodian → (registry discovery granted) → revocation propagator — and the ADK event stream is what the caller consumes. The agents extend `BaseAgent` rather than `LlmAgent` deliberately: each hop is a deterministic authority decision, and putting a model in that path would be the opposite of this project's thesis. Run it with `make demo` (Beat 5B). Chosen by the pre-committed branch documented in [docs/antigravity/decision.md](docs/antigravity/decision.md).
 - **OpenTelemetry** — every agent decision emits a span carrying `agent.identity`, `policy.consulted`, and `outcome`, nested inside ADK's own `invoke_agent` spans, so a whole delegation reads as a single trace.
@@ -190,4 +195,8 @@ This is a finding about the SDK's current headless surface, published rather tha
 
 Authenticated routes (`/api/v1/license`, `/api/v1/license/natural`, `/api/v1/revoke`) require signed-request headers; `/internal/accrual_audit` requires the Cloud Scheduler service account's OIDC token. Revocation additionally requires an **artist** credential — a buyer credential is refused.
 
-Deployed-path timings (measurement surface: `deployed-over-network`, from [docs/metrics.json](docs/metrics.json)): buyer API 896 ms cold / 560 ms warm average; revocation cascade 467 ms cold / 287 ms warm average; natural-language license path 3175 ms warm average (each request includes one server-side Gemini call); supervisor deadline 5.0 s, derived from an observed p95 of 2939 ms with 1.7× headroom.
+Deployed-path timings (measurement surface: `deployed-over-network`, from [docs/metrics.json](docs/metrics.json)): buyer API 896 ms cold / 560 ms warm average; revocation cascade 467 ms cold / 287 ms warm average; natural-language license path 3175 ms warm average (each request includes one server-side Gemini call); failure-tolerance drill — a looping worker detected, quarantined and rerouted — 1114 ms server-side average against a 1.0 s supervisor deadline, i.e. detection plus recovery costs about 110 ms on top of the deadline it is waiting on; supervisor deadline in production 5.0 s, derived from an observed p95 of 2939 ms with 1.7× headroom.
+
+### Failure tolerance (HOD-341, HOD-342)
+
+`QuarantineEngine` and the circuit breaker are on the executed delegation path, not beside it. Force the propagator into a loop and the Supervisor abandons it at its deadline — writing `TaskAbandoned` itself, since the worker is still looping and has reported nothing — the Registry deregisters it for the remainder of the run, and the task reroutes to a standby that returns a **stated** partial result: the affected grant set computed from the lattice and the folded state, with **no notices issued and no events appended**, because the quarantined worker's write state is unknown and the log is append-only. Quarantine and reroute are both spans in the same trace as the delegation.

@@ -107,5 +107,36 @@
     "paraphrases_not_rejected": 8,
     "probe_set_source": "scripts/measure_lint_coverage.py::PARAPHRASE_PROBES",
     "claim_limit": "The lint is a backstop against the exact phrasings it enumerates, not a general paraphrase detector. The STRUCTURAL guarantee is the schema: EvidenceRecord.class has no training-membership value, so the system cannot emit the claim as data. The lint only reduces the chance of it appearing in free text."
+  },
+  "failure_tolerance_drill": {
+    "measurement_surface": "deployed-over-network",
+    "endpoint": "/api/v1/fleet/delegation_drill",
+    "requirements": [
+      "HOD-341",
+      "HOD-342"
+    ],
+    "measured_at_utc": "2026-08-08T02:05:00Z",
+    "revision": "hodi-evidence-endpoint-00033-r6z",
+    "supervisor_deadline_seconds": 1.0,
+    "round_trip_ms": [
+      7331.42,
+      1517.77,
+      1405.74
+    ],
+    "round_trip_cold_ms": 7331.42,
+    "round_trip_warm_ms": [
+      1517.77,
+      1405.74
+    ],
+    "round_trip_warm_avg_ms": 1461.76,
+    "server_side_ms": [
+      1158.34,
+      1096.11,
+      1086.2
+    ],
+    "server_side_avg_ms": 1113.55,
+    "outcome": "COMPLETED_DEGRADED",
+    "notices_issued": 0,
+    "note": "Worker forced into an infinite loop. Server-side time is dominated by the 1.0s supervisor deadline, as designed: detection cannot be faster than the deadline it is waiting on. Quarantine, deregistration and reroute add ~110ms on top. The first run includes a Cloud Run cold start."
   }
 }

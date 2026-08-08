@@ -38,6 +38,7 @@ positive and negative of HOD-330 in a single trace.
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from google.adk.agents import BaseAgent
@@ -53,7 +54,9 @@ from src.resolve.evaluator import permits
 from src.resolve.resolver import active_grant_events
 from src.schema.grant_event import GrantEvent
 from src.schema.iam_policy import AGENT_SA_MAP
+from src.schema.lattice import USE_TYPE_CONTAINMENT
 from src.supervisor.supervisor import Supervisor
+from src.supervisor.quarantine import QuarantineEngine
 
 APP_NAME = "hodi-fleet"
 
@@ -180,20 +183,54 @@ class RevocationPropagatorADKAgent(HodiADKAgent):
     def __init__(self, shared: FleetState):
         super().__init__(name="revocation_propagator", role_key="revocation_propagator", shared=shared)
 
-    async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
+    def run_cascade(self):
+        """The unit of work the Supervisor bounds. `loop_forever` in shared state
+        makes this worker hang — the fault injection HOD-342 is specified against
+        ("a worker forced into a loop is quarantined, its task rerouted, and the
+        request completes")."""
         from src.agents.revocation_propagator import RevocationPropagatorAgent
 
-        work_id = self.shared["work_id"]
-        revoked_use_type = self.shared["revoked_use_type"]
+        if self.shared.get("loop_forever"):
+            while True:
+                time.sleep(0.05)
+
         propagator = RevocationPropagatorAgent(
             gateway=self.shared["gateway"],
             memory_bank_events=list(self.shared.get("fallback_events", [])),
         )
-        result = propagator.execute_revocation_cascade(
-            work_id=work_id, revoked_use_type=revoked_use_type
+        return propagator.execute_revocation_cascade(
+            work_id=self.shared["work_id"],
+            revoked_use_type=self.shared["revoked_use_type"],
         )
-        self.shared["cascade"] = result
 
+    async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
+        work_id = self.shared["work_id"]
+        revoked_use_type = self.shared["revoked_use_type"]
+        supervisor: Supervisor = self.shared["supervisor"]
+
+        try:
+            # HOD-341: the Supervisor bounds this hop. If no result arrives
+            # before the deadline it writes TaskAbandoned itself — the worker is
+            # still looping and has reported nothing.
+            result = supervisor.execute_bounded_task(
+                agent_id=self.name, task_func=self.run_cascade
+            )
+        except TimeoutError as exc:
+            span = self._decision_span("propagator.execute_cascade",
+                                       "supervisor_deadline_v1", "ABANDONED")
+            span.set_attribute("work.id", work_id)
+            span.set_attribute("supervisor.deadline_seconds", supervisor.deadline_seconds)
+            span.set_attribute("supervisor.reason", "deadline_exceeded")
+            span.end()
+            self.shared["abandoned"] = str(exc)
+            yield _text_event(
+                self.name,
+                f"ABANDONED by supervisor after {supervisor.deadline_seconds}s deadline "
+                f"under {self.sa_email} — no result returned",
+            )
+            return
+
+        self.shared["cascade"] = result
         span = self._decision_span("propagator.execute_cascade", "revocation_lattice_v1", "CASCADED")
         span.set_attribute("work.id", work_id)
         span.set_attribute("revoked.use_type", revoked_use_type)
@@ -283,11 +320,95 @@ class FleetDelegationOrchestrator(HodiADKAgent):
         async for event in propagator.run_async(ctx):
             yield event
 
+        # Hop 6 — HOD-342. If the worker was abandoned, quarantine it: deregister
+        # it from the Registry for the remainder of the run, then reroute to a
+        # degraded but STATED partial result so the request still completes.
+        if self.shared.get("abandoned"):
+            async for event in self._quarantine_and_reroute(discovered[0].agent_id):
+                yield event
+
+
+    async def _quarantine_and_reroute(self, quarantined_agent_id: str) -> AsyncGenerator[Event, None]:
+        """
+        Quarantine, deregister, reroute — all inside the same trace as the
+        delegation, so a judge reads one waterfall rather than correlating logs.
+
+        The reroute is DEGRADED ON PURPOSE: the standby computes the affected
+        grants deterministically from the lattice and the folded state, but does
+        NOT emit notices or write revocation events, because the quarantined
+        worker may or may not have written some already. It returns a stated
+        partial result rather than risking a double-write into an append-only
+        log that cannot be corrected.
+        """
+        registry: AgentRegistry = self.shared["registry"]
+        engine: QuarantineEngine = self.shared["quarantine_engine"]
+        standby_id = "revocation_propagator-standby"
+
+        def degraded_reroute() -> Dict[str, Any]:
+            events = list(self.shared.get("fallback_events", []))
+            active = active_grant_events([e for e in events if e.work_id == self.shared["work_id"]])
+            reachable = USE_TYPE_CONTAINMENT.get(self.shared["revoked_use_type"], set())
+            affected = [e.grant_id for e in active if e.scope.use_type in reachable]
+            return {
+                "status": "COMPLETED_DEGRADED",
+                "affected_grant_ids": affected,
+                "notices_issued": 0,
+                "partial_result_reason": (
+                    "Standby computed the affected set from the lattice and the folded "
+                    "grant state. Notices were NOT issued and no revocation events were "
+                    "written, because the quarantined worker's write state is unknown and "
+                    "the log is append-only."
+                ),
+            }
+
+        before = set(registry._publications)
+        outcome = engine.quarantine_and_reroute(
+            quarantined_agent_id=quarantined_agent_id,
+            standby_agent_id=standby_id,
+            fallback_func=degraded_reroute,
+        )
+        deregistered = quarantined_agent_id in before and quarantined_agent_id not in registry._publications
+
+        span = create_agent_decision_span(
+            span_name="supervisor.quarantine_and_reroute",
+            agent_identity=AGENT_SA_MAP["revocation_propagator"]["sa_email"],
+            policy_consulted="quarantine_policy_v1",
+            outcome="QUARANTINED_AND_REROUTED",
+        )
+        span.set_attribute("quarantine.agent_id", quarantined_agent_id)
+        span.set_attribute("quarantine.deregistered_from_registry", deregistered)
+        span.set_attribute("quarantine.rerouted_to", standby_id)
+        span.set_attribute("reroute.result_status", outcome["status"])
+        span.set_attribute("reroute.affected_grant_count", len(outcome["affected_grant_ids"]))
+        span.end()
+
+        self.shared["quarantine"] = {
+            "quarantined_agent_id": quarantined_agent_id,
+            "deregistered": deregistered,
+            "rerouted_to": standby_id,
+            "result": outcome,
+        }
+
+        yield _text_event(
+            self.name,
+            f"QUARANTINED '{quarantined_agent_id}' (deregistered={deregistered}) and rerouted to "
+            f"'{standby_id}' — request completed as {outcome['status']} affecting "
+            f"{len(outcome['affected_grant_ids'])} grant(s), {outcome['notices_issued']} notices issued",
+        )
+
+        # The quarantined agent stays deregistered for the remainder of the run:
+        # a second discovery must not find it.
+        post = registry.discover(target_role="revocation_propagator",
+                                 requesting_role_key="rights_custodian")
+        self.shared["post_quarantine_discovery"] = [p.agent_id for p in post]
+
 
 def build_fleet(counterparty_id: str, work_id: str, revoked_use_type: str,
                 gateway: Optional[AgentGateway] = None,
                 registry: Optional[AgentRegistry] = None,
-                fallback_events: Optional[List[GrantEvent]] = None):
+                fallback_events: Optional[List[GrantEvent]] = None,
+                supervisor: Optional[Supervisor] = None,
+                loop_forever: bool = False):
     """Wires the fleet. Returns (orchestrator, shared_state)."""
     if registry is None:
         registry = AgentRegistry()
@@ -309,6 +430,9 @@ def build_fleet(counterparty_id: str, work_id: str, revoked_use_type: str,
         "gateway": gateway or AgentGateway(),
         "registry": registry,
         "fallback_events": fallback_events or [],
+        "supervisor": supervisor or Supervisor(deadline_seconds=10.0),
+        "quarantine_engine": QuarantineEngine(registry=registry),
+        "loop_forever": loop_forever,
     })
     orchestrator = FleetDelegationOrchestrator(
         shared=shared,
@@ -337,18 +461,26 @@ def run_revocation_delegation(counterparty_id: str, work_id: str, revoked_use_ty
                               gateway: Optional[AgentGateway] = None,
                               registry: Optional[AgentRegistry] = None,
                               fallback_events: Optional[List[GrantEvent]] = None,
-                              supervisor: Optional[Supervisor] = None) -> Dict[str, Any]:
+                              supervisor: Optional[Supervisor] = None,
+                              loop_forever: bool = False) -> Dict[str, Any]:
     """
     Runs the delegation through the ADK runner, inside the Supervisor's
     wall-clock deadline. Returns the ADK event transcript plus what each hop
     produced.
     """
+    # HOD-341 is a PER-AGENT deadline; the run-level bound is a separate,
+    # necessarily longer backstop. Sharing one Supervisor for both meant the
+    # outer bound fired at the same instant as the hop bound, killing the run
+    # before quarantine and reroute could complete — the recovery would never
+    # have been observable.
+    supervisor = supervisor or Supervisor(deadline_seconds=10.0)
+    run_supervisor = Supervisor(deadline_seconds=supervisor.deadline_seconds * 4 + 15.0)
     orchestrator, shared = build_fleet(
         counterparty_id=counterparty_id, work_id=work_id, revoked_use_type=revoked_use_type,
         gateway=gateway, registry=registry, fallback_events=fallback_events,
+        supervisor=supervisor, loop_forever=loop_forever,
     )
-    supervisor = supervisor or Supervisor(deadline_seconds=10.0)
-    transcript = supervisor.execute_bounded_task(
+    transcript = run_supervisor.execute_bounded_task(
         agent_id="fleet_orchestrator",
         task_func=lambda: asyncio.run(_run_async(orchestrator)),
     )
@@ -359,4 +491,8 @@ def run_revocation_delegation(counterparty_id: str, work_id: str, revoked_use_ty
         "active_grants": shared.get("active_grants", []),
         "cascade": shared.get("cascade"),
         "denial": shared.get("denial"),
+        "abandoned": shared.get("abandoned"),
+        "quarantine": shared.get("quarantine"),
+        "post_quarantine_discovery": shared.get("post_quarantine_discovery"),
+        "task_abandoned_events": [e.model_dump(mode="json") for e in supervisor.abandoned_events],
     }

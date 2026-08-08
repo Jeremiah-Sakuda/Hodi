@@ -229,6 +229,47 @@ def beat_5b_adk_delegation(events):
     print("        under a third service account holding neither identity nor buyer terms.")
 
 
+def beat_5c_quarantine_and_reroute(events):
+    rule("BEAT 5C — A LOOPING WORKER IS QUARANTINED, THE REQUEST STILL COMPLETES (HOD-341/342)")
+    import io
+    from contextlib import redirect_stdout
+    from src.supervisor.supervisor import Supervisor
+    from src.fleet.adk_fleet import run_revocation_delegation
+
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        # Fault injection: the revocation propagator never returns.
+        result = run_revocation_delegation(
+            counterparty_id="acme-intelligence-labs",
+            work_id="work-essay-001",
+            revoked_use_type="training",
+            fallback_events=events,
+            supervisor=Supervisor(deadline_seconds=0.5),
+            loop_forever=True,
+        )
+
+    for entry in result["transcript"][-2:]:
+        print(f"  [{entry['author']:<22}] {entry['text']}")
+
+    abandoned = result["task_abandoned_events"]
+    quarantine = result["quarantine"]
+    assert len(abandoned) == 1 and abandoned[0]["written_by"] == "supervisor", \
+        "TaskAbandoned must be written BY THE SUPERVISOR, not by the failing worker."
+    assert abandoned[0]["reason"] == "deadline_exceeded"
+    assert quarantine["deregistered"] is True, "The looping worker must be deregistered."
+    assert result["post_quarantine_discovery"] == [], \
+        "It must stay deregistered for the remainder of the run."
+    assert quarantine["result"]["status"] == "COMPLETED_DEGRADED", \
+        "The request must still complete."
+    assert quarantine["result"]["notices_issued"] == 0
+
+    print(f"  TaskAbandoned written by : {abandoned[0]['written_by']} (reason: {abandoned[0]['reason']})")
+    print(f"  discovery after quarantine: {result['post_quarantine_discovery']} (deregistered for the run)")
+    print("  PASS: the worker looped, the supervisor abandoned it without its cooperation,")
+    print("        the registry deregistered it, and the request completed as a STATED")
+    print("        partial result — no notices issued, nothing appended to the log.")
+
+
 def beat_6_honesty_invariants():
     rule("BEAT 6 — HONESTY INVARIANTS: THE SCHEMA CANNOT SAY IT, THE LINT WON'T LET IT (HOD-320)")
     from src.schema.evidence import EvidenceRecord, CLAIM_LIMIT_LITERAL
@@ -265,6 +306,7 @@ def main():
     beat_4b_natural_language_interpretation(events)
     beat_5_conflict_walls()
     beat_5b_adk_delegation(events)
+    beat_5c_quarantine_and_reroute(events)
     beat_6_honesty_invariants()
     print("\nALL DEMO BEATS PASSED.")
 

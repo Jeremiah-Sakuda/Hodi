@@ -163,3 +163,98 @@ class TestSupervisorBoundsInProcessWork(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestQuarantineAndRerouteOnTheDelegationPath(unittest.TestCase):
+    """
+    HOD-341 + HOD-342 on the LIVE delegation path, not in isolation.
+
+    The rubric asks how the system recovers when a worker agent loops or
+    hallucinates. `QuarantineEngine` existed and was unit-tested, but appeared
+    in no execution path — so that question had no answer in running code. It
+    is now wired into the ADK delegation, and this class forces the failure
+    rather than simulating its aftermath.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.exporter = InMemorySpanExporter()
+        provider = trace.get_tracer_provider()
+        if not isinstance(provider, TracerProvider):
+            provider = TracerProvider()
+            trace.set_tracer_provider(provider)
+        provider.add_span_processor(SimpleSpanProcessor(cls.exporter))
+
+    def setUp(self):
+        os.environ["HODI_OFFLINE"] = "1"
+        self.addCleanup(lambda: os.environ.pop("HODI_OFFLINE", None))
+        self.exporter.clear()
+
+        from src.fleet.adk_fleet import run_revocation_delegation
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            # The fault injection: the propagator never returns.
+            self.result = run_revocation_delegation(
+                counterparty_id="acme-intelligence-labs",
+                work_id="work-essay-001",
+                revoked_use_type="training",
+                fallback_events=fixture_events(),
+                supervisor=Supervisor(deadline_seconds=0.5),
+                loop_forever=True,
+            )
+
+    def test_the_looping_worker_is_abandoned_by_the_supervisor(self):
+        events = self.result["task_abandoned_events"]
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["agent_id"], "revocation_propagator")
+        self.assertEqual(events[0]["reason"], "deadline_exceeded")
+        self.assertEqual(events[0]["written_by"], "supervisor",
+                         "TaskAbandoned must be written BY THE SUPERVISOR, never by the failing worker")
+
+    def test_the_worker_is_quarantined_and_deregistered_from_the_registry(self):
+        q = self.result["quarantine"]
+        self.assertEqual(q["quarantined_agent_id"], "revocation_propagator-v1")
+        self.assertTrue(q["deregistered"])
+
+    def test_it_stays_deregistered_for_the_remainder_of_the_run(self):
+        """'for the remainder of the run' is the requirement — a later discovery
+        must not find it again."""
+        self.assertEqual(self.result["post_quarantine_discovery"], [])
+
+    def test_the_request_still_completes_with_a_stated_partial_result(self):
+        outcome = self.result["quarantine"]["result"]
+        self.assertEqual(outcome["status"], "COMPLETED_DEGRADED")
+        self.assertIn("grant-demo-001", outcome["affected_grant_ids"])
+        self.assertEqual(outcome["notices_issued"], 0)
+        self.assertIn("append-only", outcome["partial_result_reason"],
+                      "a degraded result must STATE why it is degraded")
+
+    def test_quarantine_and_reroute_are_both_spans_in_a_single_trace(self):
+        """HOD-342 AC: the quarantine and the reroute both appear as spans in a
+        single OTel trace."""
+        spans = self.exporter.get_finished_spans()
+        by_name = {s.name: s for s in spans}
+        self.assertIn("propagator.execute_cascade", by_name)
+        self.assertEqual(by_name["propagator.execute_cascade"].attributes["outcome"], "ABANDONED")
+
+        self.assertIn("supervisor.quarantine_and_reroute", by_name)
+        quarantine = by_name["supervisor.quarantine_and_reroute"]
+        self.assertEqual(quarantine.attributes["outcome"], "QUARANTINED_AND_REROUTED")
+        self.assertTrue(quarantine.attributes["quarantine.deregistered_from_registry"])
+        self.assertEqual(quarantine.attributes["reroute.result_status"], "COMPLETED_DEGRADED")
+
+        self.assertEqual(len({s.context.trace_id for s in spans}), 1,
+                         "quarantine and reroute must be readable in ONE trace")
+
+    def test_the_healthy_path_does_not_quarantine_anything(self):
+        """Paired positive: without the fault, nothing is abandoned or quarantined."""
+        from src.fleet.adk_fleet import run_revocation_delegation
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            healthy = run_revocation_delegation(
+                counterparty_id="acme-intelligence-labs", work_id="work-essay-001",
+                revoked_use_type="training", fallback_events=fixture_events())
+        self.assertIsNone(healthy["abandoned"])
+        self.assertIsNone(healthy["quarantine"])
+        self.assertEqual(healthy["task_abandoned_events"], [])
+        self.assertIsNotNone(healthy["cascade"])

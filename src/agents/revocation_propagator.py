@@ -3,7 +3,7 @@ from typing import List, Dict, Any
 from datetime import datetime, timezone
 from src.schema.grant_event import GrantEvent, Receipt
 from src.schema.revocation import RevocationNotice, RevocationReceipt
-from src.schema.lattice import USE_TYPE_CONTAINMENT, MODEL_CLASS_CONTAINMENT
+from src.schema.lattice import USE_TYPE_CONTAINMENT, MODEL_CLASS_CONTAINMENT, use_type_derivation_chain
 from src.resolve.resolver import resolve
 from src.gateway.gateway import AgentGateway
 from pydantic import BaseModel
@@ -38,21 +38,29 @@ class RevocationPropagatorAgent:
         # Kept for backward compatibility with mock tests, though live path uses gateway
         self.memory_bank_events = memory_bank_events if memory_bank_events is not None else []
 
-    def get_grants(self):
-        """Mock method for IAM positive test"""
-        return {"status": "SUCCESS", "data": []}
-        
-    def write_revocation_notice(self, notice: Dict[str, Any]):
-        """Mock method for IAM positive test"""
-        return {"status": "SUCCESS", "receipt": "mock-receipt"}
-        
-    def read_buyer_terms(self, counterparty_id: str):
-        """Mock method for IAM negative test"""
-        raise PermissionError("PERMISSION_DENIED: Revocation Propagator cannot read buyer_terms")
-        
-    def read_artist_identity(self):
-        """Mock method for IAM negative test"""
-        raise PermissionError("PERMISSION_DENIED: Revocation Propagator cannot read artist identity")
+    # The conflict-boundary reads below go through the Gateway under this
+    # agent's own service account, so the IAM tests exercise the SAME policy
+    # path production uses. Four hardcoded "mock method for IAM test" stubs
+    # previously stood here and returned canned values, which meant the IAM
+    # tests asserted against the stubs rather than against the policy.
+    def get_grants(self, work_id: str) -> Dict[str, Any]:
+        """Paired positive: the propagator CAN read grants (its own domain)."""
+        return {"status": "SUCCESS", "data": self.gateway.read_collection(
+            calling_sa=PROPAGATOR_SA, calling_role_key="revocation_propagator",
+            target_collection="grants", filters={"work_id": work_id})}
+
+    def read_buyer_terms(self, counterparty_id: str) -> Dict[str, Any]:
+        """Paired negative: the propagator CANNOT read buyer terms — denied by policy."""
+        return self.gateway.read_collection(
+            calling_sa=PROPAGATOR_SA, calling_role_key="revocation_propagator",
+            target_collection="buyer_terms", filters={"counterparty_id": counterparty_id},
+            session_context={"counterparty_id": counterparty_id})
+
+    def read_artist_identity(self) -> Dict[str, Any]:
+        """Paired negative: the propagator CANNOT hold artist identity — denied by policy."""
+        return self.gateway.read_collection(
+            calling_sa=PROPAGATOR_SA, calling_role_key="revocation_propagator",
+            target_collection="artists")
 
     def execute_revocation_cascade(self, work_id: str, revoked_use_type: str) -> CascadeResult:
         """
@@ -77,29 +85,16 @@ class RevocationPropagatorAgent:
             
         unique_grant_ids = set(e.grant_id for e in events)
         
-        # 1b. Build structured derivation chain for the UI
-        structured_derivation = []
-        if revoked_use_type == "training":
-            structured_derivation = [
-                DerivedScope(scope="training", parent="training", reason="Directly revoked"),
-                DerivedScope(scope="fine_tuning", parent="training", reason="training ⊃ fine_tuning"),
-                DerivedScope(scope="rag_retrieval", parent="fine_tuning", reason="fine_tuning ⊃ rag_retrieval"),
-                DerivedScope(scope="human_reference", parent="rag_retrieval", reason="rag_retrieval ⊃ human_reference")
-            ]
-        elif revoked_use_type == "fine_tuning":
-            structured_derivation = [
-                DerivedScope(scope="fine_tuning", parent="fine_tuning", reason="Directly revoked"),
-                DerivedScope(scope="rag_retrieval", parent="fine_tuning", reason="fine_tuning ⊃ rag_retrieval"),
-                DerivedScope(scope="human_reference", parent="rag_retrieval", reason="rag_retrieval ⊃ human_reference")
-            ]
-        elif revoked_use_type == "rag_retrieval":
-            structured_derivation = [
-                DerivedScope(scope="rag_retrieval", parent="rag_retrieval", reason="Directly revoked"),
-                DerivedScope(scope="human_reference", parent="rag_retrieval", reason="rag_retrieval ⊃ human_reference")
-            ]
-        else:
-            structured_derivation = [DerivedScope(scope=revoked_use_type, parent=revoked_use_type, reason="Directly revoked")]
-            
+        # 1b. Derivation chain, walked from the LATTICE DATA — never branched on.
+        # This was an if/elif ladder enumerating the chain per use-type, i.e. a
+        # second source of truth for the partial order that lattice.py exists to
+        # prevent. Adding a use-type would have silently produced an incomplete
+        # cascade (HOD-104).
+        structured_derivation = [
+            DerivedScope(scope=scope, parent=parent, reason=reason)
+            for scope, parent, reason in use_type_derivation_chain(revoked_use_type)
+        ]
+        
         affected_grants = []
         issued_notices = []
         
