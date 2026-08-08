@@ -1,0 +1,82 @@
+# Devpost submission — Hodi
+
+Created for the All Things Agentic Hackathon. Category: The Fortified Enterprise Fleet.
+
+Every claim below has a producing section in the repository, named inline. Every number is read from `docs/metrics.json` or the live service, and `make check-docs` fails the build if this file's figures drift from their source.
+
+---
+
+## 1. Features and functionality
+
+**Your voice is in a product you never agreed to.** There was no mechanism by which you could have agreed, refused, priced, or revoked. *Hodi* is what you call at someone's door before entering. **Hodi is the knock.**
+
+Hodi is a governed fleet of institutional agents that administers creative consent end to end.
+
+**Register a work with proof of control.** Five real works — the author's own Medium essays, public repositories, and bass recordings, never a synthetic corpus. Every registration carries a mandatory `control_tier`: `verified_control` (with a stored, resolving proof), `asserted`, or `disputed`. The schema makes `verified_control` without a stored proof unconstructible, and `make verify-manifest` re-fetches the live manifest and fails if any proof URI stops resolving. A live audit caught three works claiming `verified_control` on fictitious proofs; they were downgraded to `asserted` and the daily check exists so that cannot recur.
+
+**Express scoped, machine-readable terms.** A `Scope` is five dimensions — use type, model class, commercial status, territory, temporal validity. Use types form a declared partial order (`training ⊃ fine_tuning ⊃ rag_retrieval ⊃ human_reference`; `synthesis` incomparable), stated as **data**, never as branching logic. `permits()` resolves containment across all five dimensions simultaneously, per grant, never merging dimensions across grants — so a `fine_tuning` grant plus a separate `commercial` grant can never compose into commercial fine-tuning. A 47-case truth table runs in CI via `make verify-scopes`.
+
+**Ask in plain English.** `POST /api/v1/license/natural` takes a natural-language request — *"we'd like to fine-tune an open-weights model on this work for non-commercial research, US and Canada only"* — and Gemini 3.5 Flash structures it into a typed `Scope`. **The model interprets intent. The lattice decides permission.** Gemini's only power is to produce a schema-validated `Scope`; a malformed, out-of-vocabulary, or extra-field interpretation is rejected with HTTP 422, never coerced. A test injects an interpretation smuggling `{"permitted": true}` and asserts it is *rejected*, not stripped. Gemini never grants anything.
+
+**Negotiate under confidentiality, enforced structurally.** Four agents separated by **conflict of interest, not task**: the rights custodian holds artist identity; the licensing negotiator sees one counterparty per session and must be *incapable* of reading another's terms; the evidence agent must not see commercial terms or its findings become interested; the revocation propagator must not hold identity. No service account holds two of {identity, buyer terms, evidence, revocation}. A monolith here would itself be the violation. Every inter-agent call passes a gateway that logs each denial as a structured `PolicyDenialEvent` — never a silent refusal, and never a stack trace.
+
+**Revoke, and cascade by containment.** Revoking `training` reaches every use type it contains, derived by walking the lattice's covering relation — not enumerated in code. Affected grants are computed, signed notices issued with receipts, and the original grant remains visible and struck through. Revocation is a **new event that supersedes**; nothing is ever mutated or deleted.
+
+**Recover from a looping worker.** Force the revocation propagator into an infinite loop and the Supervisor abandons it at its deadline — writing `TaskAbandoned` itself, because the worker is still looping and has reported nothing — the Registry deregisters it for the remainder of the run, and the task reroutes to a standby returning a **stated** partial result: the affected set computed deterministically, with no notices issued and no events appended, because the quarantined worker's write state is unknown and the log is append-only. Quarantine and reroute are both spans in the same trace. Measured on the deployed path: 1113.55 ms server-side average against a 1.0 s deadline.
+
+**Prove it without credentials.** `make demo` runs the whole spine offline — verified from a clean clone in a fresh container with the network disconnected — and every beat asserts the property it demonstrates rather than printing it.
+
+---
+
+## 2. Technologies used
+
+- **Gemini 3.5 Flash via Vertex AI** (`gemini-3.5-flash`, `global` endpoint, temperature 0, pinned literal) — natural-language scope interpretation, and revocation-notice drafting gated by a deterministic lint. Availability was probed empirically across nine model IDs and three regions: `gemini-3.5-pro` does not exist in this project's publisher catalog and 404s everywhere; the pro-class 3.x IDs are all previews, which roll, and judging runs past this build. `gemini-3.5-flash` is the newest stable non-preview ID reachable, and it is what runs.
+- **ADK — Google Agent Development Kit** (`google-adk==2.6.2`) — the runtime agent framework, and it **executes**: the fleet are real `google.adk.agents.BaseAgent` subclasses driven by a real `google.adk.runners.Runner`. They extend `BaseAgent` rather than `LlmAgent` deliberately, because every hop is a deterministic authority decision and a model in that path would contradict the thesis.
+- **Gemma, serverless on Vertex AI** (`gemma-4-26b-a4b-it-maas`) — first-pass triage of crawler access records before anything reaches Gemini. Deliberately non-load-bearing: if it is unreachable, Ollama and then a heuristic classify, and evidence records are still produced.
+- **OpenTelemetry** — every agent decision emits a span carrying `agent.identity`, `policy.consulted`, and `outcome`, nested inside ADK's own `invoke_agent` spans. A five-hop delegation across three service accounts reads as one trace.
+- **Firestore** — the append-only grant-event log. Deterministic event IDs; a custom IAM role (`hodiAppendOnlyGrantWriter`) grants `create`/`get`/`list` and withholds `update` and `delete` from every agent service account, so history cannot be rewritten.
+- **Cloud Run** — the deployed evidence endpoint and buyer API, plus the nightly teardown job. `min-instances=0`, `max-instances=5`.
+- **Cloud Scheduler** — two jobs with real execution history: a daily accrual audit (09:00 UTC, authenticated by OIDC) and the nightly teardown (23:00 UTC), which has fired on its own cron.
+- **Cloud Logging** — gateway denials land as structured `jsonPayload` events, queryable by calling SA, collection, and policy.
+
+**Build evidence is in the repository, corrections included:** [`docs/BUILD-LOG.md`](docs/BUILD-LOG.md) (every session's verbatim prompt, outcome, and forked decisions, with seven dated correction notes), [`docs/FINDINGS.md`](docs/FINDINGS.md), [`docs/antigravity/decision.md`](docs/antigravity/decision.md), and the write-up [`docs/blog/seven-ways-to-lie-to-yourself-in-code.md`](docs/blog/seven-ways-to-lie-to-yourself-in-code.md).
+
+**On the Antigravity SDK.** A pre-committed boolean assertion was tested: *from a headless Cloud Run Job, with no interactive session, the SDK executes a two-agent delegation under distinct service accounts and emits an OpenTelemetry span per agent decision carrying the invoking agent's identity, the policy consulted, and the outcome.* Observed result: the headless job failed at the first check — `No module named 'google.antigravity'`. Antigravity does not currently expose a headless server-side Python surface for multi-agent delegation under distinct service accounts. Partial emission was pre-committed as a fail, so the branch to ADK executed the same day. Published as a negative result with the exact harness and error text, because it is information a reader cannot get elsewhere.
+
+---
+
+## 3. Other data sources
+
+**The corpus is the author's own published work.** Five real registered works — Medium essays, public GitHub repositories, and original electric bass recordings and stems. No synthetic corpus, and none was ever acquired. This is the only uncontrolled input in the project and it is deliberately real: a rights registry demonstrated on invented works demonstrates nothing about rights.
+
+**Crawler access records are first-party observation.** A Cloud Run evidence endpoint has logged every access since 2026-08-06 — timestamp, path, user agent, source address, referrer, and whether `robots.txt` was fetched first — alongside `/.well-known/hodi.json` declaring machine-readable consent terms and a `robots.txt` referencing them. These are our own logs, not a purchased or scraped dataset.
+
+**Canary strings** were planted in newly published items on 2026-08-06T12:40:00Z. They can only ever protect work published *after* that date; no retroactive coverage is claimed.
+
+**No third-party dataset, no purchased data, and no real company named as a violator anywhere.** Every adversary in every fixture is fictional and unnamed.
+
+---
+
+## 4. Findings and learnings
+
+I built a system whose entire premise is refusing to assert what it cannot verify, then kept a ledger of every place it lied to me anyway. **Fourteen defects, seven classes, and three classes that recurred after being fixed once.** The ledger is the most externally useful thing this project produced.
+
+**The confidentiality boundary was breakable, and it was broken.** Hodi's first invariant — *no agent can read another buyer's terms* — is the reason there are four agents instead of one. `POST /api/v1/license` took `counterparty_id` from the request body and used it as **both** the query filter **and** the session context the gateway validated that filter against, so the gateway compared the caller's claim to itself and always agreed; the signature was checked only for truthiness. One unauthenticated `curl` with `signature: "NOT-A-REAL-SIGNATURE"` returned another counterparty's grant, their negotiated scope, and a receipt in their name. The gateway was working exactly as designed; it was being handed the attacker's assertion as ground truth. It is now HMAC-authenticated over the raw request body with identity derived from a verified credential, and **the exploit is a permanent regression test** replayed against the deployed service by `make demo-live`.
+
+**A boundary test that cannot fail the way production fails is not a boundary test.** The live boundary test passed throughout the vulnerable period, because it exercised a debug endpoint that supplies its own session context.
+
+**Fixing a bug class on one route does not fix the class.** One day later, `POST /api/v1/revoke` — three lines below the handler I had just fixed — took no authenticator at all. Anyone could revoke any published work ID; the response disclosed every affected counterparty's terms; and because the log is append-only with no update or delete, the writes were **not undoable**. The answer was structural: a test that enumerates the router's own routes and fails CI if any mutating method reaches an endpoint that never authenticates. Twenty lines. Both defects would have been caught on first commit.
+
+**My own infrastructure became my "third-party crawlers".** The project's signature finding is a negative result: *I published machine-readable consent terms at a discoverable endpoint and no crawler asked.* The self-traffic user-agent list omitted `Google-Cloud-Scheduler`, so **this project's own scheduled job was being counted as third-party crawler access** — the honesty finding inverted into a fabricated positive manufactured by its own infrastructure. It surfaced not from a test but because the README said one number and the project's own `make metrics` produced another. Root cause: the list existed in two files, and the same class of miss had already fired once. A comment above one copy literally warned about it. **A comment is not a mechanism.**
+
+**Investigating the residue narrowed the claim.** After the fix, ten non-self records remained. They were not crawlers: nine arrived within one second from cloud IPs and one requested the debug endpoint — inspection traffic. Reporting them as crawler access would have been the same fabrication from the opposite direction. So the metric changed shape: `known_crawler_ua_matches` is **0** and is the only figure this project will call crawler access; everything else non-self is labelled *unattributed*, with a `claim_limit` string in the metrics file itself.
+
+**Four tests could not fail.** The guardian of the append-only invariant built a set literal and asserted the set contained what it was constructed to contain. Prompt-injection detection lived entirely inside a credential-gated class, so emptying the detection patterns broke nothing. A sort tiebreak documented as load-bearing for reproducibility was never exercised, because every fixture happened to carry a distinct timestamp. Gating a test class for a legitimate reason silently stranded the properties in it that had no such requirement.
+
+**The honesty section had an overstatement, so we measured it.** The README claimed the overclaim lint catches paraphrases. Against a 12-paraphrase probe set seeded from phrasings it was deliberately not written against, **it rejects 4**. The README now says so, `make lint-coverage` regenerates the figure, and the build fails if the prose drifts from it. The structural guarantee was always the schema — `EvidenceRecord.class` has no training-membership value, so the system cannot emit the claim as data — and the lint is a backstop. Publishing the real hit rate is cheaper than being caught implying a better one.
+
+**The meta-pattern behind all seven classes:** *a stated property, a mechanism that does not enforce it, and nothing connecting the two.* The property is always written down. The mechanism usually exists. What is missing is something that fails loudly when they come apart. The one place that wire already existed — the IAM conflict matrix generated from the policy module the gateway reads — never drifted once.
+
+**And its limit, which is the sharpest thing I learned:** generation-from-source protects against the *documentation* drifting from the source. It does **not** protect against the source being read wrongly. The conflict matrix was generated correctly from a policy module whose enforcement function matched collections by prefix, so a path template written to express per-counterparty scoping also permitted reading the entire collection. The document was accurate. The permission it described was not the permission being granted.
+
+**Google-toolchain findings.** ADK supports fully deterministic multi-agent execution with no LLM in the loop — subclass `BaseAgent`, implement `_run_async_impl` — which matters for any governed system where hops are authority decisions rather than generations; every ADK example we found assumes `LlmAgent`. ADK's own spans compose with application spans, so a delegation across three service accounts reads as one trace carrying both framework and policy attributes. And a sharp edge worth publishing: **`BaseAgent` is a Pydantic model, so shared mutable state passed as a field is deep-copied per agent** — every agent mutated a private copy, the orchestrator saw none of it, nothing errored, and the run "succeeded" while returning empty results.
