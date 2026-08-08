@@ -1,3 +1,9 @@
+---
+layout: post
+title: "Seven ways to lie to yourself in code"
+description: "A defect ledger from building a system whose premise is refusing to assert what it cannot verify."
+---
+
 # Seven ways to lie to yourself in code
 
 *Created for the All Things Agentic Hackathon.*
@@ -7,6 +13,12 @@ I built a system whose entire premise is refusing to assert what it cannot verif
 The project is called Hodi — *hodi* is what you call at someone's door before entering. It's a governed fleet of agents that administers creative consent: registering works with proof of control, expressing machine-readable licensing terms, negotiating with buyers under confidentiality, propagating revocations. Four agents separated by conflict of interest, an append-only event log, and a set of honesty invariants that are supposed to be enforced by structure rather than by good intentions.
 
 Over about seventy-two hours it produced fourteen real defects. They sort into seven classes. **Three of those classes recurred after being fixed once** — which is the actually interesting part, because a bug you fix twice is telling you something a bug you fix once is not.
+
+Before the ledger, the one idea worth understanding, because most of what follows only lands if you have it.
+
+The four agents are separated by **conflict of interest, not by task**. The rights custodian holds artist identity and must see it. The licensing negotiator talks to buyers and must *not* see other buyers' negotiated terms — rate confidentiality is the norm in licensing, and a leak destroys the next deal. The evidence agent reads access logs and outputs and must *not* see commercial terms, because findings from an agent that knows what a deal is worth are interested findings. The revocation propagator acts across grants and must not hold identity at all.
+
+Stack those constraints and you get the point of the architecture: a single agent doing all four jobs would need the union of all four permission sets, which is precisely the position no honest broker may occupy. **A monolith here would itself be the violation.** The separation isn't decomposition for tidiness; it's the product. Which is why the first defect below is the one that matters most.
 
 Here they are, worst first.
 
@@ -18,9 +30,9 @@ The first invariant in the README reads: *"No agent can read another buyer's ter
 
 It was breakable over the public internet, unauthenticated, and it was broken.
 
-`POST /api/v1/license` took `counterparty_id` from the request body and used that same value as **both** the database query filter **and** the "session context" the policy gateway validated that filter against. The gateway compared the caller's claim to itself and always agreed. The signature field was checked only for truthiness — any non-empty string passed.
+`POST /api/v1/license` took `counterparty_id` from the request body and used that same value as **both** the database query filter **and** the "session context" the policy gateway validated that filter against. The gateway compared the caller's claim to itself and always agreed. The signature field was checked only for truthiness.
 
-One `curl`, with `signature: "NOT-A-REAL-SIGNATURE"`, returned another counterparty's grant id, their full negotiated scope, and a signed receipt issued in their name.
+An unauthenticated request, naming a counterparty that was not its own, came back with that counterparty's grant id, their full negotiated scope, and a signed receipt issued in their name.
 
 The gateway was working exactly as designed. It was being handed the attacker's assertion as ground truth. That's the shape of it: **the mechanism was fine, the input to the mechanism was the lie.**
 
@@ -60,11 +72,31 @@ Reporting those ten as crawler access would have been exactly the fabricated fin
 
 **Infrastructure reported done, never built.** Budget alerts, a cost-fenced project, a scheduler. All written up as complete in the build log. None existed. This one gets its own correction note, because the pattern — reporting infrastructure as verified without an observed execution — is itself the finding.
 
-**Claims with no code behind them.** The agent framework was named as "the runtime framework" in the README, in the spec, and on the architecture diagram, while the import appeared nowhere in the codebase. The only occurrence of its name was inside a `print()` statement.
+**Claims with no code behind them.** Google's Agent Development Kit — ADK — was named as "the runtime agent framework" in the README, in the spec, and on the architecture diagram, while `google.adk` appeared nowhere in the codebase. The only occurrence of the string was inside a `print()` statement. It was my claim and my omission, so there is nobody to be vague about.
 
 **Policy looser than the policy text.** Collection permissions were matched by prefix, so an entry written to express *per-counterparty scoping* also permitted reading the entire collection. And a `denied_collections` list sat in the policy data, consulted by nothing. The policy document was right. The generated documentation rendered it faithfully. The enforcement quietly did not implement it.
 
 **Semantics that disagreed with themselves.** Four instances. The cleanest: a "superseded" grant. `resolve()` reported status *superseded* while handing back a live scope; the folded-state function correctly returned nothing; and the containment engine accepted the raw event and said *yes*. Three components, three answers, about the same event. Fail-closed, so never a breach — but "revocation is a new event that supersedes" was not what the read path implemented.
+
+---
+
+## The one claim that was verified before it was made
+
+There is a counter-example in the ledger, and it is the same discipline applied one level up — to a decision about what to build on, rather than to code already written.
+
+The competition spec required at least one Google agent framework. I intended to use the Antigravity SDK. Before building anything on it, I wrote down a boolean assertion and gave it a date:
+
+> *From a headless Cloud Run Job, with no interactive session, the SDK executes a two-agent delegation under distinct service accounts and emits an OpenTelemetry span per agent decision carrying (a) the invoking agent's identity, (b) the policy consulted, and (c) the outcome.*
+
+Partial emission counted as a failure, stated in advance. Spans without agent identity cannot support the observability requirement, so "it emits spans, just not those ones" was defined as a no before there was any temptation to call it a yes.
+
+The harness was two trivial agents, one delegating to the other, deployed as a Cloud Run Job under two distinct service accounts. Observed result: it failed at the first check — `No module named 'google.antigravity'`. The SDK does not currently expose a headless server-side Python surface for multi-agent delegation under distinct service accounts.
+
+The pre-committed branch was ADK, and ADK is what runs today. The full assertion, the verbatim output, the span payloads and the branch taken are in [`docs/antigravity/decision.md`](../antigravity/decision.md).
+
+I am not making a claim about the SDK's quality — this is one assertion, on one date, about one surface, and an IDE-oriented tool not having a headless server module is a reasonable thing for it to be. The part worth noticing is procedural: **the decision criterion existed before the test, so the outcome was executed rather than debated.** There was no afternoon spent negotiating with myself about whether partial emission was good enough.
+
+And it is the only claim in this project that was verified before it was made. It is also the only one that never had to be corrected.
 
 ---
 
@@ -79,6 +111,8 @@ The property is always written down somewhere — a README row, a docstring, a c
 I already had one instance of that wire and it worked perfectly. The IAM conflict matrix in the docs is *generated* from the policy module the gateway reads. It cannot drift. In seventy-two hours it never drifted once.
 
 Everywhere I hadn't built that wire, things drifted.
+
+Worth saying plainly: much of this was built with agentic assistance, and several classes in this ledger are that practice's characteristic failure modes — infrastructure reported done without an observed execution, tests that assert what they were just constructed to assert, transcripts written rather than captured. The speed is real and so is that failure surface. The guards are the answer to it specifically: **a mechanism that fails loudly is the only thing that distinguishes work verified from work reported as verified.** Reading more carefully does not scale; a build that goes red does.
 
 So the fixes that matter aren't the fourteen patches. They're the four guards:
 
@@ -102,6 +136,14 @@ The conflict matrix was generated correctly from a policy module whose *enforcem
 For that you need the second thing: a test that fails when the property is false, written from the property rather than from the implementation. Which is the standard advice, and I'd read it many times, and I still wrote four tests that couldn't fail.
 
 The difference between knowing that and doing it, it turns out, is roughly one defect ledger.
+
+---
+
+None of which is why the thing exists.
+
+An illustrator cannot currently say *this series may be trained on, that one may not, and this third may for a fee with attribution* in any form a counterparty can read, verify, or be held to. The options are a checkbox on a platform you don't control, a `robots.txt` line covering a whole domain, or a lawsuit years later. Buyers acting in good faith have the mirror problem: no way to find work that is actually licensable. Both sides are stuck for the same reason — there is no machine-readable, verifiable, revocable expression of creative consent. Hodi is an attempt at that rail: register a work with proof of control, express scoped terms a machine can read, ask in plain language and get a typed answer with a receipt, revoke and have it cascade.
+
+And the finding I did not expect to be the most interesting one: I published machine-readable consent terms at a discoverable endpoint, with a `robots.txt` pointing at them, and **no crawler has asked.** Not one, across every access the endpoint has logged. The absence is the evidence. Hodi is the knock — it turns out the harder problem may not be building the door.
 
 ---
 

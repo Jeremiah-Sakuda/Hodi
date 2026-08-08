@@ -1,0 +1,6 @@
+title: "Hodi — Creative Consent Administration Fleet"
+description: "A governed fleet of agents that administers creative consent. Built for the All Things Agentic Hackathon."
+theme: minima
+show_downloads: false
+exclude:
+  - metrics.json
