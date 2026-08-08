@@ -24,7 +24,7 @@ Here they are, worst first.
 
 ## The one that was live
 
-The first invariant in the README reads: *"No agent can read another buyer's terms."* It's the first row of the invariant table, the reason there are four agents instead of one, and a beat in the demo video.
+The first invariant in the README reads: *"No agent can read another buyer's terms."* It's the first row of the invariant table and the reason there are four agents instead of one.
 
 It was breakable over the public internet, unauthenticated, and it was broken.
 
@@ -57,6 +57,8 @@ It didn't surface from a test. It surfaced because the README said one number an
 The root cause was duplication: the list existed in two files. And it had already fired once — the day before, with two different missing patterns. The fix that time was to add them to both copies. The comment directly above one of those lists literally warned that a missing pattern "inflates the third-party count into a fabricated finding."
 
 The warning was correct. It did not prevent the recurrence. **A comment is not a mechanism.**
+
+And then it happened a third time. The final verification pass, days later, found a Hodi-branded audit probe — my own, running from my own machine — being counted as non-self-originated, because it too was missing from the list. Three misses, three fixes, and the first two fixes were *adding the missing entries*. The third fix was the one that should have been first: every probe this project points at its own endpoint is named `Hodi-<something>`, so the check now matches the prefix. A new probe is covered on the day it is written. The repo's own note on it reads: *"An enumeration you must remember to update is not a mechanism."* Which is the same sentence as the comment, one level up, and this time it is code.
 
 There's a coda. After fixing the list, ten non-self records remained. I nearly wrote them up as third-party hits. Then I looked: nine arrived within a single second, from cloud IPs, and one of them requested `/api/v1/debug/compromised_agent_read` — a path no sitemap advertises and no crawler would care about. That's someone inspecting the service. Not a crawler.
 
@@ -115,7 +117,7 @@ Worth saying plainly: much of this was built with agentic assistance, and severa
 So the fixes that matter aren't the fourteen patches. They're the four guards:
 
 - **One list, two consumers.** The self-traffic user agents live in one module now, imported by both the audit script and the triage engine. The duplication that caused the same defect twice is gone.
-- **Docs must equal the tool.** A check fails the build if any number in the README or the diagrams disagrees with the regenerated metrics file. Prose and tool cannot silently diverge again.
+- **Docs must equal the tool.** A check fails the build if any *accrual* number — the ones that carry the honesty finding — disagrees between the regenerated metrics file and the README, the honesty diagram, or the submission text. Named figures, not every integer in the repo; the ones where drift would change what a reader believes.
 - **Every pinned model needs a call site.** A test that fails if a model is declared but never called — because I'd pinned one that nothing invoked, which reads as model-count padding to anyone paying attention.
 - **Every mutating route must authenticate.** The newest one, and the one I should have written first. It enumerates the router's own routes and fails CI if any POST, PUT, PATCH or DELETE reaches an endpoint that never authenticates. Exemptions go in a named list, in the diff, with a written reason. It's mutation-verified: I added a fake unauthenticated route and watched it fail.
 
@@ -141,7 +143,7 @@ None of which is why the thing exists.
 
 An illustrator cannot currently say *this series may be trained on, that one may not, and this third may for a fee with attribution* in any form a counterparty can read, verify, or be held to. The options are a checkbox on a platform you don't control, a `robots.txt` line covering a whole domain, or a lawsuit years later. Buyers acting in good faith have the mirror problem: no way to find work that is actually licensable. Both sides are stuck for the same reason — there is no machine-readable, verifiable, revocable expression of creative consent. Hodi is an attempt at that rail: register a work with proof of control, express scoped terms a machine can read, ask in plain language and get a typed answer with a receipt, revoke and have it cascade.
 
-And the finding I did not expect to be the most interesting one: I published machine-readable consent terms at a discoverable endpoint, with a `robots.txt` pointing at them, and **no crawler has asked.** Not one, across every access the endpoint has logged. The absence is the evidence. Hodi is the knock — it turns out the harder problem may not be building the door.
+And the finding I did not expect to be the most interesting one: I published machine-readable consent terms at a discoverable endpoint, with a `robots.txt` pointing at them, and **nothing identifying itself as a crawler has asked.** Across every access the endpoint has logged, zero match any crawler signature. A handful of unattributed browser-like agents show up — mostly bursts from cloud IPs that also hit a debug route, which is inspection, not crawling — and those are reported as unattributed rather than promoted into the finding. The absence is the evidence. Hodi is the knock — it turns out the harder problem may not be building the door.
 
 ---
 

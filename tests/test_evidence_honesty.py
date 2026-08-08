@@ -29,6 +29,7 @@ class TestEvidenceHonesty(unittest.TestCase):
         ]
 
         violations = []
+        scanned = []
 
         for target_dir in target_dirs:
             if not target_dir.exists():
@@ -36,15 +37,30 @@ class TestEvidenceHonesty(unittest.TestCase):
             for ext in ["*.py", "*.js", "*.html"]:
                 for file_path in target_dir.rglob(ext):
                     text = file_path.read_text(encoding="utf-8")
-                for pattern in forbidden_patterns:
-                    if re.search(pattern, text, re.IGNORECASE):
-                        violations.append(f"{file_path.name}: matched forbidden pattern '{pattern}'")
+                    # The pattern loop was dedented one level, so `text` held only
+                    # the LAST file each glob yielded and roughly four of five
+                    # files in src/evidence were never scanned at all.
+                    for pattern in forbidden_patterns:
+                        if re.search(pattern, text, re.IGNORECASE):
+                            violations.append(
+                                f"{file_path.name}: matched forbidden pattern '{pattern}'")
+                    scanned.append(file_path.name)
 
         self.assertEqual(
             violations,
             [],
             f"Honesty Invariant Violation detected! Code path attempts cross-class evidence aggregation: {violations}"
         )
+        # Guard the guard: this passed for weeks while inspecting ONE file per
+        # glob, because the pattern loop sat outside the file loop. Assert the
+        # scan covered every file that exists, not an arbitrary floor.
+        expected = sorted(
+            f.name for d in target_dirs if d.exists()
+            for ext in ["*.py", "*.js", "*.html"] for f in d.rglob(ext)
+        )
+        self.assertEqual(
+            sorted(scanned), expected,
+            f"static audit inspected {len(scanned)} of {len(expected)} files — it is not scanning the tree")
 
     def test_functional_evidence_engine_exposes_no_cross_class_aggregators(self):
         """

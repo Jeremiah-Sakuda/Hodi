@@ -100,12 +100,23 @@ function revokeGrant(workId, scope) {
         
         // Change button text
         const btn = grantEl.parentElement.nextElementSibling;
-        btn.textContent = 'Revoked';
+        btn.textContent = 'Preview only';
         btn.disabled = true;
         btn.style.opacity = '0.5';
         btn.style.cursor = 'not-allowed';
         
-        // In a real implementation, this would POST to /api/v1/revoke
-        console.log(`Cascade: Revoked ${scope} on ${workId}. Downstream scopes (fine_tuning, rag_retrieval, human_reference) cascade revoked.`);
+        // READ-ONLY BY DESIGN — this does NOT call /api/v1/revoke.
+        //
+        // Revocation requires an artist-principal credential (HMAC over the raw
+        // request body, see src/api/auth.py). A static single-page app cannot
+        // hold that secret without shipping it to every visitor, so the console
+        // deliberately stops at the local rendering and the real cascade is
+        // driven by a credentialed caller. Wiring it would need a server-side
+        // session exchange this project has not built.
+        //
+        // The cascade shown below is a LOCAL PREVIEW of what the lattice would
+        // reach, not a report of anything that happened.
+        console.log(`[preview only — no request sent] Revoking ${scope} on ${workId} would cascade ` +
+                    `to the use-types it contains. Nothing has been revoked.`);
     }
 }

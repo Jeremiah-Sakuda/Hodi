@@ -34,10 +34,21 @@ def resolve(
             if at is None or ev.issued_at <= at:
                 matching_events.append(ev)
 
-    # 2. Sort deterministically by (issued_at, event_id)
-    # NOTE: Sorting by (issued_at, event_id) breaks ties on event_id deterministically.
-    # This is required for HOD-103 byte-stability replay guarantee; changing it breaks historical reproducibility.
-    matching_events.sort(key=lambda e: (e.issued_at.isoformat(), e.event_id))
+    # 2. Sort deterministically by (instant, event_id).
+    #
+    # Sort on the INSTANT, never on `issued_at.isoformat()`. The string sort was
+    # wrong for any log carrying mixed UTC offsets: "2026-08-05T09:00:00-05:00"
+    # (14:00Z) sorts BEFORE "2026-08-05T12:00:00+00:00", so a later revocation
+    # folded in before the grant it revokes and the grant resolved ACTIVE —
+    # `permits()` then returned True for a revoked grant. Firestore normalises to
+    # UTC so the live path was safe, but every JSON-sourced log is exposed:
+    # fixtures/demo_grant_log.json and the delegation drill both take that path.
+    #
+    # It was also undetectable by Beat 2: the fold was deterministically wrong,
+    # so byte-stability across shuffles still held.
+    #
+    # The event_id tiebreak stays — HOD-103 byte-stable replay depends on it.
+    matching_events.sort(key=lambda e: (e.issued_at.astimezone(timezone.utc), e.event_id))
 
     # 3. Pure fold over event history
     state = CurrentGrantState(grant_id=grant_id)

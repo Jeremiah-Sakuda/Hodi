@@ -463,14 +463,25 @@ async def get_evidence_counts(request: Request):
     HOD-370: Returns evidence counts by class.
     Reads LIVE from Firestore to prevent static fabrication in UI.
     """
-    try:
-        # We only count the 'crawler_access' collection for now.
-        docs = db.collection(COLLECTION_NAME).get()
-        crawler_count = len(docs)
-    except Exception as e:
-        logger.error(f"Failed to fetch crawler counts: {e}")
-        # If backend is unreachable or errors, return "unavailable" string instead of a number
-        crawler_count = "unavailable"
+    # EVERY class is counted from its collection. `canary_hit`, `verbatim_match`
+    # and `redistribution` were hard-coded zeros here — literals on a live
+    # surface, which is exactly what the Literal Metric Rendering Rule forbids
+    # and exactly the defect corrected in the console (BUILD-LOG correction #1).
+    # If a canary hit were ever recorded, this endpoint would have kept saying 0.
+    # An unreachable collection renders "unavailable", never a plausible number.
+    class_collections = {
+        "crawler_access": COLLECTION_NAME,
+        "canary_hit": "canary_hits",
+        "verbatim_match": "verbatim_matches",
+        "redistribution": "redistribution_findings",
+    }
+    counts = {}
+    for evidence_class, collection in class_collections.items():
+        try:
+            counts[evidence_class] = len(db.collection(collection).get())
+        except Exception as e:
+            logger.error(f"Failed to count '{collection}': {e}")
+            counts[evidence_class] = "unavailable"
 
     try:
         from src.gateway.prompt_inspector import PromptInspector
@@ -479,9 +490,8 @@ async def get_evidence_counts(request: Request):
         engine = "local_regex_inspector"
 
     return {
-        "crawler_access": crawler_count,
-        "canary_hit": 0,
-        "verbatim_match": 0,
-        "redistribution": 0,
-        "inspector_engine": engine
+        **counts,
+        "inspector_engine": engine,
+        "claim_limit": ("Counts are per evidence class and are never summed. There is no "
+                        "cross-class total, and no class asserts training-set membership."),
     }
