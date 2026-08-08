@@ -25,6 +25,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 METRICS = ROOT / "docs" / "metrics.json"
 README = ROOT / "README.md"
+DEVPOST = ROOT / "docs" / "devpost-description.md"
 DIAGRAM_B = ROOT / "docs" / "architecture" / "diagram_b_what_hodi_will_not_say.mmd"
 
 
@@ -86,6 +87,31 @@ def main() -> int:
                 "README.md still claims the lint catches 'including paraphrases' — measured "
                 f"coverage is {lint['paraphrases_rejected']}/{lint['probe_set_size']}.")
 
+    # The Devpost submission is the highest-stakes prose in the repo: a judge reads
+    # it, and nothing else in the pipeline would catch a stale figure in it.
+    devpost = DEVPOST.read_text()
+    for label, pattern, expected in (
+        ("accrued records", r"\*\*(\d+) accrued records\*\*", total),
+        ("known-crawler matches", r"\*\*(\d+) match any known AI-crawler", accrual["known_crawler_ua_matches"]),
+        ("self-originated count", r"(\d+) are this project's own instrumented tooling", accrual["self_originated_count"]),
+        ("unattributed count", r"The remaining (\d+) are non-self-originated", third_party),
+        ("drill server-side avg", r"([\d.]+) ms server-side average",
+         metrics["failure_tolerance_drill"]["server_side_avg_ms"]),
+        ("lint probe set", r"a (\d+)-paraphrase probe set", lint["probe_set_size"] if lint else None),
+        ("lint rejections", r"\*\*it rejects (\d+)\*\*", lint["paraphrases_rejected"] if lint else None),
+    ):
+        if expected is None:
+            continue
+        found = re.search(pattern, devpost)
+        if not found:
+            failures.append(f"devpost-description.md: could not find the '{label}' claim to check.")
+        elif str(found.group(1)) != str(expected):
+            failures.append(
+                f"devpost-description.md states {label}={found.group(1)}; metrics.json says {expected}.")
+    if audit_date not in devpost:
+        failures.append(
+            f"devpost-description.md does not carry the current audit date '{audit_date}'.")
+
     diagram = DIAGRAM_B.read_text()
     dm = re.search(r"(\d+)\s+records accrued", diagram)
     if not dm:
@@ -105,8 +131,9 @@ def main() -> int:
               "(and re-render the PNG) to the regenerated numbers.")
         return 1
 
-    print(f"Doc metric check PASSED: README.md and Diagram B agree with docs/metrics.json "
-          f"({total} accrued records, {third_party} third-party, audit {audit_date}).")
+    print(f"Doc metric check PASSED: README.md, Diagram B and devpost-description.md agree with "
+          f"docs/metrics.json ({total} accrued records, {accrual['known_crawler_ua_matches']} known-crawler "
+          f"matches, {third_party} unattributed, audit {audit_date}).")
     return 0
 
 
