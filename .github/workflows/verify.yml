@@ -1,0 +1,63 @@
+name: verify
+
+# The structural guards are the most valuable thing in this repository, and
+# until now nothing ran them automatically. Each one exists because a specific
+# class of defect recurred after being fixed once:
+#
+#   test_route_auth_coverage      an unauthenticated mutating route shipped twice
+#   check_doc_metrics             published numbers drifted from metrics.json
+#   test_gateway_session_scope    the cross-buyer rule had no offline coverage
+#   test_grant_log_iam            the append-only guard could not fail
+#
+# A guard that only runs when someone remembers to run it is the same shape as
+# the enumerations this project keeps replacing with mechanisms.
+#
+# CREDENTIAL-FREE BY CONSTRUCTION. This workflow runs nothing that needs GCP
+# credentials and nothing that touches the deployed service:
+#   - HODI_E2E is never set, so the 7 live-Firestore/live-IAM tests skip
+#   - `make demo-live`, `make metrics` and `make verify-manifest` are NOT run
+#     here; they require a live service or an ambient gcloud login and are run
+#     by hand before a release. They are listed so their absence is a stated
+#     decision rather than an oversight.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'   # the Dockerfile base; the lockfile resolves against it
+
+      - name: Install pinned dependencies
+        run: pip install -r src/evidence_service/requirements.lock
+
+      - name: Offline test suite
+        run: make test          # HODI_OFFLINE=1; live tests skip without HODI_E2E
+
+      - name: Credential-free demo
+        run: make demo          # asserts every beat; fails the build if a property is false
+
+      - name: Scope lattice truth table
+        run: make verify-scopes
+
+      - name: Requirement compliance and doc-metric drift
+        run: make compliance    # also runs check-docs
+
+      - name: Overclaim lint coverage
+        run: make lint-coverage
+
+      - name: Confirm the live-service targets were deliberately skipped
+        run: |
+          echo "Not run in CI (need credentials or the deployed service):"
+          echo "  make demo-live       — boundary proof against the deployed Cloud Run service"
+          echo "  make verify-manifest — fetches the live /works manifest"
+          echo "  make metrics         — regenerates metrics.json from a live Firestore audit"
+          echo "  HODI_E2E=1 make test — 7 tests writing to real collections"

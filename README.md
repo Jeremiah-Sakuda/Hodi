@@ -1,5 +1,7 @@
 # Hodi — Creative Consent Administration Fleet
 
+[![verify](https://github.com/Jeremiah-Sakuda/Hodi/actions/workflows/verify.yml/badge.svg)](https://github.com/Jeremiah-Sakuda/Hodi/actions/workflows/verify.yml)
+
 *"Your voice is in a product you never agreed to."*
 
 Hodi is a governed fleet of institutional agents that administers creative consent end to end: registering works with proof of control, expressing scoped machine-readable terms, negotiating with buyers under confidentiality, and propagating revocations across affected grants. The fleet's four agents are separated by conflict of interest — not by task — and every inter-agent call passes a policy-enforcing gateway whose denials are logged as structured events, never silent. Hodi's audit record refuses to assert anything it cannot verify, structurally: the schema itself cannot express the claims the system will not make.
@@ -92,7 +94,9 @@ Runs the full offline suite — 214 tests, credential-free, including the cross-
 make compliance
 ```
 
-Extracts every requirement ID from the PRD and diffs §4 against the §2 compliance matrix **and the prose**; fails on any orphan or range notation. Verifies 54 requirements as of this writing.
+Extracts every requirement ID from the PRD and diffs §4 against the §2 compliance matrix **and the prose**; fails on any orphan or range notation. Verifies 54 requirements as of this writing. Also runs `check-docs`, which fails if any accrual figure in the README, Diagram B, or the submission text disagrees with `docs/metrics.json`.
+
+**All of the above run in CI** on every push and pull request ([.github/workflows/verify.yml](.github/workflows/verify.yml)) — the offline suite, the demo, the truth table, compliance, doc-drift, and lint coverage. Nothing in CI needs credentials or the deployed service; the four targets that do (`demo-live`, `verify-manifest`, `metrics`, and the `HODI_E2E` tests) are deliberately excluded and named in the workflow so their absence is a decision, not an oversight.
 
 ---
 
