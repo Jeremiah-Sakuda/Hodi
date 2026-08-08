@@ -93,3 +93,68 @@ class TestRevocationCascade(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestDerivationMatchesTheLattice(unittest.TestCase):
+    """
+    The cascade's downstream derivation must agree with the lattice for EVERY
+    use-type (HOD-104, HOD-350).
+
+    `RevocationPropagatorAgent` used to re-implement the partial order as an
+    if/elif ladder — a second source of truth that `lattice.py` exists to
+    prevent, and a correctness risk rather than a style one, because the
+    cascade computes downstream scopes from it. Adding a use-type to the
+    lattice would have silently produced an incomplete cascade.
+    """
+
+    def setUp(self):
+        import os
+        os.environ["HODI_OFFLINE"] = "1"
+        self.addCleanup(lambda: os.environ.pop("HODI_OFFLINE", None))
+        self.propagator = RevocationPropagatorAgent(gateway=AgentGateway(), memory_bank_events=[])
+
+    def test_derivation_matches_is_use_type_contained_across_the_full_order(self):
+        from src.schema.lattice import USE_TYPE_CONTAINMENT, is_use_type_contained
+        for use_type in USE_TYPE_CONTAINMENT:
+            with self.subTest(use_type=use_type):
+                result = self.propagator.execute_revocation_cascade(
+                    work_id="work-no-grants", revoked_use_type=use_type)
+                derived = {d.scope for d in result.structured_derivation}
+                expected = {u for u in USE_TYPE_CONTAINMENT if is_use_type_contained(use_type, u)}
+                self.assertEqual(
+                    derived, expected,
+                    f"cascade derivation for '{use_type}' disagrees with the lattice")
+                self.assertEqual(set(result.derived_scopes), expected)
+
+    def test_every_derivation_step_is_a_real_containment_edge(self):
+        from src.schema.lattice import USE_TYPE_CONTAINMENT, is_use_type_contained
+        for use_type in USE_TYPE_CONTAINMENT:
+            result = self.propagator.execute_revocation_cascade(
+                work_id="work-no-grants", revoked_use_type=use_type)
+            for step in result.structured_derivation:
+                with self.subTest(use_type=use_type, step=step.scope):
+                    self.assertTrue(
+                        is_use_type_contained(step.parent, step.scope),
+                        f"'{step.parent}' does not contain '{step.scope}' in the lattice")
+
+    def test_synthesis_cascades_to_itself_only(self):
+        """`synthesis` is incomparable to the training chain — a revocation of it
+        must not reach any other use-type."""
+        result = self.propagator.execute_revocation_cascade(
+            work_id="work-no-grants", revoked_use_type="synthesis")
+        self.assertEqual([d.scope for d in result.structured_derivation], ["synthesis"])
+
+    def test_a_new_use_type_would_be_picked_up_without_touching_the_agent(self):
+        """The property the if/elif ladder broke: the agent reads the order, it
+        does not restate it."""
+        import src.schema.lattice as lattice
+        original = dict(lattice.USE_TYPE_CONTAINMENT)
+        try:
+            lattice.USE_TYPE_CONTAINMENT["training"] = original["training"] | {"speculative_use"}
+            lattice.USE_TYPE_CONTAINMENT["speculative_use"] = {"speculative_use"}
+            result = self.propagator.execute_revocation_cascade(
+                work_id="work-no-grants", revoked_use_type="training")
+            self.assertIn("speculative_use", {d.scope for d in result.structured_derivation})
+        finally:
+            lattice.USE_TYPE_CONTAINMENT.clear()
+            lattice.USE_TYPE_CONTAINMENT.update(original)

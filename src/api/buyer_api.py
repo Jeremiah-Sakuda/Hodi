@@ -283,6 +283,64 @@ async def revoke_scope(req: RevokeRequest, request: Request):
         work_id=req.work_id, revoked_use_type=req.revoked_use_type
     )
 
+class DelegationDrillRequest(BaseModel):
+    work_id: str = "work-essay-001"
+    revoked_use_type: str = "training"
+    deadline_seconds: float = 1.0
+
+
+@router.post("/api/v1/fleet/delegation_drill", response_model=Dict[str, Any])
+async def fleet_delegation_drill(req: DelegationDrillRequest, request: Request):
+    """
+    Failure-tolerance drill on the DEPLOYED path (HOD-341, HOD-342).
+
+    Runs the ADK delegation with the revocation propagator forced into a loop,
+    so the Supervisor's deadline fires, the worker is quarantined and
+    deregistered from the Registry, its task is rerouted to a standby that
+    returns a stated partial result, and the request still completes.
+
+    Structurally write-free: the looping worker never reaches its writes, and
+    the degraded reroute issues no notices and appends no events by design. It
+    reads fixture events, not live grants. Artist-credentialed all the same,
+    because it is a mutating verb and every mutating route authenticates
+    (tests/test_route_auth_coverage.py).
+    """
+    import json as _json
+    import time as _time
+    from pathlib import Path as _Path
+    from src.supervisor.supervisor import Supervisor
+    from src.fleet.adk_fleet import run_revocation_delegation
+
+    await _authenticate_or_403(request, claimed_counterparty_id=None,
+                               required_principal_type="artist")
+
+    fixture = _Path(__file__).resolve().parent.parent.parent / "fixtures" / "demo_grant_log.json"
+    with open(fixture) as f:
+        events = [GrantEvent(**e) for e in _json.load(f)["events"]]
+
+    started = _time.perf_counter()
+    result = run_revocation_delegation(
+        counterparty_id="acme-intelligence-labs",
+        work_id=req.work_id,
+        revoked_use_type=req.revoked_use_type,
+        fallback_events=events,
+        supervisor=Supervisor(deadline_seconds=req.deadline_seconds),
+        loop_forever=True,
+    )
+    elapsed_ms = (_time.perf_counter() - started) * 1000
+
+    return {
+        "measurement_surface": "deployed-over-network",
+        "supervisor_deadline_seconds": req.deadline_seconds,
+        "elapsed_ms": round(elapsed_ms, 2),
+        "transcript": result["transcript"],
+        "task_abandoned_events": result["task_abandoned_events"],
+        "quarantine": result["quarantine"],
+        "post_quarantine_discovery": result["post_quarantine_discovery"],
+        "request_completed": result["quarantine"] is not None,
+    }
+
+
 class CompromisedAgentRequest(BaseModel):
     attack_type: str
 
