@@ -68,7 +68,7 @@ make demo
 make demo-live
 ```
 
-Proves the cross-buyer boundary against the **deployed** service in two independent places. Part A exercises the gateway policy layer: a properly scoped read that succeeds with real grant documents, an unfiltered read that is denied, and a cross-counterparty read that is denied, each returned and logged as the same structured event. Part B exercises the **production request path**, replaying the unauthenticated cross-buyer exploit that worked on 2026-08-07 and asserting it is now refused. Public endpoint, no credentials; wall-clock time is printed (about 2 seconds warm).
+Proves the cross-buyer boundary against the **deployed** service in two independent places. Part A exercises the gateway policy layer: a properly scoped read that succeeds with real grant documents, an unfiltered read that is denied, and a cross-counterparty read that is denied, each returned and logged as the same structured event. Part B exercises the **production request path**, replaying the unauthenticated cross-buyer exploit that worked on 2026-08-07 and asserting it is now refused. Part C replays anonymous calls against the mutating and internal routes (`/api/v1/revoke`, `/internal/accrual_audit`). Public endpoint, no credentials; wall-clock time is printed (about 2 seconds warm).
 
 ```bash
 make verify-scopes
@@ -86,7 +86,7 @@ Fetches the **live** `/works` manifest and verifies the corpus-integrity propert
 make test
 ```
 
-Runs the full offline suite — 153 tests, credential-free, including the cross-buyer attack suite, the containment truth table, and the ADK delegation. Four tests that genuinely require live Firestore (byte-identity at rest cannot be proven against an in-memory buffer) are skipped unless you set `HODI_E2E=1`, because they write to real collections.
+Runs the full offline suite — 200 tests, credential-free, including the cross-buyer attack suite, the route-authentication coverage guard, the 47-case containment truth table, the ADK delegation, and the quarantine drill. Seven tests that genuinely require live Firestore or live IAM (byte-identity at rest cannot be proven against an in-memory buffer) are skipped unless you set `HODI_E2E=1`, because they write to real collections.
 
 ```bash
 make compliance
@@ -140,7 +140,7 @@ Build history, findings, and the write-up are first-class artifacts here — inc
 
 - **[docs/BUILD-LOG.md](docs/BUILD-LOG.md)** — every session's verbatim prompt, outcome, and forked decisions, including seven dated correction notes where earlier entries overclaimed or reported unbuilt infrastructure as done, and were struck.
 - **[docs/FINDINGS.md](docs/FINDINGS.md)** — daily observations plus two long-form named findings: the live cross-buyer confidentiality breach (dates, exact exposure, why the existing boundary test could not catch it), and the day this project's own Cloud Scheduler job was counted as a third-party crawler, inverting its signature honesty claim.
-- **[docs/blog/seven-ways-to-lie-to-yourself-in-code.md](docs/blog/seven-ways-to-lie-to-yourself-in-code.md)** — the defect ledger as a write-up: fourteen defects, seven classes, the three that recurred, the meta-pattern behind all of them, and the four structural guards that answer it.
+- **[Seven ways to lie to yourself in code](https://jeremiah-sakuda.github.io/Hodi/blog/seven-ways-to-lie-to-yourself-in-code.html)** *(published)* — the defect ledger as a write-up: fourteen defects, seven classes, the three that recurred, the meta-pattern behind all of them, and the four structural guards that answer it. Source: [docs/blog/](docs/blog/seven-ways-to-lie-to-yourself-in-code.md).
 - **[docs/social-posts.md](docs/social-posts.md)** — the launch posts.
 - **[docs/architecture/conflict_matrix.md](docs/architecture/conflict_matrix.md)** — generated from the policy module the Gateway reads.
 
@@ -181,6 +181,14 @@ This is a finding about the SDK's current headless surface, published rather tha
 - **Prompt inspection is local, and labelled as such.** The managed Model Armor guardrail could not be used: the API is in restricted preview and template creation returned HTTP 403 for this project. The claim was pulled rather than shipped under a Google product's name. Prompt inspection is implemented as a local regex and is labelled `local_regex_inspector` everywhere it appears — in code, in API responses, and in the evidence counts endpoint.
 - **The security posture rests on IAM boundaries, gateway policy enforcement, and audit traces.** Four service accounts, no SA holding two conflict domains, a custom Firestore role that cannot update or delete grant events, and a gateway that converts every policy violation into a structured, logged `PolicyDenialEvent`.
 - **`/api/v1/debug/compromised_agent_read` is a public endpoint on purpose.** It simulates a compromised licensing negotiator attempting three reads: one properly scoped to its own session counterparty (which succeeds, returning that counterparty's grants — data the negotiator is entitled to), one unfiltered, and one cross-counterparty. The last two are structurally guaranteed denials: the gateway consults the same policy data as production traffic, so the endpoint can only produce denial events plus the one read the caller was always allowed. It exists so a reviewer can verify the cross-buyer confidentiality boundary over the public network in under a minute, without credentials. Run it: `make demo-live`.
+
+---
+
+## Published writing
+
+- **Blog — [Seven ways to lie to yourself in code](https://jeremiah-sakuda.github.io/Hodi/blog/seven-ways-to-lie-to-yourself-in-code.html)**. The defect ledger: fourteen defects across seven classes, the three that recurred, the Antigravity SDK assertion that was verified before it was made, and the four structural guards. Created for the All Things Agentic Hackathon.
+- **Project site — [https://jeremiah-sakuda.github.io/Hodi/](https://jeremiah-sakuda.github.io/Hodi/)**, serving the build log, findings, the Antigravity decision, and the generated IAM matrix.
+- **Social posts** — text in [docs/social-posts.md](docs/social-posts.md), tagged `#AllThingsAgenticHackathon`.
 
 ---
 
