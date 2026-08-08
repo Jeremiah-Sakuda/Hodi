@@ -168,9 +168,26 @@ def get_registered_works() -> List[Dict[str, Any]]:
     ]
 
 def extract_client_ip(request: Request) -> str:
+    """
+    Returns the peer address as seen by the Cloud Run front end.
+
+    X-Forwarded-For is APPENDED to by each proxy, so the LEFTMOST entry is
+    whatever the client sent — fully attacker-controlled — and the rightmost
+    entries are the ones added by infrastructure we trust. Reading [0], as this
+    did, let anyone stamp a crawler_access record with an arbitrary source IP.
+    On Cloud Run the client's real address is the LAST entry the front end
+    appends, so we read from the right.
+
+    This narrows forgery but does not eliminate it: a determined party can still
+    choose their User-Agent, and `crawler_access` records are therefore treated
+    as attributable-but-not-authenticated. That limit is stated in the README
+    rather than papered over.
+    """
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
-        return forwarded.split(",")[0].strip()
+        hops = [h.strip() for h in forwarded.split(",") if h.strip()]
+        if hops:
+            return hops[-1]
     if request.client and request.client.host:
         return request.client.host
     return "0.0.0.0"
@@ -353,6 +370,40 @@ async def get_canaries(request: Request):
         "canaries": canaries
     }
 
+SCHEDULER_INVOKER_SA = os.environ.get(
+    "HODI_SCHEDULER_SA", "406699565497-compute@developer.gserviceaccount.com"
+)
+
+
+def verify_scheduler_oidc(request: Request) -> str:
+    """
+    Verifies the Google-signed OIDC ID token Cloud Scheduler sends, and returns
+    the caller's email. Raises HTTPException(403) otherwise.
+
+    The service itself must stay publicly reachable — its whole purpose is being
+    crawled — so this route cannot be protected by Cloud Run IAM. It is
+    protected in-process instead: only a token Google signed for our expected
+    invoker service account gets through.
+    """
+    header = request.headers.get("authorization", "")
+    if not header.lower().startswith("bearer "):
+        raise HTTPException(status_code=403, detail="Missing OIDC bearer token.")
+    token = header.split(" ", 1)[1].strip()
+    try:
+        from google.oauth2 import id_token as google_id_token
+        from google.auth.transport import requests as google_requests
+        claims = google_id_token.verify_oauth2_token(token, google_requests.Request())
+    except Exception as e:
+        logger.warning(f"Accrual audit OIDC verification failed: {e}")
+        raise HTTPException(status_code=403, detail="OIDC token verification failed.")
+
+    email = claims.get("email", "")
+    if not claims.get("email_verified") or email != SCHEDULER_INVOKER_SA:
+        logger.warning(f"Accrual audit rejected caller '{email}'.")
+        raise HTTPException(status_code=403, detail="OIDC token verification failed.")
+    return email
+
+
 @app.get("/internal/accrual_audit", response_class=JSONResponse)
 async def run_accrual_audit(request: Request):
     """
@@ -360,9 +411,18 @@ async def run_accrual_audit(request: Request):
     `hodi-daily-accrual-audit`. Counts crawler_access records, classifies them
     with the Gemma triage engine (self / bot / human / unknown), and persists
     an audit document to `accrual_audits` so audit history accumulates
-    alongside Scheduler execution history. Read-only over crawler_access;
-    idempotent; every number is computed from Firestore at call time.
+    alongside Scheduler execution history.
+
+    Requires the Scheduler's verified OIDC identity: this route shipped public
+    and appended a document on every anonymous call, which is both unbounded
+    write amplification and a way to pollute the audit history the project
+    presents as evidence (BUILD-LOG correction #6).
+
+    Genuinely idempotent: the audit document id is the UTC date, so repeated
+    runs on the same day overwrite rather than accumulate. The previous version
+    documented itself as idempotent while calling `.add()`.
     """
+    caller = verify_scheduler_oidc(request)
     from src.evidence.gemma_triage import GemmaTriageEngine
     try:
         docs = [d.to_dict() for d in db.collection(COLLECTION_NAME).stream()]
@@ -379,16 +439,19 @@ async def run_accrual_audit(request: Request):
         host = rec.get("hostname", "unknown")
         hostnames[host] = hostnames.get(host, 0) + 1
 
+    audit_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     audit = {
+        "audit_date_utc": audit_date,
         "audit_timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "total_accrued_records": len(docs),
         "routing_distribution": distribution,
         "third_party_attributable": distribution["bot"] + distribution["human"] + distribution["unknown"],
         "hostname_breakdown": hostnames,
-        "triggered_by": request.headers.get("user-agent", "unknown"),
+        "triggered_by": caller,
     }
     try:
-        db.collection("accrual_audits").add(audit)
+        # Deterministic doc id — one audit per UTC day, overwritten on re-run.
+        db.collection("accrual_audits").document(audit_date).set(audit)
     except Exception as e:
         logger.error(f"Accrual audit failed to persist: {e}")
         return JSONResponse(status_code=503, content={"status": "unavailable", "error": str(e)})

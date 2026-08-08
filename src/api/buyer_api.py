@@ -24,6 +24,7 @@ armor = PromptInspector()
 
 # The licensing negotiator agent acts under its own service account
 NEGOTIATOR_SA = "licensing-negotiator@hodi-2026.iam.gserviceaccount.com"
+PROPAGATOR_SA = "revocation-propagator-sa@hodi-2026.iam.gserviceaccount.com"
 
 # Injectable so tests never touch the production credential collection.
 _credential_store = CredentialStore()
@@ -35,7 +36,8 @@ def set_credential_store(store) -> None:
 
 
 async def _authenticate_or_403(request: Request,
-                               claimed_counterparty_id: Optional[str]) -> AuthenticatedCounterparty:
+                               claimed_counterparty_id: Optional[str],
+                               required_principal_type: Optional[str] = None) -> AuthenticatedCounterparty:
     """
     Authenticates the caller from the signed-request headers and the RAW body
     bytes, and returns the VERIFIED counterparty.
@@ -67,6 +69,19 @@ async def _authenticate_or_403(request: Request,
             detail=("Request authentication failed: the credential is not bound to the "
                     "claimed counterparty_id."),
         )
+
+    if required_principal_type and auth.principal_type != required_principal_type:
+        AgentGateway().log_principal_type_denial(
+            calling_sa=NEGOTIATOR_SA, key_id=auth.key_id,
+            principal_type=auth.principal_type,
+            required_principal_type=required_principal_type,
+            operation=request.url.path,
+        )
+        raise HTTPException(
+            status_code=403,
+            detail=(f"Request authentication failed: this operation requires a "
+                    f"'{required_principal_type}' credential."),
+        )
     return auth
 
 
@@ -90,7 +105,8 @@ class LicenseResponse(BaseModel):
 async def request_license(req: ScopeRequest, request: Request):
     # 1. Authenticate. The counterparty identity used everywhere below comes
     #    from the VERIFIED CREDENTIAL — never from the request body.
-    auth = await _authenticate_or_403(request, claimed_counterparty_id=req.counterparty_id)
+    auth = await _authenticate_or_403(request, claimed_counterparty_id=req.counterparty_id,
+                                      required_principal_type="counterparty")
 
     # 2. Route raw post-extraction bytes through the Prompt Inspector
     try:
@@ -181,7 +197,8 @@ async def request_license_natural(req: NaturalScopeRequest, request: Request):
 
     # Authenticate first: identity comes from the verified credential, and the
     # model never sees a request that has not been attributed to a real caller.
-    auth = await _authenticate_or_403(request, claimed_counterparty_id=req.counterparty_id)
+    auth = await _authenticate_or_403(request, claimed_counterparty_id=req.counterparty_id,
+                                      required_principal_type="counterparty")
 
     # Untrusted inbound buyer document: inspect post-extraction bytes (HOD-313).
     # Detection is logged and the request PROCEEDS under its original scope.
@@ -243,13 +260,28 @@ class RevokeRequest(BaseModel):
     revoked_use_type: str
 
 @router.post("/api/v1/revoke", response_model=CascadeResult)
-def revoke_scope(req: RevokeRequest):
+async def revoke_scope(req: RevokeRequest, request: Request):
+    """
+    Revocation is an ARTIST-side operation and requires an artist credential.
+
+    This route shipped unauthenticated: anyone could revoke any work_id (work
+    ids are published at /works), the response returned every affected
+    counterparty's id and full negotiated scope, and because the log is
+    append-only with no update/delete the writes are not undoable. It is the
+    same defect class already fixed on /api/v1/license — the fix had not been
+    carried across. See BUILD-LOG correction #6.
+
+    A counterparty credential is explicitly NOT sufficient here: a buyer must
+    not be able to terminate an artist's grants, including their own rivals'.
+    """
+    await _authenticate_or_403(request, claimed_counterparty_id=None,
+                               required_principal_type="artist")
+
     gateway = AgentGateway()
     propagator = RevocationPropagatorAgent(gateway=gateway, memory_bank_events=[])
-    
-    # Execute cascade
-    result = propagator.execute_revocation_cascade(work_id=req.work_id, revoked_use_type=req.revoked_use_type)
-    return result
+    return propagator.execute_revocation_cascade(
+        work_id=req.work_id, revoked_use_type=req.revoked_use_type
+    )
 
 class CompromisedAgentRequest(BaseModel):
     attack_type: str

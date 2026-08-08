@@ -1,6 +1,8 @@
 import urllib.request
 import json
 import re
+
+from src.evidence.self_traffic import SELF_ORIGINATED_UA_PATTERNS
 from typing import Dict, Any, List
 
 class GemmaTriageEngine:
@@ -16,10 +18,9 @@ class GemmaTriageEngine:
     the engine gracefully falls back to heuristic classification, ensuring evidence records are produced.
     """
 
-    SELF_DEPLOY_CHECK_USER_AGENTS = [
-        r"python-urllib", r"curl", r"wget", r"gcloud", r"google-cloud-sdk", r"postmanruntime",
-        r"python-requests", r"hodi-healthcheck", r"hodi-latency-test"
-    ]
+    # Imported from the single source of truth so this list cannot drift from
+    # the audit script's (src/evidence/self_traffic.py).
+    SELF_DEPLOY_CHECK_USER_AGENTS = SELF_ORIGINATED_UA_PATTERNS
 
     THIRD_PARTY_BOT_USER_AGENTS = [
         r"gptbot", r"ccbot", r"claudebot", r"google-extended", r"bytespider",

@@ -126,6 +126,29 @@ class AgentGateway:
         _emit_denial_log(denial)
         return denial
 
+    def log_principal_type_denial(self, calling_sa: str, key_id: str, principal_type: str,
+                                  required_principal_type: str, operation: str) -> PolicyDenialEvent:
+        """
+        Records a credential used for an operation its principal type may not
+        perform — e.g. a buyer's credential attempting a revocation. Logged as
+        the same structured event as any other denial.
+        """
+        denial = PolicyDenialEvent(
+            event_id=f"denial-{uuid.uuid4()}",
+            calling_sa=calling_sa,
+            target_role=required_principal_type,
+            requested_collection=operation,
+            attempted_filters={"principal_type": principal_type},
+            session_context={"key_id": key_id, "principal_type": principal_type},
+            timestamp=datetime.now(timezone.utc),
+            policy_consulted="principal_type_policy_v1",
+            reason=(f"Credential '{key_id}' is a '{principal_type}' principal and cannot perform "
+                    f"'{operation}', which requires a '{required_principal_type}' principal."),
+        )
+        self.denial_events.append(denial)
+        _emit_denial_log(denial)
+        return denial
+
     def route(self, calling_sa: str, calling_role_key: str, target_collection: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Legacy route method (kept for tests)."""
         self._enforce(calling_sa, calling_role_key, target_collection)

@@ -55,7 +55,7 @@ Cells enumerate IDs. `make compliance` (HOD-007) diffs §4 against this table **
 
 | Rule requirement | How Hodi satisfies it | Req IDs |
 |---|---|---|
-| Gemini 3.5+ via Vertex AI | Gemini 3.5 Flash (natural-language scope interpretation in the buyer API — the model interprets intent, the lattice decides permission; revocation notice drafting gated by lint) + 3.5 Flash-Lite (log triage); pinned model ID literals on the `global` endpoint. *Corrected 2026-08-07: `gemini-3.5-pro` does not exist in the Vertex publisher catalog for this project — availability probed empirically, see FINDINGS.* | HOD-301 |
+| Gemini 3.5+ via Vertex AI | Gemini 3.5 Flash (natural-language scope interpretation in the buyer API — the model interprets intent, the lattice decides permission; revocation notice drafting gated by lint) for scope interpretation and notice drafting; log triage is Gemma's tier, not a second Gemini. Pinned model ID literals on the `global` endpoint. *Corrected 2026-08-07: `gemini-3.5-pro` does not exist in the Vertex publisher catalog for this project — availability probed empirically, see FINDINGS.* | HOD-301 |
 | ≥1 Google Agent Framework | **Antigravity SDK** (four agents + supervisor); **ADK dual-listed as the fallback**, decided Aug 8 | HOD-020, HOD-302 |
 | ≥1 Google Cloud infra service | Cloud Run services + Jobs, Firestore, Cloud Scheduler, Cloud Logging/Trace | HOD-005, HOD-410 |
 | New project in Submission Period | Public remote from first commit, unsquashed; pre-Aug-3 audit; **`## Relationship to my other submissions`** disclosing the shared claim-record lineage by path and date | HOD-001, HOD-002, HOD-004, HOD-006 |

@@ -4,7 +4,7 @@ src/llm/vertex_gemini.py — the fleet's ONLY model-call surface (HOD-301).
 Pinned model ID literals, temperature 0, and a durable shared response cache.
 
 Model availability was probed empirically on 2026-08-07 (see docs/FINDINGS.md):
-`gemini-3.5-flash` and `gemini-3.5-flash-lite` return HTTP 200 on the `global`
+`gemini-3.5-flash` returns HTTP 200 on the `global`
 Vertex AI endpoint for this project; `gemini-3.5-pro` does not exist in the
 publisher catalog and 404s in every probed location; the pro-class 3.x IDs are
 all previews, which roll — judging runs to Oct 1, so previews are excluded.
@@ -25,9 +25,11 @@ from typing import Optional
 
 # Pinned literals — never aliases, never previews (HOD-301).
 PINNED_INTERPRETER_MODEL = "gemini-3.5-flash"
-PINNED_TRIAGE_MODEL = "gemini-3.5-flash-lite"
 PINNED_GEMMA_TRIAGE_MODEL = "gemma-4-26b-a4b-it-maas"
-PINNED_MODELS = {PINNED_INTERPRETER_MODEL, PINNED_TRIAGE_MODEL, PINNED_GEMMA_TRIAGE_MODEL}
+# Only models an execution path actually calls belong here. `gemini-3.5-flash-lite`
+# was pinned and asserted in tests while being called from nowhere — log triage is
+# Gemma's tier. A pinned constant with no call site reads as model-count padding.
+PINNED_MODELS = {PINNED_INTERPRETER_MODEL, PINNED_GEMMA_TRIAGE_MODEL}
 
 VERTEX_LOCATION = "global"
 TEMPERATURE = 0

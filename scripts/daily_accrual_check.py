@@ -11,6 +11,12 @@ import subprocess
 from google.cloud import firestore
 from google.oauth2 import credentials
 
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import re
+from src.evidence.self_traffic import SELF_ORIGINATED_UA_PATTERNS, is_self_originated
+from src.evidence.gemma_triage import GemmaTriageEngine
+
 def check_url_status_200(url: str) -> bool:
     """Fetches URL and asserts HTTP 200 status."""
     try:
@@ -81,35 +87,37 @@ def audit_firestore_crawler_access() -> dict:
     total_count = len(docs)
     hostname_breakdown = {}
     self_originated_count = 0
-    third_party_count = 0
+    non_self_count = 0
+    known_crawler_count = 0
+    non_self_user_agents = {}
     distinct_user_agents = set()
-
-    # Every tool this project itself runs against the endpoint must be listed here,
-    # or self traffic inflates the third-party count into a fabricated finding.
-    # python-requests = scripts/test_live_cross_counterparty.py;
-    # hodi-latency-test = scripts/measure_h6_timings.py.
-    SELF_UA_PATTERNS = ["python-urllib", "curl", "wget", "gcloud",
-                        "hodi-healthcheck", "hodi-latency-test", "python-requests"]
 
     for doc in docs:
         data = doc.to_dict()
         ua = data.get("user_agent", "unknown")
         host = data.get("hostname", "hodi-evidence-endpoint-406699565497.us-central1.run.app")
         distinct_user_agents.add(ua)
-
         hostname_breakdown[host] = hostname_breakdown.get(host, 0) + 1
 
-        ua_lower = ua.lower()
-        if any(p in ua_lower for p in SELF_UA_PATTERNS):
+        if is_self_originated(ua):
             self_originated_count += 1
-        else:
-            third_party_count += 1
+            continue
+
+        non_self_count += 1
+        non_self_user_agents[ua] = non_self_user_agents.get(ua, 0) + 1
+        # The only number we are willing to call "a crawler": a user agent that
+        # matches a KNOWN AI-crawler or search-crawler signature. Everything
+        # else non-self is reported as unattributed, not promoted to a finding.
+        if any(re.search(p, ua.lower()) for p in GemmaTriageEngine.THIRD_PARTY_BOT_USER_AGENTS):
+            known_crawler_count += 1
 
     return {
         "audit_timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "total_accrued_records": total_count,
         "self_originated_count": self_originated_count,
-        "third_party_count": third_party_count,
+        "non_self_originated_count": non_self_count,
+        "known_crawler_ua_matches": known_crawler_count,
+        "non_self_user_agents": non_self_user_agents,
         "distinct_user_agents": list(distinct_user_agents),
         "hostname_breakdown": hostname_breakdown
     }
@@ -172,11 +180,16 @@ def write_metrics(stats: dict):
     metrics["daily_crawler_accrual_metrics"] = {
         "audit_date_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         "total_accrued_records": stats["total_accrued_records"],
-        "non_self_originated_requests_count": stats["third_party_count"],
-        "self_deploy_check_count": stats["self_originated_count"],
+        "self_originated_count": stats["self_originated_count"],
+        "non_self_originated_requests_count": stats["non_self_originated_count"],
+        "known_crawler_ua_matches": stats["known_crawler_ua_matches"],
+        "non_self_user_agents": stats["non_self_user_agents"],
         "distinct_user_agents_count": len(stats["distinct_user_agents"]),
         "distinct_user_agents": sorted(stats["distinct_user_agents"]),
         "hostname_breakdown": stats["hostname_breakdown"],
+        "claim_limit": ("non_self_originated_requests_count counts requests this project did not "
+                        "make; it is NOT a crawler count. known_crawler_ua_matches is the only "
+                        "figure this project will describe as crawler access."),
     }
 
     with open(metrics_path, "w") as f:
