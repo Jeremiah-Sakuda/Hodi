@@ -1,6 +1,12 @@
 title: "Hodi — Creative Consent Administration Fleet"
-description: "A governed fleet of agents that administers creative consent. Built for the All Things Agentic Hackathon."
+description: "A governed fleet of agents that administers creative consent. Created for the All Things Agentic Hackathon."
 theme: minima
 show_downloads: false
+
+# Without this, the theme lists EVERY markdown file in docs/ across the nav bar —
+# the PRD, the gate document, the IAM matrix, all of it.
+header_pages:
+  - index.md
+
 exclude:
   - metrics.json
