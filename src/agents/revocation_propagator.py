@@ -67,8 +67,13 @@ class RevocationPropagatorAgent:
         Revokes the specified use_type for a given work across all active grants.
         Cascades down the lattice (e.g. revoking 'training' pulls 'fine_tuning').
         """
-        # 1. Resolve downstream derivative scopes by LATTICE CONTAINMENT
-        derived_scopes = list(USE_TYPE_CONTAINMENT.get(revoked_use_type, {revoked_use_type}))
+        # 1. Resolve downstream derivative scopes by LATTICE CONTAINMENT.
+        # sorted(), not list(set) — this is the response body of POST /api/v1/revoke,
+        # and under hash randomisation an unsorted set renders in a different
+        # order in every process. `structured_derivation` on the same object was
+        # already stable, so one response carried a stable and an unstable
+        # rendering of the same fact.
+        derived_scopes = sorted(USE_TYPE_CONTAINMENT.get(revoked_use_type, {revoked_use_type}))
         
         # 2. Fetch all grant events for this work from real Firestore
         raw_events = self.gateway.read_collection(

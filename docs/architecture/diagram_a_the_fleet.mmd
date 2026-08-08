@@ -51,7 +51,7 @@ flowchart TB
     subgraph DEPLOYED["Deployed on Cloud Run — hodi-evidence-endpoint (min-instances=0)"]
         API["BUYER API<br/>signed requests: X-Hodi-Key-Id / Timestamp / Signature<br/>HMAC over raw body; identity from the CREDENTIAL<br/>/api/v1/license · /api/v1/license/natural · /api/v1/revoke"]
         PUB["PUBLIC SURFACES<br/>/.well-known/hodi.json · /robots.txt<br/>/works · /canaries · /evidence-counts"]
-        CON["ARTIST CONSOLE<br/>register · scope · revoke<br/>evidence by class, no total"]
+        CON["ARTIST CONSOLE (READ-ONLY)<br/>renders works, control tiers,<br/>evidence by class with no total<br/>revoke is NOT wired: it needs an artist<br/>credential a static SPA must not hold"]
     end
 
     GEM(["GEMINI 3.5 FLASH via Vertex AI (global, temp 0, pinned)<br/>interprets natural language into a typed Scope<br/>THE MODEL INTERPRETS INTENT — THE LATTICE DECIDES PERMISSION"])
@@ -61,12 +61,12 @@ flowchart TB
     API --> GEM
     GEM -- "validated Scope only" --> GW
     API --> GW
-    CON --> GW
+    CON -. reads .-> PUB
     PUB --> LOG
     EV --> GMA
     SCH -.triggers.-> PUB
 
-    NOTE["No SA holds two of {identity, buyer terms, evidence, revocation}.<br/>A monolith here would itself be the violation.<br/>Numbers trace to /docs/metrics.json (2026-08-07 audit)."]
+    NOTE["No SA holds two of {identity, buyer terms, evidence, revocation}.<br/>A monolith here would itself be the violation.<br/>Numbers trace to /docs/metrics.json (2026-08-08 audit).<br/>SA labels are POLICY identities: one Cloud Run process,<br/>separation enforced in-process by the Gateway, not GCP IAM at runtime."]
 
     classDef wall fill:#1a1a1a,color:#ffffff,stroke:#d33,stroke-width:4px
     classDef agent fill:#eef6ff,stroke:#3367d6,stroke-width:1.5px,color:#111

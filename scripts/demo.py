@@ -50,6 +50,22 @@ EVIDENCE_SA = "evidence-agent-sa@hodi-2026.iam.gserviceaccount.com"
 PROPAGATOR_SA = "revocation-propagator-sa@hodi-2026.iam.gserviceaccount.com"
 
 
+class DemoAssertionError(AssertionError):
+    """Raised when a demo beat's property does not hold."""
+
+
+def require(condition: bool, message: str) -> None:
+    """
+    Assert a demo property WITHOUT the `assert` statement.
+
+    `python3 -O` strips `assert`, and this script is the sole offline guard for
+    invariants no unit test covers. Under -O the demo would print visibly
+    contradictory output and still finish with "ALL DEMO BEATS PASSED."
+    """
+    if not condition:
+        raise DemoAssertionError(message)
+
+
 def rule(title: str):
     print("\n" + "=" * 80)
     print(title)
@@ -82,7 +98,7 @@ def beat_2_byte_stable_replay(events):
     h1, h2 = hashlib.sha256(b1).hexdigest(), hashlib.sha256(b2).hexdigest()
     print(f"  resolve() over committed order:  sha256={h1}")
     print(f"  resolve() over shuffled order:   sha256={h2}")
-    assert b1 == b2, "Replay over shuffled event order is NOT byte-stable!"
+    require(b1 == b2, "Replay over shuffled event order is NOT byte-stable!")
     print("  PASS: identical bytes — the fold is order-independent and deterministic.")
 
 
@@ -100,10 +116,10 @@ def beat_3_temporal_fold(events):
     print(f"  at {t_revoked.date()}: status={s_revoked.status:<9} scope={s_revoked.active_scope.use_type if s_revoked.active_scope else None}")
     print(f"  at {t_after.date()}: status={s_after.status:<9} scope={s_after.active_scope.use_type if s_after.active_scope else None}")
 
-    assert s_before.status == "active" and s_before.active_scope.use_type == "training"
-    assert s_revoked.status == "revoked" and s_revoked.active_scope is None
-    assert s_after.status == "active" and s_after.active_scope.use_type == "fine_tuning"
-    assert len(s_after.history_events) == 3, "All three events must remain visible — nothing is deleted."
+    require(s_before.status == "active" and s_before.active_scope.use_type == "training", "demo property failed")
+    require(s_revoked.status == "revoked" and s_revoked.active_scope is None, "demo property failed")
+    require(s_after.status == "active" and s_after.active_scope.use_type == "fine_tuning", "demo property failed")
+    require(len(s_after.history_events) == 3, "All three events must remain visible — nothing is deleted.")
     print("  PASS: three timestamps, three individually correct answers; all events visible in history.")
 
 
@@ -132,11 +148,11 @@ def beat_4_poisoned_request(events):
     # These two assertions are the ones that can actually fail if the inspector
     # dies: comparing the two licensable outcomes alone cannot, because they are
     # identical whether or not detection works.
-    assert detections["clean"] is False, "Clean document must not be flagged."
-    assert detections["poisoned"] is True, "Poisoned document MUST be detected."
-    assert byte_identical["poisoned"] is True, "Stored bytes must be byte-identical to received."
-    assert outcomes["clean"].permitted == outcomes["poisoned"].permitted
-    assert outcomes["clean"].matching_grant_id == outcomes["poisoned"].matching_grant_id
+    require(detections["clean"] is False, "Clean document must not be flagged.")
+    require(detections["poisoned"] is True, "Poisoned document MUST be detected.")
+    require(byte_identical["poisoned"] is True, "Stored bytes must be byte-identical to received.")
+    require(outcomes["clean"].permitted == outcomes["poisoned"].permitted, "demo property failed")
+    require(outcomes["clean"].matching_grant_id == outcomes["poisoned"].matching_grant_id, "demo property failed")
     print("  PASS: injection detected, document stored byte-identical, and the licensable")
     print("        outcome is unchanged — the injection altered nothing but the audit log.")
 
@@ -159,7 +175,7 @@ def beat_4b_natural_language_interpretation(events):
     active = active_grant_events([e for e in events if e.counterparty_id == req["counterparty_id"]], at=t_eval)
     evaluation = permits(active, scope, at=t_eval)
     print(f"  lattice verdict:  permitted={evaluation.permitted} via={evaluation.matching_grant_id}")
-    assert evaluation.permitted, "The recorded clean interpretation must be permitted by the fixture grant."
+    require(evaluation.permitted, "The recorded clean interpretation must be permitted by the fixture grant.")
 
     with open(FIXTURES / "buyer_request_poisoned.json") as f:
         preq = json.load(f)
@@ -167,8 +183,7 @@ def beat_4b_natural_language_interpretation(events):
     pevaluation = permits(active_grant_events([e for e in events if e.counterparty_id == preq["counterparty_id"]], at=t_eval), pscope, at=t_eval)
     print(f"  poisoned request interpreted as territory={pscope.territory} "
           f"model_class={pscope.model_class} -> permitted={pevaluation.permitted}")
-    assert not pevaluation.permitted, \
-        "The injection broadened the interpretation; the lattice must deny what no grant contains."
+    require(not pevaluation.permitted,  "The injection broadened the interpretation; the lattice must deny what no grant contains.")
     print("  The model returns a Scope and nothing else; a malformed or out-of-vocabulary")
     print("  interpretation is rejected, never coerced. permits() is the only authority.")
 
@@ -194,8 +209,8 @@ def beat_5_conflict_walls():
             denied += 1
             print(f"  [DENIED] {label}")
             print(f"           reason: {e.denial.reason}")
-    assert denied == len(attempts), "Every forbidden read must be denied."
-    assert len(gateway.denial_events) == len(attempts), "Every denial must be recorded as an event."
+    require(denied == len(attempts), "Every forbidden read must be denied.")
+    require(len(gateway.denial_events) == len(attempts), "Every denial must be recorded as an event.")
     print(f"  PASS: {denied}/{len(attempts)} forbidden reads denied, each with a structured PolicyDenialEvent.")
 
 
@@ -218,12 +233,9 @@ def beat_5b_adk_delegation(events):
     for entry in result["transcript"]:
         print(f"  [{entry['author']:<22}] {entry['text']}")
 
-    assert result["negotiator_discovered"] == [], \
-        "A buyer's negotiator must not be told the revocation propagator exists."
-    assert result["discovered"] == ["revocation_propagator-v1"], \
-        "The artist's rights custodian must be able to discover the propagator by role."
-    assert result["cascade"] is not None and result["cascade"].affected_grants, \
-        "The discovered propagator must have executed the cascade."
+    require(result["negotiator_discovered"] == [],  "A buyer's negotiator must not be told the revocation propagator exists.")
+    require(result["discovered"] == ["revocation_propagator-v1"],  "The artist's rights custodian must be able to discover the propagator by role.")
+    require(result["cascade"] is not None and result["cascade"].affected_grants,  "The discovered propagator must have executed the cascade.")
     print("  PASS: agent-to-agent addressing goes through role-scoped registry discovery —")
     print("        denied for the negotiator, granted for the custodian — and the cascade ran")
     print("        under a third service account holding neither identity nor buyer terms.")
@@ -253,15 +265,12 @@ def beat_5c_quarantine_and_reroute(events):
 
     abandoned = result["task_abandoned_events"]
     quarantine = result["quarantine"]
-    assert len(abandoned) == 1 and abandoned[0]["written_by"] == "supervisor", \
-        "TaskAbandoned must be written BY THE SUPERVISOR, not by the failing worker."
-    assert abandoned[0]["reason"] == "deadline_exceeded"
-    assert quarantine["deregistered"] is True, "The looping worker must be deregistered."
-    assert result["post_quarantine_discovery"] == [], \
-        "It must stay deregistered for the remainder of the run."
-    assert quarantine["result"]["status"] == "COMPLETED_DEGRADED", \
-        "The request must still complete."
-    assert quarantine["result"]["notices_issued"] == 0
+    require(len(abandoned) == 1 and abandoned[0]["written_by"] == "supervisor",  "TaskAbandoned must be written BY THE SUPERVISOR, not by the failing worker.")
+    require(abandoned[0]["reason"] == "deadline_exceeded", "demo property failed")
+    require(quarantine["deregistered"] is True, "The looping worker must be deregistered.")
+    require(result["post_quarantine_discovery"] == [],  "It must stay deregistered for the remainder of the run.")
+    require(quarantine["result"]["status"] == "COMPLETED_DEGRADED",  "The request must still complete.")
+    require(quarantine["result"]["notices_issued"] == 0, "demo property failed")
 
     print(f"  TaskAbandoned written by : {abandoned[0]['written_by']} (reason: {abandoned[0]['reason']})")
     print(f"  discovery after quarantine: {result['post_quarantine_discovery']} (deregistered for the run)")

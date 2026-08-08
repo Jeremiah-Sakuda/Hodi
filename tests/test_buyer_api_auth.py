@@ -249,6 +249,39 @@ class TestIamPolicyMatching(unittest.TestCase):
             permitted, _ = get_action_permission(role, collection)
             self.assertFalse(permitted, f"{role} must be denied '{collection}'")
 
+    def test_a_denial_OVERRIDES_a_permission_for_the_same_collection(self):
+        """The deny-check was INERT: no collection appeared in both lists, so
+        deleting the check entirely produced byte-identical output and the test
+        above still passed. `denied_collections` only means something if a deny
+        can beat a grant — assert that directly."""
+        import src.schema.iam_policy as policy
+        role = "licensing_negotiator"
+        original = policy.AGENT_SA_MAP[role]["denied_collections"]
+        try:
+            permitted, _ = get_action_permission(role, "receipts")
+            self.assertTrue(permitted, "precondition: 'receipts' is normally permitted")
+            policy.AGENT_SA_MAP[role]["denied_collections"] = list(original) + ["receipts"]
+            permitted, _ = get_action_permission(role, "receipts")
+            self.assertFalse(
+                permitted,
+                "a collection in BOTH lists must be DENIED — denials are absolute, "
+                "and if they are not, denied_collections is decoration")
+        finally:
+            policy.AGENT_SA_MAP[role]["denied_collections"] = original
+
+    def test_a_denial_beats_a_permission_carrying_a_required_filter(self):
+        """Same property on the filtered-collection path, which returns early."""
+        import src.schema.iam_policy as policy
+        role = "licensing_negotiator"
+        original = policy.AGENT_SA_MAP[role]["denied_collections"]
+        try:
+            policy.AGENT_SA_MAP[role]["denied_collections"] = list(original) + ["grants"]
+            permitted, required = get_action_permission(role, "grants")
+            self.assertFalse(permitted)
+            self.assertIsNone(required)
+        finally:
+            policy.AGENT_SA_MAP[role]["denied_collections"] = original
+
     def test_negotiator_agent_denied_other_counterparty_by_policy_not_by_local_check(self):
         from src.agents.licensing_negotiator import LicensingNegotiatorAgent
         agent = LicensingNegotiatorAgent(session_counterparty_id="buyer-session-1")
