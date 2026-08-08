@@ -82,8 +82,35 @@ class TestHod303GemmaTriage(unittest.TestCase):
 
     def test_self_deploy_check_traffic_short_circuits(self):
         for ua in ("Python-urllib/3.14", "curl/8.7.1", "Hodi-HealthCheck/1.0",
-                   "Hodi-Latency-Test/1.0", "python-requests/2.34.2"):
-            self.assertEqual(self.engine.triage_record({"user_agent": ua}), "self_deploy_check")
+                   "Hodi-Latency-Test/1.0", "python-requests/2.34.2",
+                   "Google-Cloud-Scheduler"):
+            with self.subTest(ua=ua):
+                self.assertEqual(self.engine.triage_record({"user_agent": ua}), "self_deploy_check")
+
+    def test_any_hodi_prefixed_probe_counts_as_self_traffic(self):
+        """The self-traffic list was incomplete three times. A probe named
+        Hodi-<anything> must be self-originated the day it is written, without
+        anyone remembering to add it."""
+        for ua in ("Hodi-Adversarial-Audit/1.0", "Hodi-SomeProbeInventedTomorrow/9.9"):
+            with self.subTest(ua=ua):
+                self.assertEqual(self.engine.triage_record({"user_agent": ua}), "self_deploy_check")
+
+    def test_the_engine_and_the_audit_agree_on_what_is_self_traffic(self):
+        """Two implementations of one rule is how this recurred. They must be
+        the same implementation."""
+        from src.evidence.self_traffic import is_self_originated
+        for ua in ("Hodi-Adversarial-Audit/1.0", "Google-Cloud-Scheduler", "curl/8.7.1",
+                   "GPTBot/1.2", "Mozilla/5.0 (compatible)", "MysteryClient/0.1"):
+            with self.subTest(ua=ua):
+                engine_says_self = self.engine.triage_record({"user_agent": ua}) == "self_deploy_check"
+                self.assertEqual(engine_says_self, is_self_originated(ua))
+
+    def test_crawler_signatures_name_no_real_company(self):
+        """Positioning rule: no real company appears anywhere in the repo."""
+        for pattern in GemmaTriageEngine.THIRD_PARTY_BOT_USER_AGENTS:
+            for vendor in ("gpt", "claude", "google", "bing", "yandex", "facebook",
+                           "ahrefs", "semrush", "bytedance", "duckduck"):
+                self.assertNotIn(vendor, pattern.lower())
 
     def test_heuristic_fallback_classifies_when_gemma_unavailable(self):
         self.assertEqual(self.engine.triage_record({"user_agent": "Mozilla/5.0 (compatible; GPTBot/1.0)"}), "bot")

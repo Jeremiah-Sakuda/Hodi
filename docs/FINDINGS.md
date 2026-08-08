@@ -214,3 +214,15 @@ So the metric changed shape, not just value. The audit now reports **`known_craw
 **What is now structural.** One list, in `src/evidence/self_traffic.py`, imported by both consumers — the duplication that caused it twice is gone. `make check-docs` fails the build if any accrual number in the README or Diagram B disagrees with `metrics.json`, so prose and tool cannot drift apart silently again. It is wired into `make compliance`.
 
 **The general lesson.** The instrument that produces your evidence is part of your threat model, and *you* are the most likely contaminant of it. Every tool this project points at its own endpoint has to be declared, in one place, or the finding degrades quietly into its own opposite.
+
+---
+
+### 2026-08-08 (closing) — The Self-Traffic Class Recurred a Third Time, and Named Vendors Left the Detector (HOD-303, HOD-320)
+
+**Third occurrence, same class.** The final verification pass surfaced `Hodi-Adversarial-Audit/1.0` — nine records, from the developer's own IP, a Hodi-branded probe — being counted as non-self-originated. That is the third time the self-traffic list has been incomplete: `python-requests` and `Hodi-Latency-Test` (2026-08-07), `Google-Cloud-Scheduler` (2026-08-08), and now this. Each previous fix added the missing entries to the enumeration. **An enumeration you must remember to update is not a mechanism**, and this project had already written that sentence about a comment before repeating the mistake with a list.
+
+The fix is a rule, not an entry: every probe this project points at its own endpoint is named `Hodi-<something>`, so `is_self_originated()` now matches the `hodi-` prefix. A future probe is covered on the day it is written, without anyone remembering.
+
+**Named vendors removed from the crawler detector.** The bot-signature list enumerated real companies' crawler user agents. Two problems: the project's positioning rule is that no real company appears anywhere in the repo, and — separately — an allow-list of known names cannot see a crawler it has not been told about. Replaced with generic self-identification signatures (`bot`, `crawler`, `spider`, `scraper`, `fetcher`, `indexer`). This is **not strictly broader**: a tool identifying only by framework name no longer matches, which is stated rather than glossed, because a user agent that does not self-identify as a crawler is exactly the unattributed case this project declines to promote to a finding. Verified against the live corpus: `known_crawler_ua_matches` was 0 before and 0 after.
+
+**The headline finding is unchanged and now stands on a better base:** across 539 accrued records, **0 match any crawler signature**. 517 are this project's own tooling; the remaining 22 are unattributed browser-like agents, 21 of which arrived from cloud IPs in bursts that included requests to the debug endpoint — inspection, not crawling.
