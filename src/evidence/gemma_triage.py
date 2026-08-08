@@ -2,7 +2,7 @@ import urllib.request
 import json
 import re
 
-from src.evidence.self_traffic import SELF_ORIGINATED_UA_PATTERNS
+from src.evidence.self_traffic import SELF_ORIGINATED_UA_PATTERNS, is_self_originated
 from typing import Dict, Any, List
 
 class GemmaTriageEngine:
@@ -18,14 +18,31 @@ class GemmaTriageEngine:
     the engine gracefully falls back to heuristic classification, ensuring evidence records are produced.
     """
 
-    # Imported from the single source of truth so this list cannot drift from
-    # the audit script's (src/evidence/self_traffic.py).
-    SELF_DEPLOY_CHECK_USER_AGENTS = SELF_ORIGINATED_UA_PATTERNS
+    # Self-traffic classification is delegated to is_self_originated() rather
+    # than re-iterating the pattern list here. Copying the list meant this
+    # engine silently missed the `hodi-` PREFIX rule when that was added — the
+    # same two-implementations-of-one-rule failure, one level down.
+    SELF_DEPLOY_CHECK_USER_AGENTS = SELF_ORIGINATED_UA_PATTERNS  # kept for introspection
 
+    # GENERIC crawler signatures, deliberately not a list of named companies.
+    #
+    # This was an enumeration of real vendors' crawler user agents. Two reasons
+    # it is gone: this project's positioning rule is that no real company appears
+    # as a violator anywhere in the repo, and an allow/deny list of known names
+    # cannot see a crawler it has not been told about. Matching the convention
+    # that crawlers actually follow — self-identifying as a bot, crawler, spider
+    # or scraper in the user agent — is neutral and catches crawlers nobody has
+    # heard of yet. It is NOT strictly broader: a tool that identifies only by
+    # framework name (e.g. a bare "Scrapy/2.11") no longer matches. That is an
+    # accepted trade, and it is stated rather than glossed, because a UA that
+    # does not self-identify as a crawler is exactly the unattributed case this
+    # project reports as unattributed instead of promoting to a finding.
+    #
+    # Verified against the live corpus on 2026-08-08: this change moves
+    # known_crawler_ua_matches by zero. It was 0 before and 0 after.
     THIRD_PARTY_BOT_USER_AGENTS = [
-        r"gptbot", r"ccbot", r"claudebot", r"google-extended", r"bytespider",
-        r"scrapy", r"ahrefsbot", r"semrushbot", r"dotbot", r"rogue-scraper",
-        r"bingbot", r"googlebot", r"yandex", r"duckduckbot", r"slurp", r"facebookexternalhit"
+        r"\bbot\b", r"bot/", r"[-_]bot", r"bot[-_]",
+        r"crawler", r"spider", r"scraper", r"\bfetcher\b", r"\bindexer\b",
     ]
 
     def __init__(self, ollama_host: str = "http://localhost:11434"):
@@ -40,10 +57,10 @@ class GemmaTriageEngine:
         user_agent = record.get("user_agent", "")
         ua_lower = user_agent.lower()
 
-        # 1. Whitelist self-originated deploy check traffic
-        for pattern in self.SELF_DEPLOY_CHECK_USER_AGENTS:
-            if re.search(pattern, ua_lower):
-                return "self_deploy_check"
+        # 1. Whitelist self-originated traffic — ONE implementation, shared with
+        #    the accrual audit (src/evidence/self_traffic.py).
+        if is_self_originated(user_agent):
+            return "self_deploy_check"
 
         # 2. Try serverless Gemma on Vertex AI (gemma-4-26b-a4b-it-maas, pinned;
         #    probed reachable 2026-08-07 — see docs/FINDINGS.md). Non-load-bearing:

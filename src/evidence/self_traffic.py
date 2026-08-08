@@ -25,13 +25,19 @@ SELF_ORIGINATED_UA_PATTERNS = [
     "google-cloud-sdk",
     "google-cloud-scheduler",
     "gcp-cloud-run",
-    # this project's own named probes
-    "hodi-healthcheck",
-    "hodi-latency-test",
-    "hodi-corpus-audit",
 ]
+
+# Every probe this project points at its own endpoint is named "Hodi-<something>".
+# Enumerating them individually failed THREE times — python-requests and
+# Hodi-Latency-Test (2026-08-07), Google-Cloud-Scheduler (2026-08-08), and
+# Hodi-Adversarial-Audit (2026-08-08) — each time inflating the third-party
+# count with our own traffic. A prefix rule cannot be forgotten when a new
+# probe is added, which an enumeration demonstrably can.
+SELF_ORIGINATED_UA_PREFIX = "hodi-"
 
 
 def is_self_originated(user_agent: str) -> bool:
     ua = (user_agent or "").lower()
+    if ua.startswith(SELF_ORIGINATED_UA_PREFIX):
+        return True
     return any(pattern in ua for pattern in SELF_ORIGINATED_UA_PATTERNS)

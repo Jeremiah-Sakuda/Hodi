@@ -1,18 +1,19 @@
 {
-  "timestamp": "2026-08-08T01:18:25Z",
+  "timestamp": "2026-08-08T03:46:24Z",
   "daily_crawler_accrual_metrics": {
     "audit_date_utc": "2026-08-08",
-    "total_accrued_records": 334,
-    "self_originated_count": 324,
-    "non_self_originated_requests_count": 10,
+    "total_accrued_records": 539,
+    "self_originated_count": 517,
+    "non_self_originated_requests_count": 22,
     "known_crawler_ua_matches": 0,
     "non_self_user_agents": {
-      "Mozilla/5.0 (compatible)": 9,
+      "Mozilla/5.0 (compatible)": 21,
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36": 1
     },
-    "distinct_user_agents_count": 8,
+    "distinct_user_agents_count": 9,
     "distinct_user_agents": [
       "Google-Cloud-Scheduler",
+      "Hodi-Adversarial-Audit/1.0",
       "Hodi-HealthCheck/1.0",
       "Hodi-Latency-Test/1.0",
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
@@ -22,7 +23,7 @@
       "python-requests/2.34.2"
     ],
     "hostname_breakdown": {
-      "hodi-evidence-endpoint-406699565497.us-central1.run.app": 334
+      "hodi-evidence-endpoint-406699565497.us-central1.run.app": 539
     },
     "claim_limit": "non_self_originated_requests_count counts requests this project did not make; it is NOT a crawler count. known_crawler_ua_matches is the only figure this project will describe as crawler access."
   },

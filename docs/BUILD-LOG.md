@@ -426,3 +426,26 @@ The gateway's new gcloud-token credential fallback silently converted three unit
 3. The drill is a real authenticated route rather than a test-only path, because "how does it recover" should be answerable against the deployed service, not only in CI.
 
 **Requirements touched:** HOD-104, HOD-330, HOD-340, HOD-341, HOD-342, HOD-350, HOD-360, HOD-410, HOD-510
+
+---
+
+### 2026-08-08 — Syndication Copy, Devpost Under the Drift Guard, and the Closing Pass
+
+**Prompt (verbatim, abridged to the directive headers; three items then close):**
+> 1. CROSS-POST THE BLOG TO MEDIUM. [...] canonical link back to the Pages URL, the "Created for the All Things Agentic Hackathon" sentence intact, and images or diagrams noted where they should be placed.
+> 2. THE DEVPOST SUBMISSION TEXT — ALL FOUR FIELDS, EACH FROM A PRODUCING SECTION. [...] Every number in it must come from metrics.json, not be typed. Then add it to make check-docs so it cannot drift either.
+> 3. THE CLOSING VERIFICATION PASS — observed output, not assertion.
+
+**Outcome:**
+1. **`docs/blog/MEDIUM-VERSION.md`** — syndication copy generated FROM the source post rather than rewritten, so the two cannot diverge in substance. Front matter stripped, relative repo links absolutised, canonical-link instructions for both the import route and the manual route, two inline image placement markers with local paths and raw URLs, title/subtitle/tags, and a footer crediting the Pages original. The Pages version stays as the canonical source of record.
+2. **Devpost text sourced from `metrics.json`, and now guarded.** All four required fields were already sectioned; this pass added the real accrual figures to *Other data sources*, the attributable-not-authenticated limit, and a block of honest negatives to *Findings and learnings* (no training-set membership determination, `crawler_access` instrumented but unobserved, `verbatim_match` designed but not demonstrated, the managed guardrail unavailable and the claim pulled). `scripts/check_doc_metrics.py` now validates seven figures in the Devpost file against `metrics.json` and fails the build on drift — **mutation-verified** by editing one number and watching `make check-docs` exit 1.
+3. **The closing pass found one more defect, and it is the same class a third time.** `Hodi-Adversarial-Audit/1.0` — a Hodi-branded probe from the developer's IP — was being counted as non-self-originated. Enumeration failed for the third time, so the fix is a rule: `is_self_originated()` now matches the `hodi-` prefix, covering every future probe on the day it is written. Separately, the crawler detector's list of named vendor user agents was replaced with generic self-identification signatures, which removes real company names from the repo (positioning rule) and catches crawlers the list had never heard of. Verified: `known_crawler_ua_matches` 0 before, 0 after.
+4. **Numbers refreshed everywhere from one regeneration:** 539 accrued / 517 self / 22 unattributed / 0 known-crawler. README, Diagram B (re-rendered), and the Devpost text updated together, with `make check-docs` proving all three agree.
+
+**Key decisions:**
+1. Generate the Medium copy from the source rather than maintaining a second draft — a syndicated post that drifts from its canonical original is the doc-drift failure with a bigger blast radius.
+2. Publish the Pages version as canonical and Medium as the copy, keeping both — two public locations satisfy the discoverability concern without making either authoritative by accident.
+3. A prefix rule for self-traffic, not a fourth list entry — the third recurrence is evidence about the mechanism, not about the entries.
+4. Generic crawler signatures over named vendors, and state the trade — the new matcher misses a framework-named tool the old list caught, and saying so is cheaper than being caught implying total coverage.
+
+**Requirements touched:** HOD-303, HOD-320, HOD-510, HOD-621, HOD-622, HOD-623
