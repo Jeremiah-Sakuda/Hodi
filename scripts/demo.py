@@ -112,7 +112,7 @@ def beat_4_poisoned_request(events):
     inspector = PromptInspector()
     t_eval = datetime(2026, 8, 7, tzinfo=timezone.utc)
 
-    outcomes = {}
+    outcomes, detections, byte_identical = {}, {}, {}
     for name in ("clean", "poisoned"):
         with open(FIXTURES / f"buyer_request_{name}.json") as f:
             req = json.load(f)
@@ -121,15 +121,24 @@ def beat_4_poisoned_request(events):
         active = active_grant_events([e for e in events if e.counterparty_id == req["counterparty_id"]], at=t_eval)
         evaluation = permits(active, Scope(**req["requested_scope"]), at=t_eval)
         outcomes[name] = evaluation
+        detections[name] = result.injection_detected
+        byte_identical[name] = (result.stored_bytes == raw)
         print(f"  [{name:<8}] injection_detected={result.injection_detected!s:<5} "
               f"engine={result.inspector_engine} stored_byte_identical={result.stored_bytes == raw}")
         if result.injection_detected:
             print(f"             pattern: {result.pattern_matched}")
         print(f"             permitted={evaluation.permitted} via={evaluation.matching_grant_id}")
 
+    # These two assertions are the ones that can actually fail if the inspector
+    # dies: comparing the two licensable outcomes alone cannot, because they are
+    # identical whether or not detection works.
+    assert detections["clean"] is False, "Clean document must not be flagged."
+    assert detections["poisoned"] is True, "Poisoned document MUST be detected."
+    assert byte_identical["poisoned"] is True, "Stored bytes must be byte-identical to received."
     assert outcomes["clean"].permitted == outcomes["poisoned"].permitted
     assert outcomes["clean"].matching_grant_id == outcomes["poisoned"].matching_grant_id
-    print("  PASS: identical licensable outcome — the injection changed nothing but the audit log.")
+    print("  PASS: injection detected, document stored byte-identical, and the licensable")
+    print("        outcome is unchanged — the injection altered nothing but the audit log.")
 
 
 def beat_4b_natural_language_interpretation(events):

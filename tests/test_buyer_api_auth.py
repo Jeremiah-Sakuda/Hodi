@@ -36,6 +36,7 @@ VICTIM = "buyer-acme-2"
 ATTACKER = "rival-labs"
 VICTIM_KEY, VICTIM_SECRET = "key-victim", "victim-secret-do-not-use-in-prod"
 ATTACKER_KEY, ATTACKER_SECRET = "key-attacker", "attacker-secret-do-not-use-in-prod"
+ARTIST_KEY, ARTIST_SECRET = "key-artist", "artist-secret-do-not-use-in-prod"
 
 SCOPE = {
     "use_type": "training", "model_class": "all_models", "commercial": True,
@@ -53,6 +54,8 @@ class TestCrossBuyerAuthentication(unittest.TestCase):
         store = InMemoryCredentialStore({
             VICTIM_KEY: {"counterparty_id": VICTIM, "secret": VICTIM_SECRET, "active": True},
             ATTACKER_KEY: {"counterparty_id": ATTACKER, "secret": ATTACKER_SECRET, "active": True},
+            ARTIST_KEY: {"counterparty_id": "artist-jeremiah", "secret": ARTIST_SECRET,
+                         "active": True, "principal_type": "artist"},
         })
         original = buyer_api._credential_store
         buyer_api.set_credential_store(store)
@@ -161,6 +164,60 @@ class TestCrossBuyerAuthentication(unittest.TestCase):
         self.assertEqual(denial.outcome, "DENIED")
         self.assertEqual(denial.policy_consulted, "request_authentication_v1")
         self.assertIn(VICTIM, denial.reason)
+        self.assertEqual(len(gw.denial_events), 1)
+
+    # --- /api/v1/revoke: artist-side operation, artist credential required ---
+
+    def test_revoke_is_not_reachable_unauthenticated(self):
+        """This route shipped fully open: anyone could revoke any published
+        work_id, the response disclosed every affected counterparty's terms,
+        and append-only means the writes are not undoable."""
+        r = self.client.post("/api/v1/revoke",
+                             json={"work_id": "work-repo-001", "revoked_use_type": "training"})
+        self.assertEqual(r.status_code, 403)
+
+    def test_revoke_rejects_a_bogus_signature(self):
+        r = self.client.post("/api/v1/revoke",
+                             json={"work_id": "work-repo-001", "revoked_use_type": "training"},
+                             headers={HEADER_KEY_ID: ARTIST_KEY,
+                                      HEADER_TIMESTAMP: datetime.now(timezone.utc).isoformat(),
+                                      HEADER_SIGNATURE: "NOT-A-REAL-SIGNATURE"})
+        self.assertEqual(r.status_code, 403)
+
+    def test_counterparty_credential_cannot_revoke(self):
+        """A buyer must not be able to terminate an artist's grants — including
+        a rival's. Valid credential, wrong principal type."""
+        r = self._post(*self._signed(
+            ATTACKER_KEY, ATTACKER_SECRET, path="/api/v1/revoke",
+            body={"work_id": "work-repo-001", "revoked_use_type": "training"}))
+        self.assertEqual(r.status_code, 403)
+        self.assertIn("requires a 'artist' credential", r.json()["detail"])
+
+    def test_artist_credential_is_accepted_by_revoke(self):
+        """Positive pair: the artist credential authenticates. Offline the
+        gateway holds no documents, so the cascade affects nothing — the point
+        is that it passed authentication (HTTP 200)."""
+        r = self._post(*self._signed(
+            ARTIST_KEY, ARTIST_SECRET, path="/api/v1/revoke",
+            body={"work_id": "work-repo-001", "revoked_use_type": "training"}))
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["affected_grants"], [])
+
+    def test_artist_credential_cannot_negotiate_as_a_buyer(self):
+        """The principal-type check runs both ways."""
+        r = self._post(*self._signed(ARTIST_KEY, ARTIST_SECRET))
+        self.assertEqual(r.status_code, 403)
+        self.assertIn("requires a 'counterparty' credential", r.json()["detail"])
+
+    def test_principal_type_denial_is_logged_as_a_structured_event(self):
+        from src.gateway.gateway import AgentGateway
+        gw = AgentGateway()
+        denial = gw.log_principal_type_denial(
+            calling_sa="revocation-propagator-sa@hodi-2026.iam.gserviceaccount.com",
+            key_id=ATTACKER_KEY, principal_type="counterparty",
+            required_principal_type="artist", operation="/api/v1/revoke")
+        self.assertEqual(denial.outcome, "DENIED")
+        self.assertEqual(denial.policy_consulted, "principal_type_policy_v1")
         self.assertEqual(len(gw.denial_events), 1)
 
     def test_natural_language_endpoint_enforces_the_same_boundary(self):

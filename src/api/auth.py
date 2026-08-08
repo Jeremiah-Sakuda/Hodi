@@ -49,6 +49,10 @@ HEADER_SIGNATURE = "X-Hodi-Signature"
 class AuthenticatedCounterparty(BaseModel):
     counterparty_id: str
     key_id: str
+    # Which kind of principal this credential belongs to. A buyer's credential
+    # must not be able to drive artist-side operations (revocation), and an
+    # artist's credential must not be used to negotiate as a buyer.
+    principal_type: str = "counterparty"
 
 
 class RequestAuthenticationError(Exception):
@@ -144,4 +148,8 @@ def authenticate(
     if not counterparty_id:
         raise RequestAuthenticationError("Credential record carries no counterparty binding.")
 
-    return AuthenticatedCounterparty(counterparty_id=counterparty_id, key_id=key_id)
+    return AuthenticatedCounterparty(
+        counterparty_id=counterparty_id,
+        key_id=key_id,
+        principal_type=record.get("principal_type", "counterparty"),
+    )

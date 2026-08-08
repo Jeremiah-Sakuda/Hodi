@@ -30,7 +30,7 @@ Everything else in this system is ordinary engineering. These three are why it i
 
 ## Hard constraints
 
-- **Runtime is Gemini, exclusively.** Gemini 3.5 Pro and Flash via Vertex AI, pinned model ID literals, temperature 0. No other model provider in any execution path.
+- **Runtime models are Google's, exclusively.** Gemini 3.5 Flash via Vertex AI (`global` endpoint, pinned literal, temperature 0) for scope interpretation and notice drafting, and serverless Gemma (`gemma-4-26b-a4b-it-maas`) as the non-load-bearing crawler-log triage tier with a local-Ollama and then a heuristic fallback. No non-Google model provider in any execution path. `gemini-3.5-pro` does not exist for this project — verified by probe, see FINDINGS.
 - **The four agents are separated by conflict of interest, not by task.** The rights custodian holds artist identity. The licensing negotiator sees **one** counterparty per session and must be *incapable* of reading another's terms. The evidence agent must not see commercial terms, or its findings become interested. The revocation propagator must not hold identity. **No service account may hold two of {identity, buyer terms, evidence, revocation}.** A monolith here would itself be the violation — that sentence is the product's architectural thesis, so do not collapse agents "for simplicity."
 - **The grant log is append-only, enforced by a custom IAM role** (`datastore.entities.create` + `get`; no `update`/`delete`) on every agent SA. Firestore security rules govern the artist's browser path only — they are never evaluated for server-SDK traffic and cannot be the pipeline's enforcement.
 - **Revocation is a new event that supersedes.** The original grant is never deleted; it renders struck through. The audit trail's entire value is showing what *was* permitted at each moment.
@@ -62,27 +62,37 @@ Tests that must exist because the obvious version is insufficient:
 ## Repo layout
 
 ```
-docs/          PRD.md · GATE.md · BUILD-LOG.md · FINDINGS.md · compliance.md · metrics.json · antigravity/
-src/schema/    work · scope · lattice.py (the partial order, declared as data) · grant_event · receipt · evidence
-src/agents/    rights_custodian · licensing_negotiator · evidence_agent · revocation_propagator · supervisor
-src/gateway/   routing, policy enforcement, denial events
+docs/          PRD.md · GATE.md · BUILD-LOG.md · FINDINGS.md · metrics.json · antigravity/ · architecture/
+src/schema/    work · scope · lattice.py (the partial order, declared as data) · grant_event · evidence · iam_policy
+src/agents/    base · rights_custodian · licensing_negotiator · evidence_agent · revocation_propagator
+src/fleet/     adk_fleet.py — the four agents as real google.adk agents, and the delegation path
+src/llm/       vertex_gemini (pinned client + cache) · scope_interpreter · notice_drafter
+src/gateway/   routing, policy enforcement, structured denial events · prompt_inspector
 src/registry/  agent publication, versioning, role-scoped discovery
-src/resolve/   resolve(grant_id, at=t) — the single read path · permits(grant, request)
-src/evidence/  crawler log ingest · gemma triage · canary · verbatim · redistribution
-src/api/       signed buyer requests · /.well-known/hodi.json · receipts
+src/resolve/   resolve(grant_id, at=t) and active_grant_events — the single read path · permits()
+src/evidence/  gemma triage · self_traffic · evidence engine · overclaim/revocation lints
+src/api/       buyer_api (signed requests, receipts) · auth (HMAC signed-request verification)
+src/supervisor/ deadline + circuit breaker · quarantine
+src/observability/ tracing.py — OTel decision spans
+src/evidence_service/ the deployed Cloud Run app (public surfaces, console mount, accrual audit)
 src/console/   artist console (register, scope, grants, evidence by class, revoke)
-fixtures/      buyer requests (incl. poisoned) · scope truth table · corpus manifest
-scripts/       bootstrap_gcp.sh · teardown.sh · verify_scopes · prompt_bench.sh
+fixtures/      buyer requests (incl. poisoned) · demo grant log · gemini response cache
+scripts/       demo · deploy_gcp.sh · bootstrap_gcp.sh · teardown.sh · verify_scopes · verify_manifest
+               seed_demo_grant · seed_counterparty_credential · daily_accrual_check · check_doc_metrics
+tests/         153 offline tests; live-Firestore tests gated on HODI_E2E=1
 ```
 
 ## Commands
 
 | Command | Contract |
 |---|---|
-| `make demo` | Clean clone, **zero credentials**, committed cache + emulator. README line 1. |
-| `make demo-live` | Real Vertex path; documented cost and wall clock. |
+| `make demo` | Clean clone, **zero credentials, no network**, committed fixtures + committed Gemini response cache. Verified in a fresh `python:3.11-slim` container. |
+| `make demo-live` | Boundary proof against the DEPLOYED service: gateway policy (Part A), production request path (Part B), mutating/internal routes (Part C). Replays historical exploits and asserts they are refused. |
+| `make test` | Full offline suite. Live-Firestore tests skip unless `HODI_E2E=1`. |
 | `make verify-scopes` | Prints the lattice table and runs the ≥40-case containment truth table. |
-| `make metrics` | Regenerates `/docs/metrics.json`. Every number on either diagram traces here. |
+| `make verify-manifest` | Verifies the LIVE `/works` manifest: corpus served, every `verified_control` proof resolves, canaries present. |
+| `make metrics` | Regenerates `/docs/metrics.json` from a live Firestore audit. Requires an ambient `gcloud` login. |
+| `make check-docs` | Fails if any accrual number in README.md or Diagram B disagrees with `docs/metrics.json`. |
 | `make compliance` | Requirement IDs diffed against the matrix **and the prose**. |
 
 ---
@@ -91,7 +101,7 @@ scripts/       bootstrap_gcp.sh · teardown.sh · verify_scopes · prompt_bench.
 
 **The corpus is the author's own published work** — essays, repos, bass recordings. Not synthetic. This is the only uncontrolled input in the author's entire portfolio and it is worth more than any feature. Never replace it with fixtures for convenience.
 
-**The evidence endpoint has been logging real third-party access since Aug 6.** That accrual cannot be recovered later; if it goes down, it stops accruing and the loss is permanent. Treat uptime on that one service as a hard constraint, and never point it at fixture data.
+**The evidence endpoint has been logging every access since Aug 6.** That accrual cannot be recovered later; if it goes down, it stops accruing and the loss is permanent. Treat uptime on that one service as a hard constraint, and never point it at fixture data.
 
 ---
 

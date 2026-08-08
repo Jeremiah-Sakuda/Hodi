@@ -16,7 +16,7 @@ import unittest
 
 from src.llm.vertex_gemini import (
     VertexGeminiClient, GeminiUnavailableError, _cache_key,
-    PINNED_INTERPRETER_MODEL, PINNED_TRIAGE_MODEL, PINNED_GEMMA_TRIAGE_MODEL,
+    PINNED_INTERPRETER_MODEL, PINNED_GEMMA_TRIAGE_MODEL,
     PINNED_MODELS, TEMPERATURE, CACHE_PATH
 )
 from src.evidence.gemma_triage import GemmaTriageEngine
@@ -31,11 +31,23 @@ class TestHod301GeminiClient(unittest.TestCase):
     def test_pinned_model_ids_are_exact_literals(self):
         """HOD-301: model IDs are pinned literals, never aliases or previews."""
         self.assertEqual(PINNED_INTERPRETER_MODEL, "gemini-3.5-flash")
-        self.assertEqual(PINNED_TRIAGE_MODEL, "gemini-3.5-flash-lite")
         self.assertEqual(PINNED_GEMMA_TRIAGE_MODEL, "gemma-4-26b-a4b-it-maas")
         for mid in PINNED_MODELS:
             self.assertNotIn("latest", mid)
             self.assertNotIn("preview", mid)
+
+    def test_every_pinned_model_has_a_call_site(self):
+        """A pinned model nobody calls is model-count padding. Each entry in
+        PINNED_MODELS must be referenced by code outside src/llm/vertex_gemini.py."""
+        import subprocess
+        for mid in PINNED_MODELS:
+            const = ("PINNED_INTERPRETER_MODEL" if mid == PINNED_INTERPRETER_MODEL
+                     else "PINNED_GEMMA_TRIAGE_MODEL")
+            hits = subprocess.run(
+                ["grep", "-rl", const, "src/", "scripts/"],
+                capture_output=True, text=True).stdout.split()
+            callers = [h for h in hits if "vertex_gemini.py" not in h]
+            self.assertTrue(callers, f"{const} ({mid}) is pinned but called from nowhere")
 
     def test_temperature_is_zero(self):
         self.assertEqual(TEMPERATURE, 0)

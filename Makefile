@@ -1,4 +1,4 @@
-.PHONY: demo demo-live test verify-scopes verify-manifest metrics compliance
+.PHONY: demo demo-live test verify-scopes verify-manifest metrics check-docs compliance
 
 demo:
 	HODI_OFFLINE=1 python3 scripts/demo.py
@@ -18,5 +18,9 @@ verify-manifest:
 metrics:
 	python3 scripts/daily_accrual_check.py --write-metrics
 
+check-docs:
+	python3 scripts/check_doc_metrics.py
+
 compliance:
 	python3 scripts/compliance.py
+	python3 scripts/check_doc_metrics.py

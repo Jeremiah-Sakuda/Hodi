@@ -13,6 +13,12 @@ DEPLOYED service, in two independent places:
     the unauthenticated cross-buyer attack that WORKED on 2026-08-07 is replayed
     verbatim and must now be refused.
 
+  PART C — the MUTATING and INTERNAL routes:
+    /api/v1/revoke shipped fully unauthenticated (anyone could terminate any
+    published work_id, and append-only means it is not undoable), and
+    /internal/accrual_audit shipped public and appended on every call. Both are
+    replayed anonymously and must be refused.
+
 Part B exists because Part A alone was misleading: the debug endpoint supplies
 its own session context, so it could not have caught a production path that
 took the caller's identity from the request body. A boundary test that cannot
@@ -105,9 +111,37 @@ def part_b_production_path():
     assert r.status_code == 403, f"LEAK: forged credential returned {r.status_code}!"
 
 
+def part_c_mutating_routes():
+    print("\n" + "=" * 78)
+    print("PART C — MUTATING AND INTERNAL ROUTES (/api/v1/revoke, /internal/accrual_audit)")
+    print("=" * 78)
+
+    # A work_id that matches nothing, so a regression here still writes no events.
+    body = json.dumps({"work_id": "nonexistent-work-probe-only",
+                       "revoked_use_type": "training"}).encode("utf-8")
+
+    print("\n[C1] anonymous revocation (must be REFUSED)...")
+    r = requests.post(f"{BASE}/api/v1/revoke", data=body, timeout=60,
+                      headers={"Content-Type": "application/json"})
+    print(f"     HTTP {r.status_code}: {r.text[:160]}")
+    assert r.status_code == 403, f"LEAK: anonymous revocation returned {r.status_code}!"
+
+    print("\n[C2] revocation signed by a forged credential (must be REFUSED)...")
+    r = requests.post(f"{BASE}/api/v1/revoke", data=body, timeout=60,
+                      headers=signed_headers("key-attacker-invented", "unregistered-secret", body))
+    print(f"     HTTP {r.status_code}: {r.text[:160]}")
+    assert r.status_code == 403, f"LEAK: forged revocation credential returned {r.status_code}!"
+
+    print("\n[C3] internal accrual audit without the Scheduler's OIDC token (must be REFUSED)...")
+    r = requests.get(f"{BASE}/internal/accrual_audit", timeout=60)
+    print(f"     HTTP {r.status_code}: {r.text[:160]}")
+    assert r.status_code == 403, f"LEAK: anonymous accrual audit returned {r.status_code}!"
+
+
 if __name__ == "__main__":
     part_a_gateway_policy()
     part_b_production_path()
+    part_c_mutating_routes()
     print("\n" + "=" * 78)
     print("ALL LIVE BOUNDARY TESTS PASSED — gateway policy AND production request path.")
     print("=" * 78)
