@@ -67,7 +67,7 @@ As of the 2026-08-08 audit: **539 accrued records**, of which **0 match any know
 
 ## 4. Findings and learnings
 
-I built a system whose entire premise is refusing to assert what it cannot verify, then kept a ledger of every place it lied to me anyway. **Fourteen defects, seven classes, and three classes that recurred after being fixed once.** The ledger is the most externally useful thing this project produced.
+I built a system whose entire premise is refusing to assert what it cannot verify, then kept a ledger of every place it lied to me anyway. **Fifteen defects, seven classes, and three classes that recurred after being fixed once.** The ledger is the most externally useful thing this project produced.
 
 **The confidentiality boundary was breakable, and it was broken.** Hodi's first invariant — *no agent can read another buyer's terms* — is the reason there are four agents instead of one. `POST /api/v1/license` took `counterparty_id` from the request body and used it as **both** the query filter **and** the session context the gateway validated that filter against, so the gateway compared the caller's claim to itself and always agreed; the signature was checked only for truthiness. One unauthenticated `curl` with `signature: "NOT-A-REAL-SIGNATURE"` returned another counterparty's grant, their negotiated scope, and a receipt in their name. The gateway was working exactly as designed; it was being handed the attacker's assertion as ground truth. It is now HMAC-authenticated over the raw request body with identity derived from a verified credential, and **the exploit is a permanent regression test** replayed against the deployed service by `make demo-live`.
 

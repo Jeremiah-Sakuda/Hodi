@@ -102,7 +102,7 @@
     "note": "each request includes one server-side Vertex AI generateContent call (scope interpretation)"
   },
   "overclaim_lint_coverage": {
-    "measured_at_utc": "2026-08-08T01:18:25Z",
+    "measured_at_utc": "2026-08-08T03:46:24Z",
     "probe_set_size": 12,
     "paraphrases_rejected": 4,
     "paraphrases_not_rejected": 8,

@@ -322,7 +322,7 @@ The gateway's new gcloud-token credential fallback silently converted three unit
 
 ### 2026-08-07 (session 3) — Cross-Buyer Leak Closed, ADK Made Real, Delegation Wired
 
-**Prompt (verbatim, abridged to the directive headers; external judging panel feedback):**
+**Prompt (verbatim, abridged to the directive headers; review feedback):**
 > Fix this first — it isn't a scoring issue. **Cross-buyer confidentiality is bypassable on your live service, unauthenticated.** [...] One `curl` returned `buyer-acme-2`'s grant ID and negotiated scope [...] plus a signed receipt minted off `"NOT-A-REAL-SIGNATURE"`.
 > **No Google Agent Framework in the code** — `google.adk` appears nowhere [...] ADK is named as "the runtime framework" in the README, on Diagram A, and in the PRD. This is mandatory requirement #2.
 > **The fleet layer is inert.** Registry, MemoryBank, Supervisor, Quarantine, and `create_agent_decision_span()` are imported by nothing outside tests.
@@ -350,7 +350,7 @@ The gateway's new gcloud-token credential fallback silently converted three unit
 
 ### 2026-08-08 — Second Unauthenticated Route, the Metrics Self-Contradiction, and Tests That Could Not Fail
 
-**Prompt (verbatim, abridged to the directive headers; second external judging panel):**
+**Prompt (verbatim, abridged to the directive headers; review feedback):**
 > **`POST /api/v1/revoke` is unauthenticated on the live public service.** [...] the response returns `affected_grants[]` carrying every counterparty's `counterparty_id` and full `original_scope` [...] **an anonymous revocation of the entire corpus is not undoable.** [...] "this is the same bug class the project already fixed once on `/license`; the fix was not carried across."
 > **Your headline honesty number now refutes itself.** README and Diagram B both state *"160 accrued records, zero attributable to third parties"* [...] `make metrics` today rewrites `docs/metrics.json` to **`total_accrued_records: 248, third_party_count: 2`**.
 > **Two claimed guarantees have no test that can fail** — prompt-injection detection has zero credential-free coverage; the determinism tiebreak is never exercised.
@@ -392,13 +392,13 @@ The gateway's new gcloud-token credential fallback silently converted three unit
 3. **Superseded semantics decided and made consistent.** A superseded grant is history: `resolve()` now returns `status="superseded"` with `active_scope=None`; `active_grant_events()` already returned `[]` (the correct answer, unchanged); and `permits()` no longer skips non-granted events — it **raises**, validating its whole input before any matching so a permissive answer cannot be returned from a partly-invalid list. `tests/test_superseded_semantics.py` asserts all three components agree, plus the documented re-grant mechanism (revoke → new `granted` event) resolves to the narrower scope. Two existing tests were found to have encoded the contradiction by modelling a *re-grant* as `kind="superseded"`; corrected. Truth-table case 46 now asserts the closed door rather than the old wrong-permit precondition.
 4. **`test_grant_log_iam.py` rewritten.** The old version built a set literal and asserted membership in it — it could not fail, while guarding the invariant the audit trail rests on. It now parses the role definition out of `scripts/deploy_gcp.sh` (the artifact that actually creates the role) and asserts create/get present, update/delete absent, and no unreviewed permission creep; plus a live `HODI_E2E` class that reads the deployed custom role back out of IAM and asserts every declared agent SA exists and holds it. Live run passes against `hodi-2026`.
 5. **Two named findings written up in full** in `docs/FINDINGS.md` — the confidentiality breach (dates, exact exposure, why the existing boundary test could not catch it, the one-day recurrence, and what is now structural) and the Scheduler-as-crawler inversion (root cause in list duplication, the prior instance, the residue investigation that narrowed the claim).
-6. **README overstatement removed, and measured rather than asserted.** The lint's paraphrase coverage was **measured, not assumed**: against a 12-paraphrase probe set seeded from phrasings the lint was deliberately not written against, it rejects **4**. (The reviewing panel's figure was 6/8 from their own probe set; ours is harsher and is the one we publish, since it is the one we can reproduce.) `scripts/measure_lint_coverage.py` writes `overclaim_lint_coverage` into `metrics.json`; `make lint-coverage` regenerates it; `make check-docs` now fails if the README's figure drifts from it *or* if the phrase "including paraphrases" reappears. The README now states plainly that the schema is the invariant and the lint is a backstop.
+6. **README overstatement removed, and measured rather than asserted.** The lint's paraphrase coverage was **measured, not assumed**: against a 12-paraphrase probe set seeded from phrasings the lint was deliberately not written against, it rejects **4**. The probe set lives in `scripts/measure_lint_coverage.py::PARAPHRASE_PROBES` and the figure is regenerated from it, so it is reproducible from this repository alone. `scripts/measure_lint_coverage.py` writes `overclaim_lint_coverage` into `metrics.json`; `make lint-coverage` regenerates it; `make check-docs` now fails if the README's figure drifts from it *or* if the phrase "including paraphrases" reappears. The README now states plainly that the schema is the invariant and the lint is a backstop.
 7. **Blog and social drafted.** `docs/blog/seven-ways-to-lie-to-yourself-in-code.md` is structured on the defect ledger: the two named findings first, then the remaining five classes, then the meta-pattern (a stated property, a mechanism that does not enforce it, nothing connecting the two), then the four structural guards, closing on generation-from-source protecting against doc drift but not against the source being read wrongly. `docs/social-posts.md` holds both posts, naming Hodi and carrying `#AllThingsAgenticHackathon` exactly. Both state they were created for the All Things Agentic Hackathon. Verified: zero authoring-tool references in either file.
 
 **Key decisions:**
 1. Guard by route enumeration rather than by convention or review — a convention is what failed twice. Exemptions are a named list so removing coverage is a visible act rather than an omission.
 2. `permits()` validates its entire input before matching, not per-iteration — a mid-loop guard returned a permissive answer before reaching the invalid event, which is how the first version of this fix passed its own test while being wrong.
-3. Publish the harsher measured lint figure (4/12) rather than the panel's (6/8) — we can reproduce ours, and an honesty section citing someone else's more flattering number would be the exact failure the section exists to prevent.
+3. Publish a *measured* lint figure (4/12) rather than an asserted one, and publish only a figure this repository can regenerate — an honesty section citing a number a reader cannot reproduce would be the exact failure the section exists to prevent.
 4. Two tests were *corrected*, not deleted, when they turned out to encode the contradictory semantics — the re-grant mechanism they were reaching for is real and documented; only their modelling of it was wrong.
 
 **Requirements touched:** HOD-102, HOD-103, HOD-106, HOD-107, HOD-311, HOD-312, HOD-320, HOD-360, HOD-510, HOD-620, HOD-621, HOD-624
@@ -454,10 +454,10 @@ The gateway's new gcloud-token credential fallback silently converted three unit
 
 > **CORRECTION NOTE #8 (2026-08-08) — `resolve()` SORTED ON A STRING, NOT AN INSTANT.** The fold ordered events by `issued_at.isoformat()`. For any log carrying mixed UTC offsets that is wrong: `"2026-08-05T09:00:00-05:00"` (14:00Z) sorts BEFORE `"2026-08-05T12:00:00+00:00"`, so a later revocation folded in ahead of the grant it revokes. **Reproduced before fixing:** `resolve()` returned `status="active"` for a revoked grant, `active_grant_events()` returned it as active, and `permits()` then answered `True` for `training` on a grant that had been revoked. Firestore normalises timestamps to UTC so the live grant path was never exposed, but every JSON-sourced log is — `fixtures/demo_grant_log.json` and the failure-tolerance drill both take that path. The fold was *deterministically* wrong, so Beat 2's byte-stability assertion could not detect it, and the truth table's fixtures all shared one offset. Fixed by sorting on `issued_at.astimezone(timezone.utc)`; the `event_id` tiebreak is unchanged.
 
-### 2026-08-08 — Round-4 Feedback: One Real Correctness Bug, Two Surviving Mutations, Four Overstated Claims
+### 2026-08-08 — Review Feedback: One Real Correctness Bug, Two Surviving Mutations, Four Overstated Claims
 
 **Prompt (verbatim, abridged):**
-> Is any of this feedback worth folding in? [Round-4 panel: five mutations survived the 203-test suite; four narrative claims outrun the system; three correctness defects the documentation doesn't mention.]
+> Is any of this feedback worth folding in? [Review: five mutations survived the 203-test suite; four narrative claims outrun the system; three correctness defects the documentation doesn't mention.]
 
 **Outcome:**
 1. **The ISO-string sort bug is real and is now fixed** — see correction #8 above. This is the most serious item in the round: a revoked grant answering `permitted=True`.
@@ -477,3 +477,24 @@ The gateway's new gcloud-token credential fallback silently converted three unit
 3. Keep `gemini-3.5-flash` rather than re-pin to 3.6 — the requirement names 3.5+, every recorded latency was measured against the current pin, and re-pinning days before submission re-opens all of it for no gain. The existence of 3.6 is now stated instead of quietly omitted.
 
 **Requirements touched:** HOD-103, HOD-107, HOD-311, HOD-312, HOD-320, HOD-350, HOD-370, HOD-501, HOD-505, HOD-510
+
+---
+
+### 2026-08-09 — Review-Framing Removed, and One Improvement Deliberately Deferred
+
+**Prompt (verbatim, abridged; three items):**
+> [...] Remove the framing, keep the substance. Those prompts were review; attribute them to review generally. For the lint figure, state only the measured 4/12 and how it was measured — drop the comparison to another number entirely, since the comparison is what implies an outside review.
+> **THERE IS NO VIDEO, AND THAT IS A STAGE ONE FAILURE, NOT A DEDUCTION.**
+> **THE SOCIAL POSTS ARE STILL UNSENT.**
+
+**Outcome:**
+1. **Review-framing removed from this file, as a scope decision.** **No outside body has evaluated this project.** Five passages in the sessions above nonetheless attributed the review prompts to one, and a sixth carried a round number in its heading; the phrasing was internal shorthand for adversarial review, and on a public repository it read as an external evaluation that never happened. Removed. The prompts themselves are unchanged and still quoted verbatim — only the attribution framing is gone. **The lint figure lost its comparison entirely:** the published number is the measured 4/12 from `scripts/measure_lint_coverage.py::PARAPHRASE_PROBES`, regenerable from this repository alone, and it is no longer set against any second figure. Comparing to a number a reader cannot reproduce is the same defect as asserting one.
+2. **The word "judge" is retained where it means the hackathon's actual judges** — "a judge could verify each conflict boundary in under a minute", "judging runs to Oct 1" as the reason preview model IDs were excluded. Those refer to a real, scheduled evaluation and are load-bearing rationale. "Reviewer" is retained where it means whoever reads the diff.
+3. **The four-service split is deferred, deliberately** — recorded in `docs/FINDINGS.md` rather than left as an omission. See that entry for the reasoning.
+4. **Recording script confirmed against the live service** before the first take: the boundary denial and the revocation cascade were both re-run on the deployed endpoint, and the measured durations in `docs/VIDEO-SCRIPT.md` are from those runs.
+
+**Key decisions:**
+1. Remove the framing, keep every prompt verbatim — the review content is the most valuable material in this log and deleting it to solve an attribution problem would trade the substance for the label.
+2. Drop the comparison rather than re-attribute it — "ours is harsher than theirs" still implies a *theirs*. A single reproducible number needs no foil.
+
+**Requirements touched:** HOD-501, HOD-510, HOD-620
