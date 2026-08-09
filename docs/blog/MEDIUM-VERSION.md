@@ -187,7 +187,7 @@ Everywhere I hadn't built that wire, things drifted.
 
 Worth saying plainly: much of this was built with agentic assistance, and several classes in this ledger are that practice's characteristic failure modes — infrastructure reported done without an observed execution, tests that assert what they were just constructed to assert, transcripts written rather than captured. The speed is real and so is that failure surface. The guards are the answer to it specifically: **a mechanism that fails loudly is the only thing that distinguishes work verified from work reported as verified.** Reading more carefully does not scale; a build that goes red does.
 
-So the fixes that matter aren't the fourteen patches. They're the four guards:
+So the fixes that matter aren't the fifteen patches. They're the four guards:
 
 - **One list, two consumers.** The self-traffic user agents live in one module now, imported by both the audit script and the triage engine. The duplication that caused the same defect twice is gone.
 - **Docs must equal the tool.** A check fails the build if any *accrual* number — the ones that carry the honesty finding — disagrees between the regenerated metrics file and the README, the honesty diagram, or the submission text. Named figures, not every integer in the repo; the ones where drift would change what a reader believes.
