@@ -11,11 +11,18 @@
 # docs/architecture/conflict_matrix.md is generated from — so this script cannot
 # drift from the enforced policy.
 #
-# Honest scope note: the running service is a single Cloud Run process, so these
-# SAs are the identities the policy layer names and audits, not four separate
-# runtime principals. Splitting the fleet into four services, each deployed with
-# --service-account, is the natural next step and is stated as not-yet-done
-# rather than implied.
+# Honest scope note: the running service is a single Cloud Run process, so the
+# four agent SAs above are the identities the policy layer names and audits, not
+# four separate runtime principals. Splitting the fleet into four services, each
+# deployed with --service-account, is the natural next step and is stated as
+# not-yet-done rather than implied.
+#
+# What IS enforced at runtime (step 3): the single process executes as a
+# dedicated runtime SA that holds the append-only role plus read-only Firestore
+# access — no update, no delete. So "grant history cannot be rewritten" is an
+# IAM property of the deployed identity, not only a property of the in-process
+# code path. Earlier this was not true: the process ran as the default compute
+# SA with roles/editor, which can update and delete.
 
 set -euo pipefail
 
@@ -88,8 +95,51 @@ while IFS=$'\t' read -r account_id role_name conflict_domain; do
 done < /tmp/hodi_sa_plan.txt
 rm -f /tmp/hodi_sa_plan.txt
 
-# 3. Verify: every SA in the policy module exists and holds the custom role.
-echo "[3/3] Verifying every policy-declared SA exists and holds '${ROLE_ID}'..."
+# 3. The RUNTIME identity the deployed Cloud Run service actually executes as.
+#
+#    The four accounts above are the identities the policy layer NAMES, checks
+#    and records; nothing executes as them. Until this step existed, the
+#    deployed process ran as the DEFAULT COMPUTE service account, which holds
+#    roles/editor — i.e. datastore.entities.update and .delete. So the headline
+#    "history cannot be rewritten" invariant, true of the four policy SAs, was
+#    FALSE of the identity that actually writes grant events.
+#
+#    This binds a dedicated runtime SA that can read and append but CANNOT
+#    update or delete:
+#      - ${ROLE_ID}          : create + get + list  (append + read)
+#      - roles/datastore.viewer : all Firestore READ permissions, zero writes —
+#                                 supplies datastore.databases.get etc. that the
+#                                 client needs and the create-only role omits
+#      - roles/aiplatform.user  : Gemini/Gemma calls (scope interpretation, notice drafting)
+#      - roles/logging.logWriter: structured logs
+#    Neither datastore role grants update or delete, so the invariant is now
+#    enforced by IAM at runtime, not merely by the in-process code path.
+RUNTIME_SA_ID="hodi-runtime-sa"
+RUNTIME_SA_EMAIL="${RUNTIME_SA_ID}@${PROJECT_ID}.iam.gserviceaccount.com"
+echo "[3/4] Runtime service account '${RUNTIME_SA_ID}' (append + read, no update/delete)..."
+if ! gcloud iam service-accounts describe "${RUNTIME_SA_EMAIL}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
+  gcloud iam service-accounts create "${RUNTIME_SA_ID}" \
+    --project="${PROJECT_ID}" \
+    --display-name="Hodi Cloud Run runtime" \
+    --description="The identity the deployed service executes as. Append + read only; no datastore update/delete."
+fi
+for attempt in $(seq 1 30); do
+  gcloud iam service-accounts describe "${RUNTIME_SA_EMAIL}" --project="${PROJECT_ID}" >/dev/null 2>&1 && break
+  sleep 2
+done
+for role in "projects/${PROJECT_ID}/roles/${ROLE_ID}" \
+            "roles/datastore.viewer" \
+            "roles/aiplatform.user" \
+            "roles/logging.logWriter"; do
+  gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+    --member="serviceAccount:${RUNTIME_SA_EMAIL}" \
+    --role="${role}" --condition=None --quiet >/dev/null
+done
+echo "  bound: ${ROLE_ID}, datastore.viewer, aiplatform.user, logging.logWriter"
+echo "  NOTE: deploy the service with --service-account ${RUNTIME_SA_EMAIL} for this to take effect."
+
+# 4. Verify: every SA in the policy module exists and holds the custom role.
+echo "[4/4] Verifying every policy-declared SA exists and holds '${ROLE_ID}'..."
 python3 - "${PROJECT_ID}" "${ROLE_ID}" <<'PY'
 import subprocess, sys, os
 sys.path.insert(0, os.getcwd())

@@ -8,7 +8,7 @@ wrong for take 2, and the cascade's cost depends on state in a way that is not
 visible from the terminal: it makes one Gemini notice-drafting call per affected
 grant, and a grant whose notice prompt is absent from the committed response
 cache adds ~4.7 s of live model latency. Two affected grants is a reproducible
-~5.1 s instead of ~0.4 s. Every verification run drifts the log further. An
+~5.3 s instead of ~0.5 s. Every verification run drifts the log further. An
 enumeration you must remember to re-run is not a mechanism, so this is a script.
 
     make recording-prep     full pre-flight, run once before the first take
@@ -168,7 +168,7 @@ def main() -> int:
                     help="fast reset: grants only, no credential sweep, no live probe")
     ap.add_argument("--two-counterparty", action="store_true",
                     help="re-grant grant-seed-2 so the cascade reaches two counterparties "
-                         "(costs ~5.1 s per take instead of ~0.4 s)")
+                         "(costs ~5.3 s per take instead of ~0.5 s)")
     args = ap.parse_args()
 
     if os.environ.get("HODI_OFFLINE") == "1":
@@ -242,7 +242,9 @@ def main() -> int:
     if len(affected) != expected:
         failures.append(f"affected set is {len(affected)}, expected {expected}")
 
-    predicted = "~0.4 s" if uncached == 0 else f"~{0.4 + 4.7 * uncached:.1f} s"
+    # Warm 1-grant base ~0.55 s (create-only runtime SA, measured 2026-08-10);
+    # each uncached notice adds one ~4.7 s live Gemini call.
+    predicted = "~0.5 s" if uncached == 0 else f"~{0.55 + 4.7 * uncached:.1f} s"
     print(f"\n{INFO}PREDICTED cascade round-trip: {predicted} "
           f"({len(affected)} affected, {uncached} uncached notice call(s))")
     print(f"{INFO}log depth for {HERO_WORK}: {len(events)} events "

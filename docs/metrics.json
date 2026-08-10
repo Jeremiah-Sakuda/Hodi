@@ -79,13 +79,22 @@
   "h6_revocation_cascade_real_corpus_scale": {
     "measurement_surface": "deployed-over-network",
     "idle_forcing_method": "revision-update (gcloud run services update)",
-    "cold_start_ms": 466.8259579921141,
+    "measured_at_utc": "2026-08-10T17:00:00Z",
+    "runtime_identity": "hodi-runtime-sa (append+read only; no datastore update/delete)",
+    "cold_start_ms": 3049.0,
     "warm_runs_ms": [
-      286.5714580111671,
-      281.2236669997219,
-      292.4062079982832
+      590.0,
+      547.0,
+      594.0,
+      478.0,
+      447.0,
+      516.0,
+      536.0,
+      575.0,
+      525.0
     ],
-    "warm_avg_ms": 286.7337776697241
+    "warm_avg_ms": 533.9,
+    "note": "Re-measured 2026-08-10 after moving the deployed service off the default compute SA (roles/editor) onto a dedicated create-only runtime SA. Warm latency rose ~150 ms versus the prior editor-SA revision: the append is now .create() (existence-checked) rather than .set() (upsert), and reads pass through roles/datastore.viewer. The cost buys the append-only invariant being enforced by IAM at runtime rather than only by the code path."
   },
   "natural_language_license_path": {
     "measurement_surface": "deployed-over-network",

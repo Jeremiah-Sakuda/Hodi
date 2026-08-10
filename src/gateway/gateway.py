@@ -185,7 +185,16 @@ class AgentGateway:
     def write_document(self, calling_sa: str, calling_role_key: str, target_collection: str, doc_id: str, data: Dict[str, Any]):
         self._enforce(calling_sa, calling_role_key, target_collection)
         if self.db:
-            self.db.collection(target_collection).document(doc_id).set(data)
+            # `.create()`, not `.set()`. `.set()` is an UPSERT — it silently
+            # overwrites an existing document — and Firestore's IAM backend
+            # classifies it as needing `datastore.entities.update`, the exact
+            # permission the runtime identity is denied so that history cannot
+            # be rewritten. `.create()` is a true append: it needs only
+            # `datastore.entities.create`, and it RAISES on a duplicate id
+            # rather than overwriting. For an append-only event log with unique
+            # event ids that is the correct and stronger semantics — a colliding
+            # id is a bug that should fail loudly, never a silent replace.
+            self.db.collection(target_collection).document(doc_id).create(data)
 
     def deliver_revocation_notice(self, sender: str, counterparty_id: str, notice: Any) -> Any:
         from src.schema.revocation import RevocationReceipt

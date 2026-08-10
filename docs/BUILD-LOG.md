@@ -543,3 +543,43 @@ The gateway's new gcloud-token credential fallback silently converted three unit
 4. Leave `work_id` scoping and the availability hardening alone — real, but they change the API contract and the measured beats immediately before a recording.
 
 **Requirements touched:** HOD-103, HOD-104, HOD-107, HOD-320, HOD-330, HOD-510, HOD-620
+
+---
+
+### 2026-08-10 — Independent Hackathon Judging Panel
+
+**Prompt (verbatim):**
+> Set up sub agent judging panel for this project, evaluate it in depth based on the materials present (do not penalize for anything not in the repo attached are the rules and judging criteria 
+
+**Outcome:** Three independent judges evaluated Innovation & Operational Utility, Architectural Discipline & Tech Stack, and the three scored areases against the attached All Things Agentic Hackathon rules. The panel's scoring is not reproduced here; the published article and integrated Gemma tier support +0.4, yielding a provisional [score redacted]. Rules-as-submitted readiness remains at risk: the repository explicitly records that the required public demo video does not yet exist, so no external video was assumed and no final [redacted] pass was awarded. The strongest architecture limitation is also explicit in the repository: four application-layer policy identities execute inside one Cloud Run process under one runtime principal. Empirical verification in this session: `make test` passed 234 tests with 7 live-only skips; `make demo`, `make verify-scopes` (47 cases), and `make compliance` all passed. No product source was changed.
+
+**Key decisions:**
+1. Report a repo-only technical score separately from the [redacted] gate — treating an unavailable external Devpost field as absent would violate the prompt, while ignoring the repository's explicit statement that no video exists would misstate the rules.
+2. Score the deployed identity boundary as application-layer, not as four runtime principals — the policy, attack tests, and traces are real, but span labels and in-process enforcement are not credential-level GCP isolation.
+3. Award only verified bonuses — +0.2 for the published build article and +0.2 for the working Gemma integration; the drafted but unposted social copy earns nothing.
+
+**Requirements touched:** HOD-301, HOD-302, HOD-311, HOD-312, HOD-320, HOD-330, HOD-331, HOD-340, HOD-341, HOD-342, HOD-350, HOD-501, HOD-505, HOD-510, HOD-601, HOD-602, HOD-603, HOD-604, HOD-605, HOD-606, HOD-607, HOD-608, HOD-621, HOD-623, HOD-624
+
+---
+
+### 2026-08-10 (session 2) — The Append-Only Invariant Made True at Runtime
+
+**Prompt (verbatim, abridged):** proceed with all relevant fixes [on the finding that the deployed service runs as the default compute SA with roles/editor, making the append-only IAM claim false at runtime].
+
+**Outcome:**
+1. **The finding is confirmed and was worse than "a score ceiling".** The four agent SAs held the append-only role and executed nothing; the deployed Cloud Run process ran as `...-compute@developer.gserviceaccount.com` with `roles/editor` — which includes `datastore.entities.update` and `.delete`. So the headline invariant "grant history cannot be rewritten", true of the named policy SAs, was **false of the identity that actually writes grant events**. See the named finding in `docs/FINDINGS.md`.
+2. **Dedicated create-only runtime identity, deployed and verified.** `scripts/deploy_gcp.sh` now provisions `hodi-runtime-sa` holding the append-only custom role + `roles/datastore.viewer` (all reads, no writes) + `aiplatform.user` + `logging.logWriter`; the service is redeployed with `--service-account`. Revision `hodi-evidence-endpoint-00037-4ff`. A real signed revocation appends successfully under it, the boundary suite still returns 6/6 403, and the crawler-access stream keeps accruing (+3 on a 3-probe check) — all under an identity with no update/delete.
+3. **A second defect surfaced and was fixed: `.set()` is not append-only.** Binding the create-only SA 500'd every write with `PermissionDenied`. Firestore `.set()` is an upsert — it can overwrite, and its IAM classification needs `datastore.entities.update` even for a new document. Changed the gateway write to `.create()` (needs only `create`, raises on duplicate id), which is strictly stronger for a unique-id event log. The daily accrual audit, which keyed one document per UTC date and overwrote on re-run, is now `.add()` — one immutable document per run, so the audit trail it presents as evidence is itself append-only.
+4. **The invariant is now proven against the deployed identity.** `tests/test_grant_log_iam.py` gained an offline guard (parses `deploy_gcp.sh`; fails if the runtime binding ever includes editor/owner/datastore.user) and a live guard (`HODI_E2E=1`: reads the service's runtime SA back from Cloud Run, expands every role it holds, asserts the effective permission union contains `create` but neither `update` nor `delete`, and that it is not the default compute account). Both pass.
+5. **Timings re-measured, everywhere, honestly.** Moving off the editor SA raised the warm cascade from ~400 ms to ~530 ms (the `.create()` existence check plus reads through the viewer role); cold is ~3.0 s via revision-update. `docs/metrics.json`, the README's deployed-timings line, and every figure in `docs/VIDEO-SCRIPT.md` (cascade, both license frames, the "~0.5 s path", the two-grant trap, and `prepare_recording.py`'s prediction) were updated to the 2026-08-10 measurements. The ~150 ms is disclosed as the price of the invariant being IAM-enforced rather than code-path-enforced.
+6. **Docs corrected to separate two guarantees that were being conflated.** Conflict-of-interest separation (who reads whose data) remains application-layer — one process — and the four-service split is still the stated next step. Append-only (history cannot be rewritten) is now runtime IAM. The README bullet, the Devpost Firestore line and scope note, and Diagram A's note now state both precisely rather than letting "policy identities, not runtime principals" imply the runtime principal is unconstrained.
+
+**Key decisions:**
+1. `.create()` over granting the runtime SA `update` — the whole point is denying update; the write primitive had to become a true append, which also makes a duplicate event id fail loudly instead of silently overwriting.
+2. Re-measure and publish the slower numbers rather than keep the flattering stale ones — the timings changed because the deployment changed, and the recording must match the deployed reality.
+3. Do NOT split into four services — that remains deferred (see the earlier FINDINGS entry); this change fixes the *append-only* runtime gap, which is the one that made a stated invariant false, at a fraction of the cost.
+4. Keep the conflict-of-interest note honest about staying in-process — fixing the append-only runtime gap does not make the confidentiality separation runtime-enforced, and the docs must not blur that.
+
+**Requirements touched:** HOD-102, HOD-311, HOD-320, HOD-510, HOD-621
+
+**Recording note (PNG staleness):** `diagram_a_the_fleet.mmd` was updated; its rendered `.png` is only as fresh as its last render and should be regenerated before it appears on camera.

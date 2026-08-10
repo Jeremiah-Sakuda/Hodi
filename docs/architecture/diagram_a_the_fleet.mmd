@@ -66,7 +66,7 @@ flowchart TB
     EV --> GMA
     SCH -.triggers.-> PUB
 
-    NOTE["No SA holds two of {identity, buyer terms, evidence, revocation}.<br/>A monolith here would itself be the violation.<br/>Numbers trace to /docs/metrics.json (2026-08-08 audit).<br/>SA labels are POLICY identities: one Cloud Run process,<br/>separation enforced in-process by the Gateway, not GCP IAM at runtime."]
+    NOTE["No SA holds two of {identity, buyer terms, evidence, revocation}.<br/>A monolith here would itself be the violation.<br/>Numbers trace to /docs/metrics.json (2026-08-08 audit).<br/>SA labels are POLICY identities: one Cloud Run process, so the<br/>conflict-of-interest separation is enforced in-process by the Gateway.<br/>Append-only IS runtime IAM: the process runs as a create-only<br/>runtime SA (no datastore update/delete) — history cannot be rewritten."]
 
     classDef wall fill:#1a1a1a,color:#ffffff,stroke:#d33,stroke-width:4px
     classDef agent fill:#eef6ff,stroke:#3367d6,stroke-width:1.5px,color:#111
