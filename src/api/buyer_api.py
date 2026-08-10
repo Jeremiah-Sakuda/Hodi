@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
 
-from src.schema.scope import Scope, ScopeEvaluationResult
+from src.schema.scope import Scope, ScopeEvaluationResult, UseType
 from src.schema.grant_event import GrantEvent, Receipt
 from src.resolve.evaluator import permits
 from src.resolve.resolver import active_grant_events
@@ -257,7 +257,14 @@ async def request_license_natural(req: NaturalScopeRequest, request: Request):
 
 class RevokeRequest(BaseModel):
     work_id: str
-    revoked_use_type: str
+    # `UseType`, not `str`. As a bare str this accepted "Training", "podcasting"
+    # and "" and returned HTTP 200 with an empty cascade — a revocation that
+    # reported success and did nothing, which is the worst possible answer for
+    # an operation whose whole purpose is termination. The lattice has no entry
+    # for an unknown use type, so `USE_TYPE_CONTAINMENT.get(x, {x})` degraded to
+    # a single-element set that matched no grant. Now the request is refused
+    # with HTTP 422 and the valid vocabulary, before any of that runs.
+    revoked_use_type: UseType
 
 @router.post("/api/v1/revoke", response_model=CascadeResult)
 async def revoke_scope(req: RevokeRequest, request: Request):
@@ -285,7 +292,7 @@ async def revoke_scope(req: RevokeRequest, request: Request):
 
 class DelegationDrillRequest(BaseModel):
     work_id: str = "work-essay-001"
-    revoked_use_type: str = "training"
+    revoked_use_type: UseType = "training"
     deadline_seconds: float = 1.0
 
 

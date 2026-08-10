@@ -240,3 +240,37 @@ The fix is a rule, not an entry: every probe this project points at its own endp
 3. **The demo video is required and worth roughly ten times more.** It is 30% of the score and a missing one is a submission-eligibility failure, not a deduction. Remaining effort goes there.
 
 **What would change the decision.** More runway. The work itself is well-scoped — the SAs exist, the custom role exists, and the Gateway's policy table already names the four identities — so this is a deployment-topology change rather than a redesign. It is the first thing to build after the submission deadline, and it is recorded here so that it reads as a choice with a date attached rather than as something nobody thought of.
+
+---
+
+## Named finding — Revocation reaches down the lattice, not up, and the gap is inexpressible rather than unimplemented
+
+**Found:** 2026-08-10, by running the full (held × revoked) matrix end to end rather than the one case every test and demo exercises
+**Requirements:** HOD-104, HOD-107, HOD-330
+**Status:** open, disclosed, pinned by a test, deliberately not "fixed"
+
+**What the cascade does.** `execute_revocation_cascade(work_id, R)` computes `derived_scopes = USE_TYPE_CONTAINMENT[R]` — R's downward closure — and terminates every active grant on that work whose held use type is in it. Revoking `training` therefore reaches `training`, `fine_tuning`, `rag_retrieval` and `human_reference` grants, derived from the lattice's covering relation and never enumerated in code. That is the documented behaviour and it is correct.
+
+**What it does not do.** It does not reach a grant held *above* R. Revoke `fine_tuning` while a counterparty holds `training`: HTTP 200, zero affected grants, zero notices, zero events appended — and `permits(fine_tuning)` still answers `True`, because a `training` grant contains `fine_tuning`. **Six of the twenty-five (held × revoked) pairs behave this way**, and they are exactly the pairs where the held type *strictly contains* the revoked one:
+
+| held ↓ / revoked → | training | fine_tuning | rag_retrieval | human_reference | synthesis |
+|---|---|---|---|---|---|
+| **training** | terminated | **survives** | **survives** | **survives** | n/a |
+| **fine_tuning** | terminated | terminated | **survives** | **survives** | n/a |
+| **rag_retrieval** | terminated | terminated | terminated | **survives** | n/a |
+| **human_reference** | terminated | terminated | terminated | terminated | n/a |
+| **synthesis** | n/a | n/a | n/a | n/a | terminated |
+
+`n/a` is correct, not a gap: `synthesis` is **incomparable** to the training chain, so neither direction implies the other. The partial order is doing its job in those cells.
+
+**Why every existing check missed it.** The only revocation any test, any `make demo` beat, any measurement script, and the video's hero beat performs is `revoke training` — the top of the chain, the single use type with no strict ancestor, and precisely the value at which walking down and walking up give the same answer. A property exercised only at the point where two candidate implementations agree is not exercised. This is the same shape as correction #8, where a consistency check could not see a deterministically wrong fold, and the same shape as the boundary test that could not fail the way production failed.
+
+**Why it is not being inverted.** The obvious fix — select grants whose held type *contains* R rather than those R contains — is wrong in both directions. Applied alone it breaks the documented cascade: the strict ancestors of `training` are `{training}`, so revoking `training` would stop reaching `fine_tuning` grants entirely. Applied as a union with the current rule, it terminates a `training` grant wholesale when the artist asked only to stop fine-tuning — destroying a permission that was never revoked, irreversibly, because agent service accounts hold neither `update` nor `delete`.
+
+The real obstacle is the model, not the code. `Scope.use_type` holds **one** value, and the use types form a **chain**. There is no element meaning "training but not fine_tuning", so no narrowing event can express the correct outcome. Representing it properly means either a set-valued `use_type` or an explicit exclusion list on the scope — a schema change to the object every grant, receipt, notice and truth-table case is built on, with the 47-case table and every deployed measurement re-opened behind it. That is not a days-before-submission change, and pretending otherwise by shipping the destructive version would be the failure this project exists to refuse.
+
+**What is now structural.** `tests/test_revocation_reach.py` pins the reach in both directions: the documented downward cascade, the incomparability of `synthesis`, the exact set of six under-reached pairs, the characterisation that survival holds precisely when the held type strictly contains the revoked one, and an assertion that no use type expressing "training without its descendants" exists — so if one is ever added, the test fails and tells the next person the limit is now fixable rather than merely disclosable. Separately, `revoked_use_type` is now the `UseType` literal, so a revocation naming a use type that does not exist is refused with HTTP 422 instead of returning 200 with an empty cascade — previously `"Training"`, `"podcasting"` and `""` all authenticated, ran the cascade, matched nothing and reported success. **Stated precisely because the distinction matters: this is true of the committed code, not yet of the deployed revision.** Observed 2026-08-10 against `hodi-evidence-endpoint`: an anonymous revocation naming `podcasting` returns 403 (authentication refuses it first) where the committed code returns 422. The live boundary test is unaffected — it sends a valid use type and still gets its 403. Redeploy before citing the 422 as live behaviour.
+
+One ordering consequence, noted rather than discovered later: FastAPI validates the body before the handler runs, so an **unauthenticated** caller now receives 422 for an invalid use type where they previously received 403. That discloses only the use-type vocabulary, which is already published in `src/schema/lattice.py`, in the README and in the `/works` manifest. No authenticated path, no grant data and no counterparty identity is reachable through it.
+
+**The general lesson, and it is the ledger's lesson again.** The cascade was verified at one input. One input cannot distinguish an implementation from a coincidence — and the input chosen was the one value in the lattice where the right answer and the wrong answer are identical. Coverage over the *domain* is not the same as coverage over the *code*: every line of the cascade was executed by the existing tests.

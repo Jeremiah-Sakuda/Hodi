@@ -520,3 +520,26 @@ The gateway's new gcloud-token credential fallback silently converted three unit
 4. Extend `check_doc_metrics.py` rather than add a fifth structural guard — the new checks are the same mechanism reaching further, so "four structural guards" remains accurate.
 
 **Requirements touched:** HOD-320, HOD-501, HOD-510, HOD-620, HOD-621, HOD-624
+
+---
+
+### 2026-08-10 — Revocation Reach Bounded and Disclosed, Two Guards Extended
+
+**Prompt (verbatim, abridged):**
+> [Review, coverage-complete: the cascade under-revokes 6 of 25 (held × revoked) cells; licensing is not work-scoped; `revoked_use_type` is an unvalidated bare `str`; the resolver fix has no regression test; `make demo` prints two blast radii for one query; three README drifts.] anything worth adopting?
+
+**Outcome:**
+1. **The 6/25 cascade finding is real — reproduced independently, cell for cell.** Revoking use type R terminates grants in R's *downward* closure, so a grant held *above* R survives and still permits R. The under-reached pairs are exactly those where the held type strictly contains the revoked one; the `synthesis` row and column correctly read n/a, because incomparability is the partial order working. **The proposed fix was wrong, however:** inverting to the upward closure makes the strict ancestors of `training` equal `{training}`, which would stop revoking `training` from reaching `fine_tuning` grants at all — it breaks the documented cascade and the hero beat. The union of both closures is the only correct selection, and it terminates a `training` grant wholesale when the artist asked to stop fine-tuning, irreversibly under an append-only log.
+2. **Disclosed and pinned rather than fixed, with the reason.** The obstacle is the model: `Scope.use_type` holds one value on a chain, so "training but not fine_tuning" is inexpressible and no narrowing event could represent the right outcome. Fixing it properly means a set-valued or exclusion-carrying scope — the object every grant, receipt, notice and truth-table case is built on. Stated in the README's "What Hodi will not claim", in the Devpost description, and as a named finding in `docs/FINDINGS.md` carrying the full matrix. `tests/test_revocation_reach.py` pins the documented downward cascade, `synthesis` incomparability, the exact set of six pairs, the characterisation that survival holds precisely when the held type strictly contains the revoked one, and an assertion that **no use type expressing "training without its descendants" exists** — so if one is ever added, the test fails and tells the next person the limit became fixable.
+3. **`revoked_use_type` is `UseType`, not `str`.** `"Training"`, `"podcasting"` and `""` previously authenticated, ran the cascade, matched nothing and returned **HTTP 200 with a fabricated `derived_scopes: ["Training"]`** — the mutation run prints exactly that. Now 422 before any handler code. Stated precisely: **committed, not yet deployed** — observed today, the live revision still answers 403 (auth first) where the committed code answers 422.
+4. **The resolver fix has a regression test at last** (`tests/test_resolver_mixed_offsets.py`). Correction #8 is the blog's flagship defect and nothing tested it. Eight tests: the fixture asserts its own premise (that the offsets really do sort the wrong way as strings, so the suite cannot go vacuous), then `resolve`, `active_grant_events` and `permits` are each checked, plus order-independence, a naive-timestamp log, and a re-grant across offsets. Mutation-verified: restoring `.isoformat()` fails 6 of the 8.
+5. **The README's O(n²) bound was stale arithmetic** — "5 works × 539 logged accesses ... at most 800 comparisons". 800 is 5 × 160, from two audits ago; both factors had been updated and the product had not. Now 2,695, and `check_doc_metrics.py` gained `check_arithmetic_claims`, which asserts the factor against `metrics.json` *and* that the stated product is the product. Mutation-verified in both directions. The other two claimed README drifts did not reproduce at HEAD.
+6. **The test-count guard immediately paid for itself.** Adding these tests took the suite 214 → 234 and `make check-docs` failed on the README's stale figure twice, unprompted, before anything was committed.
+
+**Key decisions:**
+1. Disclose the cascade limit rather than ship the destructive fix days before submission — the same call as the four-service split, and it applies harder because this operation is on camera. A silent no-op is bad; irreversibly terminating a permission the artist never revoked is worse.
+2. Pin the limit with a test that asserts the *characterisation*, not just the count — a bare `assertEqual(len(under), 6)` would pass for six wrong pairs.
+3. Correct the FINDINGS wording once the deployed revision was probed: it had described committed behaviour as though it were live. Two sentences of accuracy on a claim nobody would have checked.
+4. Leave `work_id` scoping and the availability hardening alone — real, but they change the API contract and the measured beats immediately before a recording.
+
+**Requirements touched:** HOD-103, HOD-104, HOD-107, HOD-320, HOD-330, HOD-510, HOD-620

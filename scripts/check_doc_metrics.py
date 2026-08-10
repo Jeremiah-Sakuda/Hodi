@@ -180,6 +180,41 @@ def check_derived_counts(failures) -> None:
                     f"{path.relative_to(ROOT)}: claims {value} {label}; the source has {derived}.")
 
 
+def check_arithmetic_claims(metrics, failures) -> None:
+    """
+    Numbers the prose *computes* from other numbers.
+
+    These slip past every other check here, because each factor is individually
+    correct while the product is stale. The README's O(n^2) argument read
+    "(5 works x 539 logged accesses) that is at most 800 comparisons" — 800 is
+    5 x 160, the accrual total from two audits earlier. Both factors had been
+    updated; the result they multiply to had not.
+
+    So this asserts the factors against their source AND that the stated product
+    is actually the product.
+    """
+    accrued = metrics["daily_crawler_accrual_metrics"]["total_accrued_records"]
+    readme = README.read_text()
+
+    m = re.search(r"\((\d+) works × ([\d,]+) logged accesses\) that is at most ([\d,]+) comparisons",
+                  readme)
+    if not m:
+        failures.append(
+            "README.md: could not find the O(n²) comparison-bound claim to check. If the "
+            "sentence was reworded, update the pattern — do not delete the check.")
+        return
+
+    works, accesses, stated = (int(g.replace(",", "")) for g in m.groups())
+    if accesses != accrued:
+        failures.append(
+            f"README.md's comparison bound uses {accesses} logged accesses; "
+            f"metrics.json says {accrued}.")
+    if stated != works * accesses:
+        failures.append(
+            f"README.md states {works} × {accesses} is at most {stated} comparisons; "
+            f"it is {works * accesses}.")
+
+
 def main() -> int:
     metrics = json.loads(METRICS.read_text())
     accrual = metrics["daily_crawler_accrual_metrics"]
@@ -265,6 +300,7 @@ def main() -> int:
 
     check_defect_ledger(metrics, failures)
     check_derived_counts(failures)
+    check_arithmetic_claims(metrics, failures)
 
     diagram = DIAGRAM_B.read_text()
     dm = re.search(r"(\d+)\s+records accrued", diagram)
