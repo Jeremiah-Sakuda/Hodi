@@ -17,13 +17,13 @@ Created for the All Things Agentic Hackathon.
 ## Writing
 
 - **[Seven ways to lie to yourself in code](blog/seven-ways-to-lie-to-yourself-in-code.html)** — the
-  defect ledger: fifteen defects, seven classes, the three that recurred, and the four structural
+  defect ledger: twenty-seven defects, nine classes, the three that recurred, and the four structural
   guards that answer them.
 
 ## Project documents
 
 - [Build log](BUILD-LOG.html) — every session's verbatim prompt, outcome, and forked decisions,
-  including seven dated correction notes.
+  including five dated correction notes.
 - [Findings and learnings](FINDINGS.html) — daily observations plus two long-form named findings.
 - [Antigravity SDK decision](antigravity/decision.html) — the boolean assertion, the observed
   result, and the branch taken.

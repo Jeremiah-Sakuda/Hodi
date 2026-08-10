@@ -28,6 +28,157 @@ README = ROOT / "README.md"
 DEVPOST = ROOT / "docs" / "devpost-description.md"
 DIAGRAM_B = ROOT / "docs" / "architecture" / "diagram_b_what_hodi_will_not_say.mmd"
 
+# Every document that states a defect-ledger figure in prose. The count lived in
+# exactly these seven places and in no source, and it had already drifted —
+# fifteen in the blog, fourteen in the other six. Adding a document that quotes
+# the figure without adding it here re-opens that hole, so the guard also fails
+# if a defect-count phrase turns up in a repo document that is not on this list.
+LEDGER_DOCS = [
+    ROOT / "README.md",
+    ROOT / "docs" / "index.md",
+    ROOT / "docs" / "devpost-description.md",
+    ROOT / "docs" / "social-posts.md",
+    ROOT / "docs" / "blog" / "seven-ways-to-lie-to-yourself-in-code.md",
+    ROOT / "docs" / "blog" / "MEDIUM-VERSION.md",
+]
+
+NUMBER_WORDS = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
+    "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13,
+    "fourteen": 14, "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
+    "nineteen": 19, "twenty": 20, "twenty-one": 21, "twenty-two": 22,
+    "twenty-three": 23, "twenty-four": 24, "twenty-five": 25, "twenty-six": 26,
+    "twenty-seven": 27, "twenty-eight": 28, "twenty-nine": 29, "thirty": 30,
+}
+
+# (regex over the doc, which derived figure it must equal). Each pattern captures
+# a numeral or a number-word immediately preceding the noun it quantifies.
+_NUM = r"(\d+|[a-z]+(?:-[a-z]+)?)"
+LEDGER_PATTERNS = [
+    (re.compile(rf"{_NUM}\s+(?:real\s+)?defects", re.I), "total_defects"),
+    (re.compile(rf"{_NUM}\s+patches", re.I), "total_defects"),
+    # Negative lookahead: "three classes that recurred" is a recurrence claim,
+    # checked separately below — without this it also reports as a bad class count.
+    (re.compile(rf"{_NUM}\s+classes(?!\s+(?:that\s+)?recurred)", re.I), "class_count"),
+    (re.compile(rf"sort into {_NUM}\s+", re.I), "class_count"),
+]
+
+
+def _as_int(token: str):
+    token = token.lower()
+    if token.isdigit():
+        return int(token)
+    return NUMBER_WORDS.get(token)
+
+
+def check_defect_ledger(metrics, failures) -> None:
+    """
+    The defect count is derived in scripts/count_defect_ledger.py from
+    docs/defect_ledger.json. This asserts every document agrees with it.
+
+    Class C in this project's own ledger is 'a number stated in prose that no
+    mechanism holds to its source'. The accrual count was one instance, the
+    overclaim-lint claim was another, and the defect count itself was the third.
+    This function is why there will not be a fourth.
+    """
+    ledger = metrics.get("defect_ledger")
+    if not ledger:
+        failures.append("docs/metrics.json has no 'defect_ledger' — run `make ledger-count`.")
+        return
+
+    for path in LEDGER_DOCS:
+        if not path.exists():
+            failures.append(f"{path.relative_to(ROOT)} is listed as a ledger document but is missing.")
+            continue
+        text = path.read_text()
+        rel = path.relative_to(ROOT)
+        for pattern, key in LEDGER_PATTERNS:
+            for match in pattern.finditer(text):
+                value = _as_int(match.group(1))
+                if value is None:
+                    continue  # not a number — e.g. "these classes", "no defects"
+                if value != ledger[key]:
+                    failures.append(
+                        f"{rel}: '{match.group(0).strip()}' states {value}; "
+                        f"docs/defect_ledger.json derives {key}={ledger[key]}.")
+
+    # Recurrence claims are the other half of the sentence and drifted with it.
+    recurring = ledger["recurring_class_count"]
+    for path in LEDGER_DOCS:
+        if not path.exists():
+            continue
+        for match in re.finditer(rf"{_NUM}\s+(?:of those\s+)?classes\s+(?:that\s+)?recurred", path.read_text(), re.I):
+            value = _as_int(match.group(1))
+            if value is not None and value != recurring:
+                failures.append(
+                    f"{path.relative_to(ROOT)}: claims {value} recurring classes; "
+                    f"the ledger derives {recurring}.")
+
+
+def check_derived_counts(failures) -> None:
+    """
+    The other narrative numbers repeated across documents. Each is derived HERE,
+    from the artifact that defines it, so there is no regeneration step anyone
+    can forget — unlike the accrual figures, which need `make metrics` first.
+
+    The audit that produced this list found two already drifted: the correction
+    notes were claimed as six in the README and seven on the project site while
+    the build log contains five, and the defect count was the third instance of
+    the same class. A number that appears in two documents and no source is the
+    shape; these are the ones that had it.
+    """
+    build_log = (ROOT / "docs" / "BUILD-LOG.md").read_text()
+    index = ROOT / "docs" / "index.md"
+
+    # (label, derived value, [(document, regex)]).
+    checks = [
+        (
+            "dated correction notes",
+            len(set(re.findall(r"CORRECTION NOTE #(\d+)", build_log))),
+            [(README, r"(\w+) dated correction notes"),
+             (DEVPOST, r"with (\w+) dated correction notes"),
+             (index, r"(\w+) dated correction notes")],
+        ),
+        (
+            "containment truth-table cases",
+            len(re.findall(r"def test_case_\d+_", (ROOT / "tests" / "test_scope_containment.py").read_text())),
+            [(README, r"(\d+)-case containment truth table"),
+             (DEVPOST, r"A (\d+)-case truth table")],
+        ),
+        (
+            "offline tests",
+            sum(len(re.findall(r"^\s+def test_", p.read_text(), re.M))
+                for p in sorted((ROOT / "tests").glob("*.py"))),
+            [(README, r"full offline suite — (\d+) tests")],
+        ),
+        (
+            "typed evidence classes",
+            len(re.findall(r'"[^"]+"', re.search(
+                r"EvidenceClass = Literal\[(.*?)\]",
+                (ROOT / "src" / "schema" / "evidence.py").read_text(), re.S).group(1))),
+            # Devpost states the limit in prose without the count, so it is not a site here.
+            [(README, r"(\w+) typed evidence classes")],
+        ),
+    ]
+
+    for label, derived, sites in checks:
+        for path, pattern in sites:
+            if not path.exists():
+                continue
+            found = re.search(pattern, path.read_text())
+            if not found:
+                failures.append(
+                    f"{path.relative_to(ROOT)}: could not find the '{label}' claim to check "
+                    f"(pattern {pattern!r}). If the sentence was reworded, update the pattern — "
+                    "do not delete the check.")
+                continue
+            value = _as_int(found.group(1))
+            if value is None:
+                failures.append(f"{path.relative_to(ROOT)}: '{found.group(0)}' is not a number.")
+            elif value != derived:
+                failures.append(
+                    f"{path.relative_to(ROOT)}: claims {value} {label}; the source has {derived}.")
+
 
 def main() -> int:
     metrics = json.loads(METRICS.read_text())
@@ -111,6 +262,9 @@ def main() -> int:
     if audit_date not in devpost:
         failures.append(
             f"devpost-description.md does not carry the current audit date '{audit_date}'.")
+
+    check_defect_ledger(metrics, failures)
+    check_derived_counts(failures)
 
     diagram = DIAGRAM_B.read_text()
     dm = re.search(r"(\d+)\s+records accrued", diagram)

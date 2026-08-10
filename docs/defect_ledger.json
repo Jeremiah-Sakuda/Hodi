@@ -1,0 +1,204 @@
+{
+  "_comment": "THE DEFECT LEDGER — the single source for every defect count this project states in prose (HOD-620). Counting rule: one entry per distinct defect with a distinct fix. A defect that recurs in a new place is a NEW entry, because the recurrence is the finding. A single defect with two compounding causes is ONE entry. Every entry names a primary source in this repository; nothing here is asserted without one. Counts are derived by scripts/count_defect_ledger.py into docs/metrics.json, and scripts/check_doc_metrics.py fails the build if any document's stated figure drifts from them. This file exists because the count was previously typed into seven documents by hand and had already drifted (fifteen in the blog, fourteen everywhere else).",
+  "counting_rule": "one entry per distinct defect with a distinct fix; a recurrence in a new location is a new entry",
+  "classes": [
+    {
+      "id": "live-boundary-auth",
+      "title": "The boundary was live, and it was breakable",
+      "recurred": true,
+      "defects": [
+        {
+          "id": "license-identity-from-body",
+          "summary": "POST /api/v1/license took counterparty_id from the request body and used it as both the query filter and the session context the gateway checked the filter against, so the gateway compared the caller's claim to itself.",
+          "source": "docs/BUILD-LOG.md correction note #5; docs/FINDINGS.md named finding"
+        },
+        {
+          "id": "revoke-unauthenticated",
+          "summary": "POST /api/v1/revoke took no Request and called no authenticator, three lines below two handlers that do. Anonymous revocation of any published work_id, not undoable under an append-only log.",
+          "source": "docs/BUILD-LOG.md correction note #6"
+        },
+        {
+          "id": "accrual-audit-public",
+          "summary": "GET /internal/accrual_audit shipped public and appended a document on every call while its docstring claimed idempotence.",
+          "source": "docs/BUILD-LOG.md correction note #6"
+        }
+      ]
+    },
+    {
+      "id": "self-instrumentation-contamination",
+      "title": "My own infrastructure lied for me",
+      "recurred": true,
+      "defects": [
+        {
+          "id": "self-ua-requests-and-latency-test",
+          "summary": "SELF_UA_PATTERNS omitted python-requests and Hodi-Latency-Test, so the project's own boundary test and timing harness were counted as third-party crawler access.",
+          "source": "docs/FINDINGS.md 2026-08-07 session findings"
+        },
+        {
+          "id": "self-ua-cloud-scheduler",
+          "summary": "The same list omitted Google-Cloud-Scheduler, so the project's own scheduled accrual job was counted as a third-party crawler, inverting the signature honesty finding into a fabricated positive.",
+          "source": "docs/BUILD-LOG.md correction note #7; docs/FINDINGS.md named finding"
+        },
+        {
+          "id": "self-ua-adversarial-audit",
+          "summary": "Third recurrence: Hodi-Adversarial-Audit/1.0, nine records from the developer's own IP, counted as non-self-originated. Fixed with a hodi- prefix RULE rather than a fourth enumeration entry.",
+          "source": "docs/FINDINGS.md 2026-08-08 closing entry"
+        }
+      ]
+    },
+    {
+      "id": "deterministic-wrongness",
+      "title": "The guard passed perfectly and the property was false",
+      "recurred": false,
+      "defects": [
+        {
+          "id": "resolve-iso-string-sort",
+          "summary": "resolve() folded events ordered by issued_at.isoformat() — the string, not the instant — so under mixed UTC offsets a revocation folded in ahead of the grant it revokes and permits() answered True for a revoked grant. The byte-stability check could not see it, because the fold was deterministically wrong rather than unstable.",
+          "source": "docs/BUILD-LOG.md correction note #8"
+        }
+      ]
+    },
+    {
+      "id": "tests-that-could-not-fail",
+      "title": "Tests that could not fail",
+      "recurred": true,
+      "defects": [
+        {
+          "id": "iam-test-set-literal",
+          "summary": "test_grant_log_iam.py built a set literal and asserted membership in it — guarding the append-only invariant the entire audit trail rests on while touching no policy, no role and no datastore.",
+          "source": "docs/BUILD-LOG.md 2026-08-08, outcome 4"
+        },
+        {
+          "id": "prompt-injection-behind-credentials-flag",
+          "summary": "Prompt-injection detection had zero credential-free coverage; the only tests were gated behind a credentials flag, so emptying the detection patterns broke nothing.",
+          "source": "docs/BUILD-LOG.md 2026-08-08, prompt item 3"
+        },
+        {
+          "id": "determinism-tiebreak-never-exercised",
+          "summary": "The event_id sort tiebreak, documented as load-bearing for byte-stable replay, was never exercised because every fixture carried a distinct timestamp.",
+          "source": "docs/BUILD-LOG.md 2026-08-08, prompt item 3"
+        },
+        {
+          "id": "gateway-session-context-uncovered",
+          "summary": "session_context appeared in zero test files, so neutering gateway.py::_enforce — the gateway copy of the cross-buyer rule that the deployed API and the public debug endpoint both depend on — left all 203 tests green.",
+          "source": "docs/BUILD-LOG.md 2026-08-08 review feedback, outcome 2"
+        },
+        {
+          "id": "fold-before-containment-unasserted",
+          "summary": "Nothing asserted that the /api/v1/license handler folds the event log before testing containment; the mutation survived the suite.",
+          "source": "docs/BUILD-LOG.md 2026-08-08 review feedback, outcome 2"
+        },
+        {
+          "id": "honesty-audit-scanned-one-file-per-glob",
+          "summary": "The static honesty audit's pattern loop was dedented out of its file loop, so roughly four of five files in src/evidence were never scanned, and the assertion was an arbitrary floor rather than an exact set.",
+          "source": "docs/BUILD-LOG.md 2026-08-08 review feedback, outcome 5"
+        },
+        {
+          "id": "demo-asserts-evaporate-under-O",
+          "summary": "make demo used bare assert, so python3 -O printed 'ALL DEMO BEATS PASSED' beside contradictory output with the revocation invariant broken.",
+          "source": "docs/BUILD-LOG.md 2026-08-08 review feedback, outcome 4"
+        }
+      ]
+    },
+    {
+      "id": "infrastructure-reported-done",
+      "title": "Infrastructure reported done, never built",
+      "recurred": false,
+      "defects": [
+        {
+          "id": "budget-alerts-fence-scheduler-unbuilt",
+          "summary": "Budget alerts, a cost-fenced project and a scheduler were all written up as complete in the build log. None existed. Reporting infrastructure as verified without an observed execution is itself the finding.",
+          "source": "docs/BUILD-LOG.md correction note #3"
+        }
+      ]
+    },
+    {
+      "id": "claims-with-no-code",
+      "title": "Claims with no code behind them",
+      "recurred": false,
+      "defects": [
+        {
+          "id": "adk-named-never-imported",
+          "summary": "ADK was named as the runtime agent framework in the README, the PRD and on Diagram A while google.adk appeared nowhere in the codebase; the only occurrence of the string was inside a print().",
+          "source": "docs/BUILD-LOG.md 2026-08-07 session 3, outcome 2"
+        }
+      ]
+    },
+    {
+      "id": "policy-looser-than-its-text",
+      "title": "Policy looser than the policy text",
+      "recurred": false,
+      "defects": [
+        {
+          "id": "iam-prefix-matching",
+          "summary": "get_action_permission() matched collections by PREFIX, so the permitted path template buyer_terms/{counterparty_id} also permitted an unfiltered read of the whole buyer_terms collection.",
+          "source": "docs/BUILD-LOG.md correction note #5"
+        },
+        {
+          "id": "denied-collections-inert",
+          "summary": "denied_collections sat in the policy data consulted by no enforcement code. No collection appeared in both lists, so deleting the deny-check produced identical output and the existing test still passed.",
+          "source": "docs/BUILD-LOG.md 2026-08-08 review feedback, outcome 3"
+        },
+        {
+          "id": "gateway-permitted-absent-session-context",
+          "summary": "The gateway compared filter against session context only when the caller supplied one, so a call that omitted it was permitted — a check whose enforcement depended on the caller cooperating.",
+          "source": "docs/BUILD-LOG.md 2026-08-08, outcome 2"
+        }
+      ]
+    },
+    {
+      "id": "semantics-that-disagreed",
+      "title": "Semantics that disagreed with themselves",
+      "recurred": false,
+      "defects": [
+        {
+          "id": "superseded-three-answers",
+          "summary": "resolve() reported status 'superseded' while returning a live active_scope, active_grant_events() returned nothing, and permits() accepted the raw event and said yes. Three components, three answers, one event.",
+          "source": "docs/BUILD-LOG.md 2026-08-08, outcome 3"
+        },
+        {
+          "id": "permits-mid-loop-guard",
+          "summary": "permits() validated per-iteration, so it returned a permissive answer before reaching an invalid event. The first version of the fix passed its own test while being wrong.",
+          "source": "docs/BUILD-LOG.md 2026-08-08, key decision 2"
+        },
+        {
+          "id": "derived-scopes-nondeterministic",
+          "summary": "derived_scopes rendered list(set) under hash randomisation in the response body of POST /api/v1/revoke, while structured_derivation on the same object was sorted — one response carrying a stable and an unstable rendering of the same fact.",
+          "source": "docs/BUILD-LOG.md 2026-08-08 review feedback, outcome 7"
+        },
+        {
+          "id": "evidence-counts-hardcoded-zeros",
+          "summary": "/evidence-counts hard-coded three zeros for canary_hit, verbatim_match and redistribution — literals on a live surface, against this project's own Literal Metric Rendering Rule.",
+          "source": "docs/BUILD-LOG.md 2026-08-08 review feedback, outcome 6"
+        },
+        {
+          "id": "console-claimed-a-write-path",
+          "summary": "The artist console was drawn writing to the Gateway and its code claimed it would POST to /api/v1/revoke. It cannot: revocation needs an artist credential a static SPA must not hold.",
+          "source": "docs/BUILD-LOG.md 2026-08-08 review feedback, outcome 9"
+        }
+      ]
+    },
+    {
+      "id": "narrative-number-drift",
+      "title": "Numbers stated in prose that no mechanism held to their source",
+      "recurred": true,
+      "defects": [
+        {
+          "id": "accrual-count-drift",
+          "summary": "README and Diagram B stated '160 accrued records, zero attributable to third parties' while the project's own documented make metrics regenerated a larger total and a non-zero third-party count.",
+          "source": "docs/BUILD-LOG.md correction note #7"
+        },
+        {
+          "id": "overclaim-lint-paraphrase-claim",
+          "summary": "The README claimed the overclaim lint caught training-membership phrasings 'including paraphrases'. Measured coverage against a 12-paraphrase probe set was 4.",
+          "source": "docs/BUILD-LOG.md 2026-08-08, outcome 6"
+        },
+        {
+          "id": "defect-count-drift",
+          "summary": "The defect count itself: fifteen in the blog after the sort bug was added, fourteen in the README (twice), docs/index.md, the Devpost description, the Medium copy and social post 1. The count lived in seven documents and in no source, which is the same shape as the two defects above. This file and scripts/count_defect_ledger.py are the fix.",
+          "source": "docs/BUILD-LOG.md 2026-08-09"
+        }
+      ]
+    }
+  ]
+}
