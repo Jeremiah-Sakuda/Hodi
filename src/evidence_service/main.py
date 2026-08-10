@@ -418,9 +418,14 @@ async def run_accrual_audit(request: Request):
     write amplification and a way to pollute the audit history the project
     presents as evidence (BUILD-LOG correction #6).
 
-    Genuinely idempotent: the audit document id is the UTC date, so repeated
-    runs on the same day overwrite rather than accumulate. The previous version
-    documented itself as idempotent while calling `.add()`.
+    Append-only, like the grant log it audits. Each run writes a NEW immutable
+    document keyed by its own timestamp; nothing is ever overwritten. An earlier
+    version keyed the document by UTC date and OVERWROTE on same-day re-run —
+    which required `datastore.entities.update`, the one permission the runtime
+    identity is deliberately denied so that history cannot be rewritten. Keying
+    each run distinctly means the audit trail accumulates under create-only IAM,
+    and the docstring's own "history accumulates" claim is finally true. Reads
+    take the latest document; a same-day re-run adds a row, it does not mutate.
     """
     caller = verify_scheduler_oidc(request)
     from src.evidence.gemma_triage import GemmaTriageEngine
@@ -450,8 +455,11 @@ async def run_accrual_audit(request: Request):
         "triggered_by": caller,
     }
     try:
-        # Deterministic doc id — one audit per UTC day, overwritten on re-run.
-        db.collection("accrual_audits").document(audit_date).set(audit)
+        # Append-only: a distinct id per run via .add() (create), never .set() on
+        # a fixed id (which upserts and needs datastore.entities.update — the
+        # permission the runtime identity is denied). The UTC date stays a
+        # queryable field for "the audit(s) from day D".
+        db.collection("accrual_audits").add(audit)
     except Exception as e:
         logger.error(f"Accrual audit failed to persist: {e}")
         return JSONResponse(status_code=503, content={"status": "unavailable", "error": str(e)})

@@ -2,11 +2,13 @@
 
 **Target 3:30 · hard cap 4:00 · 30 seconds of insurance**
 Everything except the recording. All durations below are **measured**, not estimated — the source
-for each is named. Every live figure was re-measured against the deployed service on
-**2026-08-09**, and both live beats were re-confirmed clean on that date: the boundary denial
-returned **6/6 HTTP 403 including Part C**, and the revocation cascade ran with the affected set,
-the derived scopes and the signed notices all correct. Re-measure with `make metrics` if you record
-more than a day from now.
+for each is named. Re-measured against the deployed service on **2026-08-10**, after the service was
+moved onto a dedicated create-only runtime identity (`hodi-runtime-sa`, revision `00037-4ff`): the
+boundary denial returns **6/6 HTTP 403 including Part C**, and the revocation cascade appends under
+create-only IAM with the affected set, derived scopes and signed notices all correct. The warm
+cascade is ~150 ms slower than the pre-2026-08-10 editor-SA revision — the price of the append-only
+invariant now being enforced by IAM at runtime, not just by the code path. Re-measure with
+`make metrics` if you record more than a day from now.
 
 Supersedes PRD §6's shot list. Three things changed since it was written and the budget changes
 with them:
@@ -26,23 +28,23 @@ record:
 
 | Action | Measured (2026-08-09 unless noted) | Beat budget |
 |---|---|---|
-| Revocation cascade, **1 affected grant** | **487 / 347 / 461 ms** round-trip · 388 ms in the full hero sequence | 45 s |
+| Revocation cascade, **1 affected grant** | **478 / 547 / 594 ms** round-trip, ~534 ms avg (2026-08-10) | 45 s |
 | Revocation cascade, **2 affected grants** | **5086 / 5275 / 4953 ms** — see the trap below | — |
-| `POST /api/v1/license` (Frames A and C of the hero) | **297 ms** before · **220 ms** after | — |
-| Natural-language license | **3.41 / 3.12 / 3.37 s** round-trip, warm · 3175 ms avg in `metrics.json` | 30 s |
+| `POST /api/v1/license` (Frames A and C of the hero) | **399 ms** before · **399 ms** after (2026-08-10) | — |
+| Natural-language license | **2.83 s** round-trip, warm (2026-08-10) · 3175 ms avg in `metrics.json` | 30 s |
 | Full boundary test, 6 denials | **8.4 s** cold, ~2.2 s warm | 20 s |
 | `make demo`, all 7 beats | **1.4 – 1.8 s** | — |
 | Quarantine drill | 1114 ms server-side; **7.3 s** cold / 1.5 s warm round-trip | 20 s |
 
-So the hero beat is **not** 45 seconds of waiting. It is ~0.4 s of action wrapped in 45 s of
+So the hero beat is **not** 45 seconds of waiting. It is ~0.5 s of action wrapped in 45 s of
 *before* and *after*: the license granted, the command, the cascade output, the same license refused.
 Plan the shot as three static frames with one instant transition, not as a progress bar.
 
 ### The 5-second trap in the hero beat — read this before the first take
 
 The cascade's cost is **one Gemini notice-drafting call per affected grant that is not in the
-committed response cache.** With one affected grant it is ~0.4 s. With two it is ~5.1 s, and it is
-reproducibly ~5.1 s — not a cold start you can warm away.
+committed response cache.** With one affected grant it is ~0.5 s. With two it is ~5.3 s, and it is
+reproducibly ~5.3 s — not a cold start you can warm away.
 
 `work-repo-001` carries two grants: `grant-acme-il-001` (the demo grant, cached, fast) and
 `grant-seed-2` to `buyer-acme-2` (**not** cached — every revocation touching it pays a live model
@@ -50,14 +52,15 @@ call). As left on 2026-08-09, `grant-seed-2` is **revoked**, so the affected set
 fast. Pre-flight step 5 verifies this; do not skip it.
 
 If you would rather show the cascade reaching two counterparties, that is a legitimate choice and the
-story is arguably richer — but budget **5.1 s** of dead air, do not burn in a wall clock that
+story is arguably richer — but budget **5.3 s** of dead air, do not burn in a wall clock that
 contradicts the "one call, instant" framing, and re-grant `grant-seed-2` first (snippet in
 *Between takes*). **The recommendation is the one-grant shot.** The thesis of this beat is
 containment across the *scope lattice* — all four use types derived from the partial order — and one
 affected grant demonstrates that completely.
 
-**Do not speed-ramp or cut mid-command.** The wall clock is the proof. If a command takes 300 ms,
-show that it took 300 ms — it is a stronger claim than a long one.
+**Do not speed-ramp or cut mid-command.** The wall clock is the proof. If a command takes 500 ms,
+show that it took 500 ms — a legal revocation cascading across the lattice in half a second is a
+stronger claim than a long one.
 
 ---
 
@@ -115,7 +118,7 @@ cd "path/to/Hodi"
    ```bash
    make recording-prep
    ```
-   Expect: `RECORDING STATE READY — cascade on the ~0.4 s path.` If it says `~5.1 s`, the affected
+   Expect: `RECORDING STATE READY — cascade on the ~0.5 s path.` If it says `~5.3 s`, the affected
    set is 2 — read its report, it names the grant responsible.
 
 5. **Confirm the boundary holds on the deployed service.**
@@ -198,7 +201,7 @@ drill is structurally write-free.
 
 **Never** point the hero at a work id you care about. `work-repo-001` is the seeded demo target.
 
-**If you want the two-counterparty cascade instead** (and the 5.1 s it costs), re-grant
+**If you want the two-counterparty cascade instead** (and the ~5.3 s it costs), re-grant
 `grant-seed-2` before each take. There is no seeder script for it — `scripts/seed_firestore.py`
 would also rewrite the works collection and drop the proof URIs `make verify-manifest` checks, so use
 this targeted re-grant, which is the documented re-grant mechanism (a new `granted` event that
@@ -288,7 +291,7 @@ print(json.dumps(r, indent=2))
 EOF
 ```
 
-**Measured: 3.41 / 3.12 / 3.37 s** round-trip, warm (2026-08-09). One server-side Gemini call.
+**Measured: 2.83 s** round-trip, warm (2026-08-10); 3175 ms avg in `metrics.json`. One server-side Gemini call.
 **Burn in the wall clock.**
 
 **On screen:** the plain-English request, then the returned `interpreted_scope`
@@ -328,7 +331,7 @@ print(json.dumps(r, indent=2))
 EOF
 ```
 
-**Measured: 297 ms, `permitted = True`**, with a receipt (2026-08-09). This frame is immune to log
+**Measured: 399 ms, `permitted = True`**, with a receipt (2026-08-10). This frame is immune to log
 churn — it reads the *fold*, not the event dump, so it looks identical on take one and take five.
 
 **Frame B (the action, ~5 s).** Paste and run:
@@ -351,9 +354,9 @@ print(json.dumps(r, indent=2))
 EOF
 ```
 
-**Measured: 487 / 347 / 461 ms** standalone, **388 ms** inside the full A→B→C sequence (2026-08-09),
-with one affected grant. `metrics.json` records 467 ms cold / 287 ms warm for the cascade itself.
-**Burn in the wall clock — sub-500 ms is the point.**
+**Measured: 478 / 547 / 594 ms** round-trip warm, ~534 ms average (2026-08-10), with one affected
+grant. `metrics.json` records 3049 ms cold / 534 ms warm for the cascade itself. **Burn in the wall
+clock — about half a second is the point.**
 
 On screen, in the response:
 - `derived_scopes` — `training`, `fine_tuning`, `rag_retrieval`, `human_reference`, walked from the
@@ -365,7 +368,7 @@ On screen, in the response:
 **Frame C (after, ~25 s).** Re-run **the Frame A command, unchanged.** Same request, same
 counterparty, same scope.
 
-**Measured: 220 ms, `permitted = False`** (2026-08-09).
+**Measured: 399 ms, `permitted = False`** (2026-08-10).
 
 **Say:** one call. Containment resolves downstream scopes from the partial order — `training` was
 revoked, and `fine_tuning` fell with it because the lattice says `training ⊃ fine_tuning`, not
@@ -502,7 +505,7 @@ That is 33 s of reserve without touching the hero, the security beat, Diagram B,
 
 - **Cold start.** `min-instances=0`. Any beat hitting the deployed service after ~15 minutes idle
   pays up to 7 s. Warm before every take.
-- **Two affected grants costs 5.1 s, not 0.4 s.** One uncached Gemini notice-drafting call per
+- **Two affected grants costs ~5.3 s, not ~0.5 s.** One uncached Gemini notice-drafting call per
   affected grant. Verify the affected set is 1 in pre-flight step 5. This is the single most likely
   way the hero beat goes wrong.
 - **Both secrets.** Frames A/C need the counterparty key, Frame B needs the artist key, and neither
