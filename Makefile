@@ -1,4 +1,5 @@
-.PHONY: demo demo-live test verify-scopes verify-manifest metrics lint-coverage check-docs compliance
+.PHONY: demo demo-live test verify-scopes verify-manifest metrics lint-coverage check-docs compliance \
+        recording-prep recording-reset ledger-count
 
 demo:
 	HODI_OFFLINE=1 python3 scripts/demo.py
@@ -26,4 +27,16 @@ check-docs:
 
 compliance:
 	python3 scripts/compliance.py
+	python3 scripts/count_defect_ledger.py --check
 	python3 scripts/check_doc_metrics.py
+
+ledger-count:
+	python3 scripts/count_defect_ledger.py --write-metrics
+
+# Recording state (docs/VIDEO-SCRIPT.md). Both write to LIVE Firestore grants —
+# appends only, never the works collection.
+recording-prep:
+	python3 scripts/prepare_recording.py
+
+recording-reset:
+	python3 scripts/prepare_recording.py --between-takes

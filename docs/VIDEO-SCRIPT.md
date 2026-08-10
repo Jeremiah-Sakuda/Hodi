@@ -61,6 +61,34 @@ show that it took 300 ms — it is a stronger claim than a long one.
 
 ---
 
+## The one command that puts the system in the right state
+
+```bash
+make recording-prep
+```
+
+Idempotent. Seeds the demo grant, holds `grant-seed-2` revoked, deactivates throwaway credentials,
+then **reports what it verified** — both grant statuses from the fold, the affected-set size, whether
+each affected grant's notice prompt is in the committed cache, and the resulting predicted cascade
+round-trip. It exits non-zero on a state it cannot fix, so a green run is the pre-flight.
+
+**Between every take:**
+
+```bash
+make recording-reset
+```
+
+Same guarantees, grants only, no network probe. The hero beat revokes something, so after take one
+the state is wrong for take two — this is the command that fixes it. Run it even when you think you
+do not need to.
+
+Neither command touches the `works` collection, and neither deletes anything: `grant-seed-2` is
+revoked by appending a revoking event, exactly as the system does in production.
+
+Steps 1–3 and 6–9 below are the parts a script cannot do for you.
+
+---
+
 ## Pre-flight checklist — run once, before the first take
 
 ```bash
@@ -83,27 +111,20 @@ cd "path/to/Hodi"
    make test && make verify-scopes && make compliance && make demo
    ```
 
-4. **Seed the hero grant.** The cascade needs something real to revoke.
+4. **Seed the hero grant and hold the affected set at 1.**
    ```bash
-   python3 scripts/seed_demo_grant.py
+   make recording-prep
    ```
-   Expect: `Read-back verified: document exists with expected counterparty_id.`
+   Expect: `RECORDING STATE READY — cascade on the ~0.4 s path.` If it says `~5.1 s`, the affected
+   set is 2 — read its report, it names the grant responsible.
 
-5. **Confirm the deployed service answers, the boundary holds, and the affected set is 1.**
+5. **Confirm the boundary holds on the deployed service.**
    ```bash
    make demo-live
    ```
-   Expect: **6 HTTP 403s** and `ALL LIVE BOUNDARY TESTS PASSED`.
-
-   Then confirm the hero will be fast — this is the step that prevents the 5-second trap. Run the
-   Frame B command from Beat 4 once as a rehearsal and read its `affected_grants`:
-
-   - **1 affected grant** → correct state, ~0.4 s, record.
-   - **2 affected grants** → `grant-seed-2` is active and the beat will take ~5.1 s. Either accept
-     that, or let this rehearsal revocation stand (it revokes `grant-seed-2` permanently, which is
-     fine and append-only) and then re-seed only the demo grant with step 4.
-
-   Re-seed with step 4 afterwards either way — the rehearsal consumed the grant.
+   Expect: **6 HTTP 403s** and `ALL LIVE BOUNDARY TESTS PASSED`. It writes nothing, so it does not
+   disturb the state step 4 just set. (You do not need to rehearse the cascade to learn the
+   affected-set size — step 4 computes it read-only and prints it.)
 
 6. **Warm the service** so Beat 3 doesn't eat a 7 s cold start on camera.
    ```bash
@@ -166,10 +187,12 @@ cd "path/to/Hodi"
 The only beat that mutates state is the hero. Reset it with:
 
 ```bash
-python3 scripts/seed_demo_grant.py
+make recording-reset
 ```
 
-It is idempotent (deterministic document id), so re-running restores the grant to active. Nothing
+It is idempotent, restores the grant to active, re-revokes `grant-seed-2` if anything re-granted it,
+and re-prints the affected-set size and predicted timing so you are never guessing which path the
+next take is on. Nothing
 else needs resetting: `make demo` is offline and stateless, `make demo-live` writes nothing, and the
 drill is structurally write-free.
 
@@ -355,7 +378,7 @@ because a lint refuses to let it.
 > That is worth more on camera than any amount of JSON, and it cannot be faked by a stub — the same
 > endpoint answered both times.
 
-**Reset before the next take:** `python3 scripts/seed_demo_grant.py`
+**Reset before the next take:** `make recording-reset`
 
 ---
 

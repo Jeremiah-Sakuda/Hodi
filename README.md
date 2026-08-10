@@ -143,9 +143,9 @@ Stated plainly, without apology: these are the limits of what is checkable, and 
 
 Build history, findings, and the write-up are first-class artifacts here — including the corrections:
 
-- **[docs/BUILD-LOG.md](docs/BUILD-LOG.md)** — every session's verbatim prompt, outcome, and forked decisions, including six dated correction notes where earlier entries overclaimed or reported unbuilt infrastructure as done, and were struck.
+- **[docs/BUILD-LOG.md](docs/BUILD-LOG.md)** — every session's verbatim prompt, outcome, and forked decisions, including five dated correction notes where earlier entries overclaimed or reported unbuilt infrastructure as done, and were struck.
 - **[docs/FINDINGS.md](docs/FINDINGS.md)** — daily observations plus two long-form named findings: the live cross-buyer confidentiality breach (dates, exact exposure, why the existing boundary test could not catch it), and the day this project's own Cloud Scheduler job was counted as a third-party crawler, inverting its signature honesty claim.
-- **[Seven ways to lie to yourself in code](https://jeremiah-sakuda.github.io/Hodi/blog/seven-ways-to-lie-to-yourself-in-code.html)** *(published)* — the defect ledger as a write-up: fifteen defects, seven classes, the three that recurred, the meta-pattern behind all of them, and the four structural guards that answer it. Source: [docs/blog/](docs/blog/seven-ways-to-lie-to-yourself-in-code.md).
+- **[Seven ways to lie to yourself in code](https://jeremiah-sakuda.github.io/Hodi/blog/seven-ways-to-lie-to-yourself-in-code.html)** *(published)* — the defect ledger as a write-up: twenty-seven defects, nine classes, the three that recurred, the meta-pattern behind all of them, and the four structural guards that answer it. Source: [docs/blog/](docs/blog/seven-ways-to-lie-to-yourself-in-code.md).
 - **[docs/social-posts.md](docs/social-posts.md)** — the launch posts.
 - **[docs/architecture/conflict_matrix.md](docs/architecture/conflict_matrix.md)** — generated from the policy module the Gateway reads.
 
@@ -191,7 +191,7 @@ This is a finding about the SDK's current headless surface, published rather tha
 
 ## Published writing
 
-- **Blog — [Seven ways to lie to yourself in code](https://jeremiah-sakuda.github.io/Hodi/blog/seven-ways-to-lie-to-yourself-in-code.html)**. The defect ledger: fifteen defects across seven classes, the three that recurred, the Antigravity SDK assertion that was verified before it was made, and the four structural guards. Created for the All Things Agentic Hackathon.
+- **Blog — [Seven ways to lie to yourself in code](https://jeremiah-sakuda.github.io/Hodi/blog/seven-ways-to-lie-to-yourself-in-code.html)**. The defect ledger: twenty-seven defects across nine classes, the three that recurred, the Antigravity SDK assertion that was verified before it was made, and the four structural guards. Created for the All Things Agentic Hackathon.
 - **Project site — [https://jeremiah-sakuda.github.io/Hodi/](https://jeremiah-sakuda.github.io/Hodi/)**, serving the build log, findings, the Antigravity decision, and the generated IAM matrix.
 - **Social posts** — tagged `#AllThingsAgenticHackathon`. Text in [docs/social-posts.md](docs/social-posts.md).
   - LinkedIn: <!-- POSTED-URL-1 --> *(not yet posted)*
