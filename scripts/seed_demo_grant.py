@@ -25,6 +25,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from google.cloud import firestore
 from src.schema.grant_event import GrantEvent, generate_deterministic_event_id
 from src.schema.scope import Scope
+from src.schema.signing import unsigned_placeholder
 
 DEMO_COUNTERPARTY = "acme-intelligence-labs"
 DEMO_WORK_ID = "work-repo-001"
@@ -76,7 +77,7 @@ def seed_demo_grant():
         kind="granted",
         supersedes=None,
         issued_at=issued_at,
-        signature=f"SIG_GRANT_{DEMO_GRANT_ID}"
+        signature=unsigned_placeholder("grant", DEMO_GRANT_ID)
     )
 
     doc_ref = db.collection("grants").document(event_id)

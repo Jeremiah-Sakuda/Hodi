@@ -3,6 +3,7 @@ from typing import List, Dict, Any
 from datetime import datetime, timezone
 from src.schema.grant_event import GrantEvent, Receipt
 from src.schema.revocation import RevocationNotice, RevocationReceipt
+from src.schema.signing import unsigned_placeholder
 from src.schema.lattice import (
     USE_TYPE_CONTAINMENT, MODEL_CLASS_CONTAINMENT, use_type_derivation_chain,
     is_use_type_contained,
@@ -163,7 +164,7 @@ class RevocationPropagatorAgent:
                         scope=state.active_scope,
                         kind="revoked",
                         issued_at=datetime.now(timezone.utc),
-                        signature="SIG_REVOKED"
+                        signature=unsigned_placeholder("revoked", gid)
                     )
                     self.gateway.write_document(
                         calling_sa=PROPAGATOR_SA,

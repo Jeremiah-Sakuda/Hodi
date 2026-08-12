@@ -7,6 +7,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from google.cloud import firestore
 from src.schema.grant_event import GrantEvent, Scope
+from src.schema.signing import unsigned_placeholder
 
 def seed_firestore():
     project_id = os.environ.get("GCP_PROJECT_ID", "hodi-2026")
@@ -54,7 +55,7 @@ def seed_firestore():
             ),
             kind="granted",
             issued_at=t0,
-            signature=f"sig-seed-{idx+1}"
+            signature=unsigned_placeholder("grant", grant_id)
         )
         
         doc_ref = db.collection("grants").document(event_id)

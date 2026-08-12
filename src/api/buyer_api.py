@@ -8,6 +8,7 @@ from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
 
 from src.schema.scope import Scope, ScopeEvaluationResult, UseType
+from src.schema.signing import unsigned_placeholder, SIGNATURE_CLAIM_LIMIT
 from src.schema.grant_event import GrantEvent, Receipt
 from src.resolve.evaluator import permits
 from src.resolve.resolver import active_grant_events
@@ -190,7 +191,7 @@ async def request_license(req: ScopeRequest, request: Request):
             counterparty_id=auth.counterparty_id,
             payload_hash=hashlib.sha256(await request.body()).hexdigest(),
             issued_at=datetime.now(timezone.utc),
-            signature="SIG_RECEIPT"
+            signature=unsigned_placeholder("receipt", eval_result.matching_grant_id or "unknown")
         )
 
         granted_scope = next((g.scope for g in active_grants if g.grant_id == eval_result.matching_grant_id), None)
@@ -285,7 +286,7 @@ async def request_license_natural(req: NaturalScopeRequest, request: Request):
             counterparty_id=auth.counterparty_id,
             payload_hash=hashlib.sha256(await request.body()).hexdigest(),
             issued_at=datetime.now(timezone.utc),
-            signature="SIG_RECEIPT"
+            signature=unsigned_placeholder("receipt", eval_result.matching_grant_id or "unknown")
         )
         granted_scope = next((g.scope for g in active_grants if g.grant_id == eval_result.matching_grant_id), None)
         licensable_set = [granted_scope.use_type, granted_scope.model_class] if granted_scope else []
