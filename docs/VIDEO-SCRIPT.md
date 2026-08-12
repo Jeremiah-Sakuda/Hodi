@@ -7,7 +7,7 @@ for each is named. Re-measured against the deployed service on **2026-08-12**, r
 revocation cascade now terminates exactly the grants that **permit** the revoked use (it previously
 ran backwards — see below), and `/api/v1/revoke` now checks the artist **owns** the work. The
 boundary denial returns **6/6 HTTP 403 including Part C**; the hero cascade appends under create-only
-IAM with the affected set, derived scopes and signed notices all correct; a non-owner revoke is
+IAM with the affected set, derived scopes and issued notices all correct; a non-owner revoke is
 refused 403. Warm cascade ~0.5 s. Re-measure with `make metrics` if you record more than a day from now.
 
 Supersedes PRD §6's shot list. Three things changed since it was written and the budget changes
@@ -363,7 +363,8 @@ On screen, in the response:
   lattice's covering relation, not enumerated in code
 - `structured_derivation` — each step with its `parent` and the reason (`training ⊃ fine_tuning`)
 - `affected_grants` — the grant, its counterparty, its original scope
-- `issued_notices` — signed receipts
+- `issued_notices` — the notices and their receipts (the `signature` field reads
+  `UNSIGNED_PLACEHOLDER:…` — say so, it is the honesty thesis in one field)
 
 **Frame C (after, ~25 s).** Re-run **the Frame A command, unchanged.** Same request, same
 counterparty, same scope.
@@ -378,7 +379,8 @@ counterparty, same scope.
 
 **Say:** one call. Containment resolves downstream scopes from the partial order — `training` was
 revoked, and `fine_tuning` fell with it because the lattice says `training ⊃ fine_tuning`, not
-because anyone wrote that rule in code. Signed notices and receipts are issued. The original grant is
+because anyone wrote that rule in code. Notices and receipts are issued — and their `signature` field
+says `UNSIGNED_PLACEHOLDER`, because a signature only a service can verify is not a signature. The original grant is
 **not deleted** — it is a new event that supersedes, and the log still shows what was permitted
 before. And the notice says the grant is terminated. It does **not** say the model forgot anything,
 because a lint refuses to let it.

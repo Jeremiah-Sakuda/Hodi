@@ -293,3 +293,37 @@ This is the ledger's own signature pattern on the foundational invariant: a stat
 **The cost, disclosed.** The warm revocation cascade rose from ~400 ms to ~530 ms: `.create()` is existence-checked where `.set()` was not, and reads pass through the viewer role. That ~150 ms buys the invariant being enforced by IAM at runtime rather than only by the code path. All deployed-path timings were re-measured on 2026-08-10 and the figures in `docs/metrics.json`, the README and the recording script updated to match.
 
 **The lesson.** "Enforced by IAM" has to name the identity that executes, not the identity the documentation would like to be executing. The custom role was correct, the tests that checked it were correct, and the property was still false — because nothing checked the one SA that actually ran the code.
+
+---
+
+## Named finding — The `signature` field was decorative, and the documentation called it signed
+
+**Found:** 2026-08-12, by asking what verifies a receipt (nothing does)
+**Requirements:** HOD-350, HOD-620
+**Status:** closed as an honesty defect — labelled and disclosed; NOT closed as a feature — verifiable signing is unbuilt
+
+**The claim.** Revocation notices, receipts and grant events all carry a `signature`. The README described "a dated signed notice, and a receipt". The Devpost text said affected grants "get signed notices with receipts". The recording script had the narrator say, on camera, "signed notices and receipts are issued."
+
+**The reality.** The values were literals: `SIG_REVOKED`, `SIG_RECEIPT`, `SIG_REVOCATION_<grant_id>`, `SIG_GRANT_<grant_id>`. Each is derived from the document's own identifiers, so any party could produce one, and **no code anywhere verifies a signature** — a repo-wide search for verification of these fields returns nothing. The field was named after a mechanism that did not exist. On a *legal* artifact — the notice that terminates a licence and the receipt proving it was served — that is the most consequential place in the system to have gotten it wrong.
+
+**Why it was not "fixed" by signing.** The obvious patch is HMAC; `src/api/auth.py` already computes one for request authentication. It would be wrong here. A shared secret makes a notice verifiable only by parties who could equally forge it, so the recipient gains nothing and the field starts *claiming* something. Security theatre over a legal document is worse than an honest placeholder — it invites reliance. Real signing needs an asymmetric key the recipient can verify without minting: Cloud KMS or a managed Ed25519 key, plus key distribution, rotation, and a public verification endpoint. That is a feature with an operational surface, not a rename, and it has not been built.
+
+**What changed.** One module, `src/schema/signing.py`, now produces every `signature` value as `UNSIGNED_PLACEHOLDER:<kind>:<id>`, and states the claim limit in prose beside the code. Every call site — propagator, gateway, both receipt paths, and all four seeders — goes through it. A reader dumping a receipt, including on camera during the hero beat, sees what the field is worth. The README's "What Hodi will not claim" carries the limit and the reason HMAC is not the answer; the Devpost text and the recording narration were corrected so neither says "signed".
+
+**What is now structural.** `tests/test_signature_honesty.py` fails if any runtime file assigns a *string literal* to a `signature=` field — so the honest prefix cannot be bypassed by typing a new `SIG_...` constant — and separately asserts that emitted receipts and revoked events carry a labelled value, and that the README disclosure is still present. Mutation-verified in both directions: a hand-written `SIG_REVOCATION_VALID` fails three tests, and deleting the README bullet fails another.
+
+**The lesson.** A field named after a guarantee is a claim, and the name is doing the claiming whether or not anyone wrote a sentence. This one had a mechanism-shaped hole in it for the whole project and survived every review that read the *prose* rather than the *value*. The question that found it was not "is this documented correctly" but "what verifies this?" — and the answer, for any field asserting a property, should be a file path.
+
+---
+
+### 2026-08-12 (closing) — Known limits re-confirmed and deliberately carried
+
+An external pass re-identified five limitations already recorded here. They are restated together so the position is legible rather than re-litigated each round:
+
+1. **Normal licensing and revocation do not run through the supervised ADK path.** `/api/v1/license` and `/api/v1/revoke` call the propagator and gateway directly; the ADK `Runner`, Registry discovery, Supervisor and quarantine execute on the delegation path (`make demo` Beat 5B, `/api/v1/fleet/delegation_drill`) rather than on every production request. Accurate. Routing production traffic through the supervised runner is the natural next step and is not claimed as done.
+2. **Four policy identities, one runtime principal.** Disclosed in the README, the Devpost text and on Diagram A. The *append-only* half of that gap was closed on 2026-08-10 (create-only runtime SA, verified live); the *conflict-of-interest* half remains application-layer, and the four-service split stays deferred with the reasoning recorded above.
+3. **Fleet control-plane state is process-local**, and a timed-out worker is abandoned but continues as a daemon thread — Python cannot kill a thread. The Supervisor's contract is "the request completes and nothing unverified is written", which it meets; it is not "the worker stops".
+4. **The artist console is read-only and self-service registration is incomplete.** Deliberate: revocation needs an artist credential a static SPA must not hold.
+5. **Signature fields are placeholders** — see the named finding immediately above.
+
+Also resolved this pass: a **stale duplicate `Dockerfile`** at `src/evidence_service/Dockerfile` installed from `requirements.txt` rather than the lockfile and omitted `COPY fixtures/` — the exact omission that once shipped an empty Gemini cache and 500'd the drill. Deploying from it reintroduced a fixed defect, so it was deleted and the root `Dockerfile` documents that it is the only one that builds the service. Deployment itself is now `make deploy` → `scripts/deploy.sh`, which provisions IAM, deploys with the mandatory `--service-account`, and then reads the deployed identity back and asserts it cannot rewrite history before reporting success — because the flag whose omission silently breaks the append-only invariant should not live in anyone's shell history.

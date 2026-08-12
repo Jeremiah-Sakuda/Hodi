@@ -50,6 +50,7 @@ from src.resolve.resolver import resolve
 from src.schema.grant_event import GrantEvent
 from src.schema.lattice import is_use_type_contained
 from src.schema.scope import Scope
+from src.schema.signing import unsigned_placeholder
 
 # The exact identifiers docs/VIDEO-SCRIPT.md names. Kept here rather than in the
 # doc so the script and the shot list cannot disagree about what "ready" means.
@@ -126,7 +127,8 @@ def revoke_rival(db, events: list) -> bool:
     ev = GrantEvent(
         event_id=str(uuid.uuid4()), grant_id=RIVAL_GRANT, work_id=HERO_WORK,
         counterparty_id=state.counterparty_id or RIVAL_COUNTERPARTY,
-        scope=state.active_scope, kind="revoked", issued_at=now, signature="SIG_REVOKED")
+        scope=state.active_scope, kind="revoked", issued_at=now,
+        signature=unsigned_placeholder("revoked", RIVAL_GRANT))
     db.collection("grants").document(ev.event_id).set(ev.model_dump())
     return True
 
@@ -137,7 +139,7 @@ def regrant_rival(db) -> str:
     ev = GrantEvent(
         event_id=str(uuid.uuid4()), grant_id=RIVAL_GRANT, work_id=HERO_WORK,
         counterparty_id=RIVAL_COUNTERPARTY, kind="granted", issued_at=now,
-        signature="sig-seed-2",
+        signature=unsigned_placeholder("grant", RIVAL_GRANT),
         scope=Scope(use_type="training", model_class="all_models", derivative_retention=True,
                     attribution_required=True, commercial=True, valid_from=now, valid_until=None))
     db.collection("grants").document(ev.event_id).set(ev.model_dump())

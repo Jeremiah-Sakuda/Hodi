@@ -20,3 +20,13 @@ ENV PYTHONPATH=/app
 EXPOSE 8080
 
 CMD ["uvicorn", "src.evidence_service.main:app", "--host", "0.0.0.0", "--port", "8080"]
+
+# This is the ONLY Dockerfile that builds the deployed service. A stale copy
+# lived at src/evidence_service/Dockerfile until 2026-08-12: it installed from
+# requirements.txt instead of the lockfile and omitted `COPY fixtures/`, whose
+# absence had already shipped once — the deployed service ran with an empty
+# Gemini response cache and the failure-tolerance drill 500'd because it could
+# not read its fixture events. Deploying from that path reintroduced a fixed
+# defect, so it was deleted rather than kept in sync. `make deploy` builds this
+# file from the repository root; src/harness/Dockerfile is a separate artifact
+# for the HOD-020 Cloud Run Job and does not build the service.

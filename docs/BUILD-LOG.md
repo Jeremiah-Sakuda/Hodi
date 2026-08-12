@@ -610,3 +610,27 @@ The gateway's new gcloud-token credential fallback silently converted three unit
 **Requirements touched:** HOD-104, HOD-107, HOD-311, HOD-330, HOD-510, HOD-621, HOD-624
 
 **Recording note:** re-record the hero beat — the demo grant moved from `fine_tuning` to `training` and the cascade output is different (and now correct). `diagram_a_the_fleet.mmd` PNG still needs re-rendering from the 2026-08-10 change.
+
+---
+
+### 2026-08-12 (session 2) — The Signature Field Was Decorative, and One Reproducible Deploy Path
+
+**Prompt (verbatim, abridged; blank-slate panel, video assumed complete):** 4.74/6, Stage One PASS. Limitations: normal requests bypass the supervised ADK path; four policy identities in one process; process-local fleet state; **several "signed" receipt fields are placeholders rather than cryptographic signatures**; console preview only; deployment not reproducible through one checked-in workflow; minor doc drift including two Dockerfile paths.
+
+**Outcome:**
+1. **The signature finding is real and was the worst kind of overclaim.** `SIG_REVOKED`, `SIG_RECEIPT`, `SIG_REVOCATION_<id>` are literals derived from the document's own identifiers, and a repo-wide search confirms **nothing verifies them**. Meanwhile the README said "a dated signed notice", the Devpost text said "signed notices with receipts", and the recording script had the narrator say it on camera. On the notice that terminates a licence, that is the most consequential field in the system to have gotten wrong. Every value now comes from `src/schema/signing.py` and reads `UNSIGNED_PLACEHOLDER:<kind>:<id>` — visible in the hero beat's own JSON — with the limit disclosed in the README, the Devpost text and the narration corrected.
+2. **Deliberately not "fixed" by signing.** HMAC was available and would have been wrong: a shared secret makes a notice verifiable only by parties who could also forge it. Theatre over a legal artifact invites reliance, which is worse than an honest placeholder. Verifiable signing needs an asymmetric key with distribution, rotation and a verification endpoint — a feature, not a rename, and it is stated as unbuilt.
+3. **Guarded so it cannot revert quietly.** `tests/test_signature_honesty.py` fails if any runtime file assigns a *string literal* to a `signature=` field (so a new `SIG_...` constant cannot be typed in), asserts emitted receipts and revoked events carry labelled values, and asserts the README disclosure still exists. Mutation-verified both ways: a hand-written `SIG_REVOCATION_VALID` fails three tests; deleting the README bullet fails another. The regex is anchored to exclude `HEADER_SIGNATURE = "X-Hodi-Signature"`, which names an HTTP header carrying a genuine HMAC.
+4. **The "two Dockerfile paths" was a live trap, not cosmetics.** `src/evidence_service/Dockerfile` was a stale duplicate that installed from `requirements.txt` instead of the lockfile and omitted `COPY fixtures/` — the exact omission that once deployed an empty Gemini response cache and 500'd the failure-tolerance drill. Nothing referenced it. Deleted, and the root `Dockerfile` now documents that it is the only one that builds the service (`src/harness/Dockerfile` is the separate HOD-020 job).
+5. **`make deploy` → `scripts/deploy.sh`.** Deployment lived in a note, and one flag in it is load-bearing: without `--service-account`, Cloud Run silently falls back to the default compute SA with `roles/editor`, and append-only becomes false at runtime with nothing failing. The script provisions IAM, deploys from the root Dockerfile with the runtime SA, then reads the deployed identity back and runs the live IAM assertion — it refuses to report success on the deploy alone.
+6. **The other five limitations are accurate and already recorded**; restated together in `docs/FINDINGS.md` so the position is legible rather than re-litigated each round. The one materially new fact among them: the *append-only* half of the single-principal gap was closed on 2026-08-10 and verified live; the *conflict-of-interest* half remains application-layer and the four-service split stays deferred.
+
+**Key decisions:**
+1. Label the placeholder rather than fake a signature — the only fix that does not trade an honesty defect for a security one.
+2. Put the placeholder on screen rather than hide it — the hero beat's JSON now carries `UNSIGNED_PLACEHOLDER`, which is the honesty thesis in one field rather than a footnote about it.
+3. Delete the stale Dockerfile rather than sync it — a duplicate that reintroduces a fixed defect has negative value, and there was no consumer.
+4. Make the deploy script *verify*, not just deploy — the failure mode it guards is silent, so a green "Deployed." line would have been exactly the reassurance that let the original defect persist.
+
+**Requirements touched:** HOD-350, HOD-102, HOD-311, HOD-510, HOD-620
+
+**Recording note:** the hero beat's JSON now shows `UNSIGNED_PLACEHOLDER:...` in the receipt and revoked-event signature fields. Say it out loud — it lands better narrated than noticed.

@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from datetime import datetime, timezone
 from google.cloud import firestore
 from src.schema.iam_policy import is_action_permitted, get_action_permission
+from src.schema.signing import unsigned_placeholder
 
 class PolicyDenialEvent(BaseModel):
     event_type: str = "PolicyDenialEvent"
@@ -222,6 +223,6 @@ class AgentGateway:
             grant_id=notice.grant_id,
             counterparty_id=counterparty_id,
             revoked_at=notice.revoked_at,
-            signature=f"SIG_REVOCATION_{notice.grant_id}"
+            signature=unsigned_placeholder("revocation_receipt", notice.grant_id)
         )
         return receipt

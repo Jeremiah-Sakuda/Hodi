@@ -33,6 +33,15 @@ compliance:
 ledger-count:
 	python3 scripts/count_defect_ledger.py --write-metrics
 
+# The ONE reproducible deployment path. Deploying by hand is how the runtime
+# identity gets lost: without --service-account the service silently reverts to
+# the default compute SA (roles/editor), which can update and delete grant
+# events, and the append-only invariant becomes false at runtime with nothing
+# failing. This target provisions IAM, deploys, and then PROVES the deployed
+# identity cannot rewrite history before reporting success.
+deploy:
+	./scripts/deploy.sh
+
 # Recording state (docs/VIDEO-SCRIPT.md). Both write to LIVE Firestore grants —
 # appends only, never the works collection.
 recording-prep:
