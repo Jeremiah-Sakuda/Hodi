@@ -583,3 +583,30 @@ The gateway's new gcloud-token credential fallback silently converted three unit
 **Requirements touched:** HOD-102, HOD-311, HOD-320, HOD-510, HOD-621
 
 **Recording note (PNG staleness):** `diagram_a_the_fleet.mmd` was updated; its rendered `.png` is only as fresh as its last render and should be regenerated before it appears on camera.
+
+---
+
+### 2026-08-12 — The Revocation Cascade Ran Backwards, and the Previous Pass Had Blessed It
+
+**Prompt (verbatim, abridged; full expanded panel, blank slate):** the append-only-IAM fix is verified live, but the coverage adversary re-ran the 5×5 cascade matrix — 12 of 25 cells wrong (6 under + 6 over), the over-reach is on camera in the hero beat, a test now asserts it as correct, and a FINDINGS claim contradicts itself. Also: `/revoke` never checks the artist owns the work.
+
+**Outcome:**
+1. **Confirmed independently, cell for cell: 12 of 25 wrong.** Reproduced the full matrix against `permits()` as an oracle. The selection was inverted — it terminated the grants the revoked type *contains* (its descendants) instead of the grants that *permit* the revoked use (hold it or a broader type). Revoking `training` destroyed a `fine_tuning`-only license the artist never revoked (over-reach); revoking `fine_tuning` left a `training` grant able to fine-tune (under-reach). The two rules agree only on the diagonal and at the chain top — the only inputs anything ever tested.
+2. **Fixed by reusing `permits()`'s own predicate.** Selection is now `is_use_type_contained(held, revoked)` — one definition of "this scope permits that use", shared by the licensing path and the cascade. Re-verified: 25/25 cells match the oracle. `derived_scopes` (the withdrawal description) is unchanged and was never the bug — using it to *select* grants was.
+3. **I own the prior-round error.** The 2026-08-10 pass found the 6 under-reaches, called the 6 over-reaches "the documented cascade", argued *against* inverting, and wrote `test_revocation_reach.py` asserting the backwards behaviour — then the append-only-IAM commit made those erroneous terminations permanent. A wrong oracle is worse than none: the suite went green *because* it encoded the misconception, and the FINDINGS entry *argued for* the defect (claiming `revoke training` is "the value where up and down agree", true only for a training-held grant, while the demo's grant was fine_tuning). Both are retracted; the finding is rewritten to say so.
+4. **The hero beat was the over-reach.** The demo grant was held at `fine_tuning` and the beat revoked `training` — destroying a license for a use never revoked, on camera. The demo grant is now seeded at `training`, so revoking `training` correctly terminates it and the notice's `derived_scopes` show all four withdrawn uses. Verified live on revision `00039-846`: owner revoke → affected 1, scopes `[training, fine_tuning, rag_retrieval, human_reference]`.
+5. **Ownership check added.** `/api/v1/revoke` authenticated an artist but never checked the artist owned `work_id` — any artist credential could revoke any work (latent under one artist, cross-tenant escalation with two). Now a rights-custodian read of `works` compares `artist_id` to the authenticated identity before any append; a missing or differently-owned work is a uniform 403. The propagator cannot read `works` by policy, so the gate lives at the API layer — where the conflict topology already puts ownership. Verified live: non-owner revoke → 403 "does not own the specified work". A new injectable gateway (`set_gateway`, `AgentGateway(offline_reads=...)`) lets this be tested offline.
+6. **Tests corrected, not deleted.** `test_revocation_reach.py` now asserts all 25 cells against `permits()`; `test_revocation_cascade.py` exercises the propagator for both revoke-`training` (hits only training grants) and revoke-`fine_tuning` (hits training and fine_tuning); `make demo` Beat 5B and the ADK delegation revoke `fine_tuning` (the fixture's active grant on work-essay-001, which permits it). Reverting the rule fails these. Suite 242 → 245.
+7. **The "36 unauthenticated grant docs" is not a leak.** The debug endpoint's `valid_read` is filtered to the one fictional demo counterparty (`acme-intelligence-labs`) and returns its own append-only history, grown by recording tests. It is the disclosed SUCCESS case of a deliberately-public boundary demo, not cross-tenant exposure.
+
+**Key decisions:**
+1. Reuse `permits()` rather than write a second selection rule — the bug was two sources of truth for one relation; the fix is one.
+2. Seed the demo grant at `training`, not revoke a narrower use — keeps the "revoke training" headline and makes the beat a *correct* full-lattice cascade rather than a smaller one.
+3. Put the ownership gate at the API layer as a rights-custodian read — the propagator must not hold ownership, and forcing the check through it would have violated the topology to fix an authz hole.
+4. Rewrite the old finding rather than append a correction — a findings entry that argues for a bug is not a record worth preserving beside its retraction; the replacement states plainly that the earlier pass got it backwards.
+
+**The lesson, sharper than the ledger's usual one:** an oracle that restates the implementation cannot catch the implementation being wrong. The previous pass wrote both the code and its test from the same misconception, so the test certified the bug. The fix that holds is an *independent* oracle — checking cascade selection against `permits()`, a mechanism built for a different purpose and verified separately.
+
+**Requirements touched:** HOD-104, HOD-107, HOD-311, HOD-330, HOD-510, HOD-621, HOD-624
+
+**Recording note:** re-record the hero beat — the demo grant moved from `fine_tuning` to `training` and the cascade output is different (and now correct). `diagram_a_the_fleet.mmd` PNG still needs re-rendering from the 2026-08-10 change.

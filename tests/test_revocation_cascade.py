@@ -42,39 +42,54 @@ class TestRevocationCascade(unittest.TestCase):
         ]
         self.propagator = RevocationPropagatorAgent(gateway=self.gateway, memory_bank_events=self.events)
 
-    def test_revocation_lattice_containment(self):
-        # Revoking 'training' should cascade to 'training', 'fine_tuning', 'rag_retrieval', 'human_reference'
-        # So g1 and g2 should be revoked. g3 (synthesis) should NOT be revoked.
-        
+    def test_revoking_training_terminates_only_grants_that_permit_training(self):
+        # A grant is affected iff it PERMITS the revoked use. Revoking `training`
+        # terminates g1 (a training grant). It must NOT terminate g2 — a
+        # `fine_tuning`-only grant never permitted training, and the artist did
+        # not revoke fine-tuning — nor g3 (`synthesis`, incomparable).
+        #
+        # This test asserted the opposite through 2026-08-10 ("g2 should be
+        # revoked"), which is the over-revocation the cascade-direction bug
+        # produced: destroying a license for a use that was never revoked.
         result = self.propagator.execute_revocation_cascade(work_id="w1", revoked_use_type="training")
-        
+
         self.assertEqual(result.revoked_use_type, "training")
-        self.assertIn("training", result.derived_scopes)
-        self.assertIn("fine_tuning", result.derived_scopes)
-        self.assertIn("rag_retrieval", result.derived_scopes)
-        self.assertIn("human_reference", result.derived_scopes)
-        
+        # derived_scopes still describes what a terminated *training* grant loses.
+        self.assertEqual(set(result.derived_scopes),
+                         {"training", "fine_tuning", "rag_retrieval", "human_reference"})
+
+        affected_ids = [ag.grant_id for ag in result.affected_grants]
+        self.assertIn("g1", affected_ids)
+        self.assertNotIn("g2", affected_ids)   # fine_tuning grant: never permitted training
+        self.assertNotIn("g3", affected_ids)   # synthesis: incomparable
+
+        self.assertEqual(resolve("g1", events=self.events).status, "revoked")
+        self.assertEqual(resolve("g2", events=self.events).status, "active")
+        self.assertIsNotNone(resolve("g2", events=self.events).active_scope)
+        self.assertEqual(resolve("g3", events=self.events).status, "active")
+
+        # The one terminated grant keeps its full append-only history.
+        self.assertEqual(len(resolve("g1", events=self.events).history_events), 2)
+
+    def test_revoking_fine_tuning_terminates_the_broader_training_grant_too(self):
+        # The other direction, the one the old rule under-reached: revoking
+        # `fine_tuning` must terminate BOTH g2 (a fine_tuning grant) and g1 (a
+        # training grant, which permits fine-tuning) — otherwise the training
+        # buyer keeps fine-tuning after it was revoked. g3 (synthesis) is
+        # untouched. Terminating g1 wholesale also strips its training right,
+        # which the artist did not revoke: that is the disclosed inexpressibility
+        # limit (a chain scope cannot say "training but not fine_tuning"), and it
+        # is the safe direction — better to over-strip a grant that permitted the
+        # revoked use than to leave the revoked use available.
+        result = self.propagator.execute_revocation_cascade(work_id="w1", revoked_use_type="fine_tuning")
+
         affected_ids = [ag.grant_id for ag in result.affected_grants]
         self.assertIn("g1", affected_ids)
         self.assertIn("g2", affected_ids)
         self.assertNotIn("g3", affected_ids)
-        
-        # Check current state
-        state_g1 = resolve("g1", events=self.events)
-        self.assertEqual(state_g1.status, "revoked")
-        self.assertIsNone(state_g1.active_scope)
-        
-        state_g2 = resolve("g2", events=self.events)
-        self.assertEqual(state_g2.status, "revoked")
-        self.assertIsNone(state_g2.active_scope)
-        
-        state_g3 = resolve("g3", events=self.events)
-        self.assertEqual(state_g3.status, "active")
-        self.assertIsNotNone(state_g3.active_scope)
-        
-        # Check that original grants are still in history (never deleted)
-        self.assertEqual(len(state_g1.history_events), 2) # granted + revoked
-        self.assertEqual(len(state_g2.history_events), 2)
+        self.assertEqual(resolve("g1", events=self.events).status, "revoked")
+        self.assertEqual(resolve("g2", events=self.events).status, "revoked")
+        self.assertEqual(resolve("g3", events=self.events).status, "active")
         
     def test_temporal_stability_after_revocation(self):
         # Revoke 'training'

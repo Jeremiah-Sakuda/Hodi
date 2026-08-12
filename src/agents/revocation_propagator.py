@@ -3,7 +3,10 @@ from typing import List, Dict, Any
 from datetime import datetime, timezone
 from src.schema.grant_event import GrantEvent, Receipt
 from src.schema.revocation import RevocationNotice, RevocationReceipt
-from src.schema.lattice import USE_TYPE_CONTAINMENT, MODEL_CLASS_CONTAINMENT, use_type_derivation_chain
+from src.schema.lattice import (
+    USE_TYPE_CONTAINMENT, MODEL_CLASS_CONTAINMENT, use_type_derivation_chain,
+    is_use_type_contained,
+)
 from src.resolve.resolver import resolve
 from src.gateway.gateway import AgentGateway
 from pydantic import BaseModel
@@ -65,14 +68,27 @@ class RevocationPropagatorAgent:
     def execute_revocation_cascade(self, work_id: str, revoked_use_type: str) -> CascadeResult:
         """
         Revokes the specified use_type for a given work across all active grants.
-        Cascades down the lattice (e.g. revoking 'training' pulls 'fine_tuning').
+
+        A grant is affected iff it PERMITS the revoked use — i.e. its held
+        use_type contains `revoked_use_type` (the grant is at or above it in the
+        lattice). Revoking `training` terminates a `training` grant; it does NOT
+        terminate a `fine_tuning`-only grant, because that grant never permitted
+        training and the artist did not revoke fine-tuning.
+
+        This selection was BACKWARDS through 2026-08-10: it terminated grants
+        whose held type was *contained by* the revoked type (its descendants),
+        so revoking `training` destroyed every `fine_tuning`/`rag_retrieval`/
+        `human_reference` grant — licenses for uses the artist never revoked —
+        while revoking `fine_tuning` left a `training` grant able to fine-tune.
+        12 of the 25 (held × revoked) cells were wrong (6 over, 6 under). The
+        correct rule is the one `permits()` already encodes, reused here so
+        there is one definition of "this scope permits that use". See the named
+        finding in docs/FINDINGS.md and tests/test_revocation_reach.py.
         """
-        # 1. Resolve downstream derivative scopes by LATTICE CONTAINMENT.
-        # sorted(), not list(set) — this is the response body of POST /api/v1/revoke,
-        # and under hash randomisation an unsorted set renders in a different
-        # order in every process. `structured_derivation` on the same object was
-        # already stable, so one response carried a stable and an unstable
-        # rendering of the same fact.
+        # `derived_scopes` describes what a terminated grant LOSES: the revoked
+        # use and every narrower use it implies. It is the containment closure of
+        # the revoked type — correct as the withdrawal description, and unrelated
+        # to grant SELECTION, which was the bug. sorted() for stable rendering.
         derived_scopes = sorted(USE_TYPE_CONTAINMENT.get(revoked_use_type, {revoked_use_type}))
         
         # 2. Fetch all grant events for this work from real Firestore
@@ -106,7 +122,10 @@ class RevocationPropagatorAgent:
         for gid in unique_grant_ids:
             state = resolve(gid, events=events)
             if state.status == "active" and state.active_scope:
-                if state.active_scope.use_type in derived_scopes:
+                # Affected iff the grant PERMITS the revoked use: the held type
+                # contains it. Same predicate permits() uses, so a grant is
+                # terminated exactly when it could have exercised the revoked use.
+                if is_use_type_contained(state.active_scope.use_type, revoked_use_type):
                     affected_grants.append(AffectedGrant(
                         grant_id=gid,
                         counterparty_id=state.counterparty_id,

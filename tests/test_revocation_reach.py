@@ -1,32 +1,37 @@
 """
-tests/test_revocation_reach.py — what a revocation reaches, stated as a test
+tests/test_revocation_reach.py — which grants a revocation terminates, as a test
 (HOD-104, HOD-107, HOD-330).
 
-This file exists to make the revocation cascade's reach a SPECIFIED property
-rather than an emergent one, including where that reach falls short.
+THE RULE. Revoking use type R terminates exactly the active grants that PERMIT
+R — a grant held at use type H is affected iff H contains R in the lattice
+(`is_use_type_contained(H, R)`), which is the same predicate `permits()` uses.
+Revoking `training` terminates a `training` grant; it does NOT terminate a
+`fine_tuning`-only grant, because that grant never permitted training.
 
-WHAT IT DOES. Revoking use type R terminates every active grant whose held use
-type is in R's downward closure — R and everything R contains. Revoking
-`training` therefore reaches `fine_tuning`, `rag_retrieval` and
-`human_reference` grants, walked from the lattice's covering relation and never
-enumerated in code. That is the documented behaviour and it is correct.
+HISTORY, STATED PLAINLY. Through 2026-08-10 the selection was BACKWARDS and an
+earlier version of THIS FILE asserted the backwards behaviour as correct. It
+terminated the grants the revoked type *contains* (its descendants), so revoking
+`training` destroyed every `fine_tuning`/`rag_retrieval`/`human_reference` grant
+— licenses for uses the artist never revoked — and revoking `fine_tuning` left a
+`training` grant still able to fine-tune. 12 of the 25 (held × revoked) cells
+were wrong: 6 over-revocations and 6 under-revocations. Every test passed,
+because the tests (this one included) encoded the same error, and every check
+only ever exercised `revoke training` on a `training`-or-narrower grant — the
+diagonal where the wrong rule and the right rule happen to agree.
 
-WHAT IT DOES NOT DO, AND WHY. It does not touch a grant held ABOVE R. Revoking
-`fine_tuning` leaves a `training` grant standing, and a `training` grant permits
-fine-tuning — so `permits(fine_tuning)` is still True afterwards. Six of the
-twenty-five (held x revoked) pairs behave this way; `test_under_reach_matrix_is_exactly_six`
-pins the count.
+The correct rule is `permits()`'s own predicate, reused so there is exactly one
+definition of "this scope permits that use." This file now asserts the full
+25-cell matrix against that predicate as an independent oracle, so a regression
+in either direction fails here.
 
-This is not a bug that can be fixed by inverting the walk. `Scope.use_type` holds
-ONE value and the use types form a chain, so "training minus fine_tuning" is not
-expressible: the only way to stop fine-tuning under a training grant is to
-terminate the training grant entirely, destroying a permission the artist did not
-revoke — irreversibly, because the log is append-only. Choosing that silently
-would be worse than the current behaviour. The honest position is that partial
-narrowing of a broader grant is OUT OF SCOPE and stated, in the README's
-"What Hodi will not claim" and in docs/FINDINGS.md, rather than implied to work.
-
-If that decision is ever revisited, these tests fail, which is the point.
+THE ONE REMAINING LIMIT, still disclosed. When a grant held ABOVE R is
+terminated (revoke `fine_tuning`, grant held at `training`), the whole grant
+goes — stripping `training` too, which was not revoked. A single-valued
+`use_type` on a chain cannot express "training but not fine_tuning," so there is
+no narrower event to write. Terminating is the safe direction: better to
+over-strip a grant that *did* permit the revoked use than to leave the revoked
+use available. That is a property of the scope model, not of the selection rule,
+and it is not the bug this file guards.
 """
 
 import unittest
@@ -35,7 +40,7 @@ from typing import get_args
 
 from src.resolve.evaluator import permits
 from src.schema.grant_event import GrantEvent
-from src.schema.lattice import USE_TYPE_CONTAINMENT
+from src.schema.lattice import is_use_type_contained, USE_TYPE_CONTAINMENT
 from src.schema.scope import Scope, UseType
 
 AT = datetime(2026, 8, 1, tzinfo=timezone.utc)
@@ -53,82 +58,68 @@ def grant(use_type: str) -> GrantEvent:
 
 
 def cascade_selects(held: str, revoked: str) -> bool:
-    """The propagator's selection rule, read-only — see
-    revocation_propagator.py::execute_revocation_cascade."""
-    return held in USE_TYPE_CONTAINMENT.get(revoked, {revoked})
+    """The propagator's selection rule (revocation_propagator.py): a grant is
+    affected iff its held type permits the revoked use."""
+    return is_use_type_contained(held, revoked)
 
 
-class RevocationReachTest(unittest.TestCase):
+def grant_permits(held: str, revoked: str) -> bool:
+    """Independent oracle: does a grant held at `held` actually permit `revoked`?
+    Uses permits() directly, so it cannot share a bug with the selection rule
+    unless permits() itself is wrong (which the 47-case truth table guards)."""
+    return permits([grant(held)], scope(revoked)).permitted
 
-    def test_revoking_training_reaches_every_type_it_contains(self):
-        """The documented cascade, and the one the demo and the video exercise."""
-        for held in ("training", "fine_tuning", "rag_retrieval", "human_reference"):
-            with self.subTest(held=held):
-                self.assertTrue(cascade_selects(held, "training"),
-                                f"revoking training must reach a {held} grant")
 
-    def test_revoking_training_does_not_reach_synthesis(self):
-        """`synthesis` is incomparable, not narrower — containment is a partial
-        order, not a ranking."""
-        self.assertFalse(cascade_selects("synthesis", "training"))
-        self.assertFalse(cascade_selects("training", "synthesis"))
+class RevocationReachMatrixTest(unittest.TestCase):
 
-    def test_a_terminated_grant_stops_permitting(self):
-        for held in ("training", "fine_tuning", "rag_retrieval", "human_reference"):
-            with self.subTest(held=held):
-                self.assertTrue(permits([grant(held)], scope(held)).permitted)
-
-    def test_under_reach_matrix_is_exactly_six(self):
-        """
-        The stated limit, pinned. A pair is under-reached when the cascade
-        selects nothing AND the surviving grant still permits the revoked type.
-
-        If this count changes, either the lattice changed or the cascade's reach
-        changed — both require updating the README disclosure and FINDINGS,
-        which is exactly why the number is asserted rather than described.
-        """
-        under = [(h, r) for h in USE_TYPES for r in USE_TYPES
-                 if not cascade_selects(h, r) and permits([grant(h)], scope(r)).permitted]
-        self.assertEqual(
-            sorted(under),
-            sorted([("training", "fine_tuning"),
-                    ("training", "rag_retrieval"),
-                    ("training", "human_reference"),
-                    ("fine_tuning", "rag_retrieval"),
-                    ("fine_tuning", "human_reference"),
-                    ("rag_retrieval", "human_reference")]),
-            "the set of under-reached (held, revoked) pairs changed")
-        self.assertEqual(len(under), 6)
-        self.assertEqual(len(USE_TYPES) ** 2, 25)
-
-    def test_every_under_reached_pair_is_a_strict_ancestor(self):
-        """Characterises the limit rather than just counting it: the gap is
-        exactly 'the held grant strictly contains the revoked type'."""
+    def test_selection_equals_permission_for_all_25_cells(self):
+        """The whole finding in one assertion: a grant is terminated by revoking
+        R iff it permits R. Every cell, both directions."""
+        wrong = []
         for held in USE_TYPES:
             for revoked in USE_TYPES:
-                if cascade_selects(held, revoked):
-                    continue
-                still_permitted = permits([grant(held)], scope(revoked)).permitted
-                strictly_contains = (revoked in USE_TYPE_CONTAINMENT.get(held, set())
-                                     and held != revoked)
-                self.assertEqual(
-                    still_permitted, strictly_contains,
-                    f"held={held} revoked={revoked}: survival should hold exactly when the "
-                    "held type strictly contains the revoked one")
+                if cascade_selects(held, revoked) != grant_permits(held, revoked):
+                    wrong.append((held, revoked, cascade_selects(held, revoked),
+                                  grant_permits(held, revoked)))
+        self.assertEqual(wrong, [],
+                         "cascade selection disagrees with permission in cells "
+                         f"(held, revoked, selects, permits): {wrong}")
 
-    def test_the_gap_is_inexpressible_not_merely_unimplemented(self):
-        """The reason the limit is stated rather than fixed: there is no use
-        type meaning 'training but not fine_tuning', so no narrowing event could
-        represent the correct outcome."""
+    def test_revoking_training_hits_training_grants_only(self):
+        self.assertTrue(cascade_selects("training", "training"))
+        for narrower in ("fine_tuning", "rag_retrieval", "human_reference"):
+            self.assertFalse(cascade_selects(narrower, "training"),
+                             f"revoking training must NOT terminate a {narrower} grant")
+
+    def test_revoking_fine_tuning_hits_training_and_fine_tuning_grants(self):
+        self.assertTrue(cascade_selects("training", "fine_tuning"),
+                        "a training grant permits fine-tuning and must be terminated")
+        self.assertTrue(cascade_selects("fine_tuning", "fine_tuning"))
+        for unrelated in ("rag_retrieval", "human_reference"):
+            self.assertFalse(cascade_selects(unrelated, "fine_tuning"))
+
+    def test_synthesis_is_incomparable_both_ways(self):
+        for other in ("training", "fine_tuning", "rag_retrieval", "human_reference"):
+            self.assertFalse(cascade_selects("synthesis", other))
+            self.assertFalse(cascade_selects(other, "synthesis"))
+        self.assertTrue(cascade_selects("synthesis", "synthesis"))
+
+    def test_derived_scopes_still_describes_what_a_terminated_grant_loses(self):
+        """`derived_scopes` (the withdrawal description) is unchanged and separate
+        from selection: revoking R withdraws R and everything R contains."""
+        self.assertEqual(sorted(USE_TYPE_CONTAINMENT["training"]),
+                         ["fine_tuning", "human_reference", "rag_retrieval", "training"])
+
+    def test_the_partial_narrowing_gap_is_inexpressible_not_a_selection_bug(self):
+        """The residual limit: no use type means 'training without its
+        descendants', so terminating a broader grant is the only available move.
+        If such a type is ever added, this fails and says the limit became
+        fixable — distinct from the selection rule, which is now correct."""
         training_minus_fine_tuning = (USE_TYPE_CONTAINMENT["training"]
                                       - USE_TYPE_CONTAINMENT["fine_tuning"])
         self.assertEqual(training_minus_fine_tuning, {"training"})
         for candidate in USE_TYPES:
-            self.assertNotEqual(
-                USE_TYPE_CONTAINMENT.get(candidate, {candidate}), {"training"},
-                f"{candidate!r} would express 'training without its descendants' — if such a "
-                "use type now exists, the cascade CAN narrow and the limit should be fixed, "
-                "not disclosed")
+            self.assertNotEqual(USE_TYPE_CONTAINMENT.get(candidate, {candidate}), {"training"})
 
 
 if __name__ == "__main__":

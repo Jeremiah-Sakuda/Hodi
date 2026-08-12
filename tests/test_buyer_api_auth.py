@@ -25,6 +25,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from src.api import buyer_api
+from src.gateway.gateway import AgentGateway
 from src.api.auth import (
     InMemoryCredentialStore, compute_signature,
     HEADER_KEY_ID, HEADER_TIMESTAMP, HEADER_SIGNATURE,
@@ -193,15 +194,43 @@ class TestCrossBuyerAuthentication(unittest.TestCase):
         self.assertEqual(r.status_code, 403)
         self.assertIn("requires a 'artist' credential", r.json()["detail"])
 
-    def test_artist_credential_is_accepted_by_revoke(self):
-        """Positive pair: the artist credential authenticates. Offline the
-        gateway holds no documents, so the cascade affects nothing — the point
-        is that it passed authentication (HTTP 200)."""
+    def test_artist_credential_is_accepted_by_revoke_when_it_owns_the_work(self):
+        """Positive: the artist credential authenticates AND owns the work.
+        Offline the injected gateway holds the `works` row; the cascade affects
+        nothing (no grants offline), the point is that auth + ownership passed."""
+        gateway = AgentGateway(offline_reads={
+            "works": [{"work_id": "work-repo-001", "artist_id": "artist-jeremiah"}]})
+        buyer_api.set_gateway(gateway)
+        self.addCleanup(lambda: buyer_api.set_gateway(None))
         r = self._post(*self._signed(
             ARTIST_KEY, ARTIST_SECRET, path="/api/v1/revoke",
             body={"work_id": "work-repo-001", "revoked_use_type": "training"}))
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.json()["affected_grants"], [])
+
+    def test_artist_cannot_revoke_a_work_they_do_not_own(self):
+        """The finding: an artist credential must not revoke ANY work — only its
+        own. A work owned by a different artist is refused, before any append."""
+        gateway = AgentGateway(offline_reads={
+            "works": [{"work_id": "work-repo-001", "artist_id": "someone-else"}]})
+        buyer_api.set_gateway(gateway)
+        self.addCleanup(lambda: buyer_api.set_gateway(None))
+        r = self._post(*self._signed(
+            ARTIST_KEY, ARTIST_SECRET, path="/api/v1/revoke",
+            body={"work_id": "work-repo-001", "revoked_use_type": "training"}))
+        self.assertEqual(r.status_code, 403)
+        self.assertIn("does not own", r.json()["detail"])
+
+    def test_revoking_an_unknown_work_is_refused(self):
+        """A missing work is a uniform 403 — an artist must not enumerate work
+        ids or owners by probing revoke."""
+        gateway = AgentGateway(offline_reads={"works": []})
+        buyer_api.set_gateway(gateway)
+        self.addCleanup(lambda: buyer_api.set_gateway(None))
+        r = self._post(*self._signed(
+            ARTIST_KEY, ARTIST_SECRET, path="/api/v1/revoke",
+            body={"work_id": "work-does-not-exist", "revoked_use_type": "training"}))
+        self.assertEqual(r.status_code, 403)
 
     def test_artist_credential_cannot_negotiate_as_a_buyer(self):
         """The principal-type check runs both ways."""

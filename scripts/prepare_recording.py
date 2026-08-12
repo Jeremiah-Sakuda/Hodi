@@ -48,7 +48,7 @@ from src.llm.notice_drafter import DRAFT_PROMPT_TEMPLATE
 from src.llm.vertex_gemini import PINNED_INTERPRETER_MODEL, _cache_key, _load_cache
 from src.resolve.resolver import resolve
 from src.schema.grant_event import GrantEvent
-from src.schema.lattice import USE_TYPE_CONTAINMENT
+from src.schema.lattice import is_use_type_contained
 from src.schema.scope import Scope
 
 # The exact identifiers docs/VIDEO-SCRIPT.md names. Kept here rather than in the
@@ -99,14 +99,14 @@ def notice_is_cached(grant_id: str, work_id: str, counterparty_id: str) -> bool:
 def affected_set(events: list, revoked_use_type: str) -> list:
     """
     The propagator's own selection rule, read-only: fold each grant, keep the
-    active ones whose use_type the revoked type contains. Replicated rather than
-    called because execute_revocation_cascade() writes.
+    active ones that PERMIT the revoked use (held type contains it). Replicated
+    rather than called because execute_revocation_cascade() writes.
     """
-    derived = USE_TYPE_CONTAINMENT.get(revoked_use_type, {revoked_use_type})
     out = []
     for gid in sorted({e.grant_id for e in events}):
         state = resolve(gid, events=events)
-        if state.status == "active" and state.active_scope and state.active_scope.use_type in derived:
+        if (state.status == "active" and state.active_scope
+                and is_use_type_contained(state.active_scope.use_type, revoked_use_type)):
             out.append((gid, state.counterparty_id, state.active_scope.use_type))
     return out
 

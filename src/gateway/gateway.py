@@ -68,10 +68,15 @@ class AgentGateway:
     Reads from / writes to Firestore directly (H7 real path).
     """
 
-    def __init__(self):
+    def __init__(self, offline_reads: Optional[Dict[str, List[dict]]] = None):
         self.denial_events: list = []
         project_id = os.environ.get("GCP_PROJECT_ID", "hodi-2026")
         self.db = _build_firestore_client(project_id)
+        # Documents served to read_collection when there is no live Firestore
+        # (HODI_OFFLINE / tests), keyed by collection. Policy enforcement still
+        # runs first, so an offline read is denied exactly when a live one is —
+        # this only supplies the data a permitted read would have returned.
+        self._offline_reads: Dict[str, List[dict]] = offline_reads or {}
 
     def _enforce(self, calling_sa: str, calling_role_key: str, target_collection: str, filters: Dict[str, Any] = None, session_context: Dict[str, Any] = None):
         permitted, required_filter_key = get_action_permission(calling_role_key, target_collection)
@@ -173,7 +178,12 @@ class AgentGateway:
     def read_collection(self, calling_sa: str, calling_role_key: str, target_collection: str, filters: Dict[str, Any] = None, session_context: Dict[str, Any] = None) -> List[Dict[str, Any]]:
         self._enforce(calling_sa, calling_role_key, target_collection, filters=filters, session_context=session_context)
         if not self.db:
-            return [] # mock return for tests
+            # Offline: serve injected documents (empty by default), applying the
+            # same equality filters a live query would.
+            docs = list(self._offline_reads.get(target_collection, []))
+            if filters:
+                docs = [d for d in docs if all(d.get(k) == v for k, v in filters.items())]
+            return docs
 
         coll = self.db.collection(target_collection)
         if filters:

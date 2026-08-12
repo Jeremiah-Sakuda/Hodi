@@ -226,7 +226,11 @@ def beat_5b_adk_delegation(events):
         result = run_revocation_delegation(
             counterparty_id="acme-intelligence-labs",
             work_id="work-essay-001",
-            revoked_use_type="training",
+            # work-essay-001's active grant is fine_tuning (re-granted in Beat 2);
+            # revoking fine_tuning terminates it because it PERMITS fine_tuning.
+            # Revoking training would (correctly) affect nothing here — that grant
+            # never permitted training.
+            revoked_use_type="fine_tuning",
             fallback_events=events,
         )
 

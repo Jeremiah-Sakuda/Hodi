@@ -57,7 +57,15 @@ def seed_demo_grant():
         work_id=DEMO_WORK_ID,
         counterparty_id=DEMO_COUNTERPARTY,
         scope=Scope(
-            use_type="fine_tuning",
+            # `training`, the broadest use type, so the hero revocation of
+            # `training` correctly terminates this grant AND the notice's
+            # derived_scopes show all four uses it withdraws
+            # (training ⊃ fine_tuning ⊃ rag_retrieval ⊃ human_reference).
+            # A narrower grant (e.g. fine_tuning) must NOT be terminated by
+            # revoking training — see the revocation-reach finding — so the demo
+            # grant has to be held at the use being revoked for the beat to
+            # demonstrate a correct, non-empty cascade.
+            use_type="training",
             model_class="open_weights",
             commercial=False,
             attribution_required=True,
@@ -77,7 +85,7 @@ def seed_demo_grant():
     print(f"  counterparty_id: {DEMO_COUNTERPARTY}")
     print(f"  work_id:         {DEMO_WORK_ID}")
     print(f"  grant_id:        {DEMO_GRANT_ID}")
-    print(f"  scope:           fine_tuning / open_weights / non-commercial / attribution required / US+CA")
+    print(f"  scope:           training / open_weights / non-commercial / attribution required / US+CA")
 
     # Read back to verify the seed actually landed (never report unverified success)
     snapshot = doc_ref.get()
