@@ -25,6 +25,10 @@ armor = PromptInspector()
 # The licensing negotiator agent acts under its own service account
 NEGOTIATOR_SA = "licensing-negotiator@hodi-2026.iam.gserviceaccount.com"
 PROPAGATOR_SA = "revocation-propagator-sa@hodi-2026.iam.gserviceaccount.com"
+# Ownership is a RIGHTS-CUSTODIAN concern: it holds works and artist identity.
+# The propagator must not — it cannot read `works` at all — so the "does this
+# artist own this work" gate lives here, at the API layer, before delegation.
+RIGHTS_CUSTODIAN_SA = "rights-custodian-sa@hodi-2026.iam.gserviceaccount.com"
 
 # Injectable so tests never touch the production credential collection.
 _credential_store = CredentialStore()
@@ -33,6 +37,20 @@ def set_credential_store(store) -> None:
     """Replaces the credential store (tests, offline runs)."""
     global _credential_store
     _credential_store = store
+
+
+# Injectable gateway, so a test can supply offline documents (e.g. a `works`
+# row) for the ownership check without a live Firestore. Defaults to a fresh
+# AgentGateway per request in production.
+_gateway_override = None
+
+def set_gateway(gateway) -> None:
+    """Replaces the gateway used by handlers (tests, offline runs). Pass None to reset."""
+    global _gateway_override
+    _gateway_override = gateway
+
+def _get_gateway() -> "AgentGateway":
+    return _gateway_override if _gateway_override is not None else AgentGateway()
 
 
 async def _authenticate_or_403(request: Request,
@@ -83,6 +101,36 @@ async def _authenticate_or_403(request: Request,
                     f"'{required_principal_type}' credential."),
         )
     return auth
+
+
+def _verify_work_ownership_or_403(gateway: "AgentGateway", work_id: str,
+                                  authenticated_artist_id: str) -> None:
+    """
+    Refuse the operation unless the authenticated artist owns `work_id`.
+
+    Reads `works` as the RIGHTS CUSTODIAN — the only role permitted that
+    collection; the revocation propagator is denied it, which is why the check
+    cannot live inside the cascade. A missing work, or one owned by a different
+    artist, is a uniform 403: an artist must not learn which work_ids exist or
+    who owns them by probing this endpoint.
+    """
+    try:
+        rows = gateway.read_collection(
+            calling_sa=RIGHTS_CUSTODIAN_SA,
+            calling_role_key="rights_custodian",
+            target_collection="works",
+            filters={"work_id": work_id},
+        )
+    except Exception:
+        # A read failure must fail closed, never fall through to the cascade.
+        raise HTTPException(status_code=403,
+                            detail="Revocation denied: work ownership could not be verified.")
+
+    owner = rows[0].get("artist_id") if rows else None
+    if owner is None or owner != authenticated_artist_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Revocation denied: this credential does not own the specified work.")
 
 
 class ScopeRequest(BaseModel):
@@ -280,11 +328,22 @@ async def revoke_scope(req: RevokeRequest, request: Request):
 
     A counterparty credential is explicitly NOT sufficient here: a buyer must
     not be able to terminate an artist's grants, including their own rivals'.
-    """
-    await _authenticate_or_403(request, claimed_counterparty_id=None,
-                               required_principal_type="artist")
 
-    gateway = AgentGateway()
+    Being *an* artist is also not sufficient: the caller must own THIS work.
+    Authenticating the artist principal without checking ownership let any valid
+    artist credential revoke any published `work_id` — latent under a single
+    artist, a cross-tenant privilege escalation the moment there are two. The
+    gate is a rights-custodian read of `works` (the propagator cannot read that
+    collection by policy), comparing the work's `artist_id` to the authenticated
+    identity before anything is delegated or appended.
+    """
+    auth = await _authenticate_or_403(request, claimed_counterparty_id=None,
+                                      required_principal_type="artist")
+
+    gateway = _get_gateway()
+    _verify_work_ownership_or_403(gateway, work_id=req.work_id,
+                                  authenticated_artist_id=auth.counterparty_id)
+
     propagator = RevocationPropagatorAgent(gateway=gateway, memory_bank_events=[])
     return propagator.execute_revocation_cascade(
         work_id=req.work_id, revoked_use_type=req.revoked_use_type

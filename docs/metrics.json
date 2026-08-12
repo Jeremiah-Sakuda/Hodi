@@ -79,22 +79,20 @@
   "h6_revocation_cascade_real_corpus_scale": {
     "measurement_surface": "deployed-over-network",
     "idle_forcing_method": "revision-update (gcloud run services update)",
-    "measured_at_utc": "2026-08-10T17:00:00Z",
+    "measured_at_utc": "2026-08-12T16:45:00Z",
     "runtime_identity": "hodi-runtime-sa (append+read only; no datastore update/delete)",
     "cold_start_ms": 3049.0,
     "warm_runs_ms": [
-      590.0,
-      547.0,
-      594.0,
-      478.0,
-      447.0,
-      516.0,
-      536.0,
-      575.0,
-      525.0
+      461.0,
+      479.0,
+      496.0,
+      506.0,
+      644.0,
+      527.0
     ],
-    "warm_avg_ms": 533.9,
-    "note": "Re-measured 2026-08-10 after moving the deployed service off the default compute SA (roles/editor) onto a dedicated create-only runtime SA. Warm latency rose ~150 ms versus the prior editor-SA revision: the append is now .create() (existence-checked) rather than .set() (upsert), and reads pass through roles/datastore.viewer. The cost buys the append-only invariant being enforced by IAM at runtime rather than only by the code path."
+    "warm_avg_ms": 518.8,
+    "note": "Re-measured 2026-08-12 after two changes on the deployed path: the cascade selection was corrected (a grant is terminated iff it PERMITS the revoked use, not iff the revoked type contains it), and /api/v1/revoke now verifies the authenticated artist owns the work via a rights-custodian read of `works` before any append. Warm latency is unchanged (~0.5 s); the ownership read is marginal. The prior ~150 ms rise over the pre-2026-08-10 editor-SA revision is the cost of append-only being enforced by runtime IAM (.create() existence-check + viewer-role reads).",
+    "revision": "hodi-evidence-endpoint-00039-846"
   },
   "natural_language_license_path": {
     "measurement_surface": "deployed-over-network",

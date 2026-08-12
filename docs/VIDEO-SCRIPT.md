@@ -2,13 +2,13 @@
 
 **Target 3:30 · hard cap 4:00 · 30 seconds of insurance**
 Everything except the recording. All durations below are **measured**, not estimated — the source
-for each is named. Re-measured against the deployed service on **2026-08-10**, after the service was
-moved onto a dedicated create-only runtime identity (`hodi-runtime-sa`, revision `00037-4ff`): the
-boundary denial returns **6/6 HTTP 403 including Part C**, and the revocation cascade appends under
-create-only IAM with the affected set, derived scopes and signed notices all correct. The warm
-cascade is ~150 ms slower than the pre-2026-08-10 editor-SA revision — the price of the append-only
-invariant now being enforced by IAM at runtime, not just by the code path. Re-measure with
-`make metrics` if you record more than a day from now.
+for each is named. Re-measured against the deployed service on **2026-08-12**, revision
+`00039-846`. Two correctness changes landed since 2026-08-10 and both are verified live: the
+revocation cascade now terminates exactly the grants that **permit** the revoked use (it previously
+ran backwards — see below), and `/api/v1/revoke` now checks the artist **owns** the work. The
+boundary denial returns **6/6 HTTP 403 including Part C**; the hero cascade appends under create-only
+IAM with the affected set, derived scopes and signed notices all correct; a non-owner revoke is
+refused 403. Warm cascade ~0.5 s. Re-measure with `make metrics` if you record more than a day from now.
 
 Supersedes PRD §6's shot list. Three things changed since it was written and the budget changes
 with them:
@@ -28,7 +28,7 @@ record:
 
 | Action | Measured (2026-08-09 unless noted) | Beat budget |
 |---|---|---|
-| Revocation cascade, **1 affected grant** | **478 / 547 / 594 ms** round-trip, ~534 ms avg (2026-08-10) | 45 s |
+| Revocation cascade, **1 affected grant** | **461 / 496 / 506 / 644 ms** round-trip, ~519 ms avg (2026-08-12) | 45 s |
 | Revocation cascade, **2 affected grants** | **5086 / 5275 / 4953 ms** — see the trap below | — |
 | `POST /api/v1/license` (Frames A and C of the hero) | **399 ms** before · **399 ms** after (2026-08-10) | — |
 | Natural-language license | **2.83 s** round-trip, warm (2026-08-10) · 3175 ms avg in `metrics.json` | 30 s |
@@ -354,9 +354,9 @@ print(json.dumps(r, indent=2))
 EOF
 ```
 
-**Measured: 478 / 547 / 594 ms** round-trip warm, ~534 ms average (2026-08-10), with one affected
-grant. `metrics.json` records 3049 ms cold / 534 ms warm for the cascade itself. **Burn in the wall
-clock — about half a second is the point.**
+**Measured: 461 / 496 / 506 / 644 ms** round-trip warm, ~519 ms average (2026-08-12), with one
+affected grant. `metrics.json` records 3049 ms cold / 519 ms warm for the cascade itself. **Burn in
+the wall clock — about half a second is the point.**
 
 On screen, in the response:
 - `derived_scopes` — `training`, `fine_tuning`, `rag_retrieval`, `human_reference`, walked from the
@@ -369,6 +369,12 @@ On screen, in the response:
 counterparty, same scope.
 
 **Measured: 399 ms, `permitted = False`** (2026-08-10).
+
+> **Accuracy note (read once).** The demo grant is held at **`training`** (the broadest use),
+> so revoking `training` correctly terminates it and the notice withdraws all four downstream
+> uses. Do **not** seed it at a narrower use like `fine_tuning`: revoking `training` must NOT
+> terminate a narrower grant, and `make recording-prep` seeds `training` for exactly this
+> reason. The cascade selecting the wrong grants was the defect fixed on 2026-08-12.
 
 **Say:** one call. Containment resolves downstream scopes from the partial order — `training` was
 revoked, and `fine_tuning` fell with it because the lattice says `training ⊃ fine_tuning`, not

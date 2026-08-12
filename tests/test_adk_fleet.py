@@ -58,7 +58,7 @@ class TestAdkFleetDelegation(unittest.TestCase):
             self.result = run_revocation_delegation(
                 counterparty_id="acme-intelligence-labs",
                 work_id="work-essay-001",
-                revoked_use_type="training",
+                revoked_use_type="fine_tuning",
                 fallback_events=fixture_events(),
             )
 
@@ -197,7 +197,7 @@ class TestQuarantineAndRerouteOnTheDelegationPath(unittest.TestCase):
             self.result = run_revocation_delegation(
                 counterparty_id="acme-intelligence-labs",
                 work_id="work-essay-001",
-                revoked_use_type="training",
+                revoked_use_type="fine_tuning",
                 fallback_events=fixture_events(),
                 supervisor=Supervisor(deadline_seconds=0.5),
                 loop_forever=True,
@@ -253,7 +253,7 @@ class TestQuarantineAndRerouteOnTheDelegationPath(unittest.TestCase):
         with redirect_stdout(buf):
             healthy = run_revocation_delegation(
                 counterparty_id="acme-intelligence-labs", work_id="work-essay-001",
-                revoked_use_type="training", fallback_events=fixture_events())
+                revoked_use_type="fine_tuning", fallback_events=fixture_events())
         self.assertIsNone(healthy["abandoned"])
         self.assertIsNone(healthy["quarantine"])
         self.assertEqual(healthy["task_abandoned_events"], [])
