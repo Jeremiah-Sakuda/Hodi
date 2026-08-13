@@ -1,29 +1,46 @@
 {
-  "timestamp": "2026-08-08T03:46:24Z",
+  "timestamp": "2026-08-13T15:50:15Z",
   "daily_crawler_accrual_metrics": {
-    "audit_date_utc": "2026-08-08",
-    "total_accrued_records": 539,
-    "self_originated_count": 517,
-    "non_self_originated_requests_count": 22,
-    "known_crawler_ua_matches": 0,
+    "audit_date_utc": "2026-08-13",
+    "total_accrued_records": 1613,
+    "self_originated_count": 1572,
+    "non_self_originated_requests_count": 41,
+    "known_crawler_ua_matches": 1,
     "non_self_user_agents": {
-      "Mozilla/5.0 (compatible)": 21,
-      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36": 1
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36": 1,
+      "Mozilla/5.0 (compatible)": 28,
+      "Claude-User (claude-code/2.1.222; +https://support.anthropic.com/)": 2,
+      "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Claude-User/1.0; +claude-user@anthropic.com)": 5,
+      "GPTBot": 1,
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36": 1,
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36": 2,
+      "Mozilla/5.0": 1
     },
-    "distinct_user_agents_count": 9,
+    "distinct_user_agents_count": 20,
     "distinct_user_agents": [
+      "Claude-User (claude-code/2.1.222; +https://support.anthropic.com/)",
+      "GPTBot",
       "Google-Cloud-Scheduler",
       "Hodi-Adversarial-Audit/1.0",
+      "Hodi-Adversarial-Judge/1.0",
       "Hodi-HealthCheck/1.0",
+      "Hodi-Judge-Audit/1.0",
+      "Hodi-Judge-Doc-Review/1.0",
+      "Hodi-Judge-Verifier/1.0",
       "Hodi-Latency-Test/1.0",
+      "Mozilla/5.0",
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
       "Mozilla/5.0 (compatible)",
+      "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Claude-User/1.0; +claude-user@anthropic.com)",
+      "Python-urllib/3.12",
       "Python-urllib/3.14",
       "curl/8.7.1",
       "python-requests/2.34.2"
     ],
     "hostname_breakdown": {
-      "hodi-evidence-endpoint-406699565497.us-central1.run.app": 539
+      "hodi-evidence-endpoint-406699565497.us-central1.run.app": 1613
     },
     "claim_limit": "non_self_originated_requests_count counts requests this project did not make; it is NOT a crawler count. known_crawler_ua_matches is the only figure this project will describe as crawler access."
   },

@@ -145,3 +145,62 @@ class DisclosureIsPublishedTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CrawlerDetectorHasAPositiveControlTest(unittest.TestCase):
+    """
+    The detector that produces this project's headline number had never been
+    asserted to FIRE. `known_crawler_ua_matches` read 0 for a week — not because
+    no crawler came, but because the pattern required a word boundary before
+    `bot`, so the commonest crawler-naming convention (a vendor prefix glued
+    straight onto `bot`) matched nothing. A real `GPTBot` request sat in the log,
+    counted as unattributed.
+
+    A guard for a null result must include a case that makes it non-null, or the
+    null is just the branch nobody exercised.
+
+    Asserts the REGEX SET DIRECTLY — `THIRD_PARTY_BOT_USER_AGENTS` — because that
+    is precisely what `scripts/daily_accrual_check.py` uses to compute the
+    published figure. Going through `triage_record()` would be wrong twice: it
+    calls Vertex Gemma and then Ollama before the regex, so the assertion could
+    pass because a *model* said "bot" while the pattern stayed blind, and it
+    would make the offline suite reach the network.
+    """
+
+    def _matches_crawler_pattern(self, user_agent: str) -> bool:
+        from src.evidence.gemma_triage import GemmaTriageEngine
+        return any(re.search(p, user_agent.lower())
+                   for p in GemmaTriageEngine.THIRD_PARTY_BOT_USER_AGENTS)
+
+    def test_prefix_glued_crawler_names_are_detected(self):
+        """The shape that was invisible. The patterns name no vendor; these are
+        only test inputs, chosen because this is the convention crawlers use."""
+        for ua in ("GPTBot", "Googlebot", "Bingbot", "PetalBot", "Applebot"):
+            with self.subTest(user_agent=ua):
+                self.assertTrue(self._matches_crawler_pattern(ua),
+                                f"{ua!r} must match a crawler signature")
+
+    def test_conventional_crawler_forms_still_detected(self):
+        for ua in ("somebot/1.0", "Mozilla/5.0 (compatible; example-bot)",
+                   "BigCrawler/2.0", "a spider", "some scraper", "an indexer"):
+            with self.subTest(user_agent=ua):
+                self.assertTrue(self._matches_crawler_pattern(ua))
+
+    def test_ordinary_browsers_are_not_crawlers(self):
+        """The paired negative: widening the pattern must not sweep in browsers,
+        or the headline number inflates instead of deflating."""
+        for ua in ("Mozilla/5.0 (compatible)",
+                   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+                   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/135.0.0.0",
+                   "curl/8.7.1", "Python-urllib/3.14"):
+            with self.subTest(user_agent=ua):
+                self.assertFalse(self._matches_crawler_pattern(ua))
+
+    def test_the_published_figure_uses_this_same_pattern_set(self):
+        """Guards the link between the test and the number: if the audit stops
+        using THIRD_PARTY_BOT_USER_AGENTS, these assertions stop meaning
+        anything about the published figure."""
+        audit = (ROOT / "scripts" / "daily_accrual_check.py").read_text()
+        self.assertIn("GemmaTriageEngine.THIRD_PARTY_BOT_USER_AGENTS", audit,
+                      "the accrual audit no longer derives known_crawler_ua_matches "
+                      "from the pattern set this test asserts")

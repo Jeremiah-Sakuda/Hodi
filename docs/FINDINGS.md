@@ -327,3 +327,23 @@ An external pass re-identified five limitations already recorded here. They are 
 5. **Signature fields are placeholders** — see the named finding immediately above.
 
 Also resolved this pass: a **stale duplicate `Dockerfile`** at `src/evidence_service/Dockerfile` installed from `requirements.txt` rather than the lockfile and omitted `COPY fixtures/` — the exact omission that once shipped an empty Gemini cache and 500'd the drill. Deploying from it reintroduced a fixed defect, so it was deleted and the root `Dockerfile` documents that it is the only one that builds the service. Deployment itself is now `make deploy` → `scripts/deploy.sh`, which provisions IAM, deploys with the mandatory `--service-account`, and then reads the deployed identity back and asserts it cannot rewrite history before reporting success — because the flag whose omission silently breaks the append-only invariant should not live in anyone's shell history.
+
+---
+
+## Named finding — A crawler did come, and the detector could not see it
+
+**Found:** 2026-08-12 · **Requirements:** HOD-303, HOD-320 · **Status:** closed; the headline finding is restated, narrower and stronger
+
+**The claim, for most of this project's life.** *"I published machine-readable consent terms at a discoverable endpoint and no crawler asked."* `known_crawler_ua_matches` read **0**, and that figure was presented as the signature empirical result.
+
+**It was wrong, by one regex anchor.** The crawler signatures were generic on purpose — `\bbot\b`, `bot/`, `[-_]bot`, `bot[-_]` — to avoid naming vendors and to catch crawlers nobody has heard of. But `\bbot\b` requires a word boundary *before* `bot`, and the commonest crawler-naming convention in existence is a vendor prefix glued straight onto it. A user agent of exactly `GPTBot` matches none of the four patterns. Neither would `Googlebot` or any sibling. The detector was blind to the single most likely shape of the thing it was built to detect.
+
+**What was actually in the log.** One record, `2026-08-11`: user agent `GPTBot`, path `/robots.txt`, `robots_txt_fetched_first: true`. A self-identifying crawler arrived, read the robots file — and **did not fetch `/.well-known/hodi.json`**, which is one request away and is where the machine-readable terms are served.
+
+**The corrected finding is better than the null result it replaces.** "Nobody came" is a weak claim: absence of evidence, and always one un-instrumented day from being falsified. What the corpus actually supports is sharper and is the project's whole thesis in one record: **the terms are published, discoverable, and reachable in one request from the file the crawler did read — and it did not ask.** The gap between "a crawler that respects robots.txt" and "a crawler that reads consent terms" is exactly the gap Hodi exists to close, and there is now a dated observation of it rather than a negative space.
+
+**Scale, restated honestly.** The re-audit also covered the 1074 records accrued since the last one: **1613 total**, 1572 self-originated, 41 unattributed, 1 crawler. The previously published 539 was not wrong when written — it was stale, and dated as such, which is why the audit date is a guarded field.
+
+**What is now structural.** The pattern is `bot\b` — trailing boundary only — which catches the prefix-glued family without naming any vendor, preserving the positioning rule that no real company appears as a violator. `make check-docs` already fails the build when the README, Diagram B or the Devpost text drift from `metrics.json`, and it caught all ten stale figures the moment the audit was re-run.
+
+**The lesson.** A detector that has never fired is not evidence of absence; it is an untested branch. This one had produced the project's headline number for a week without a single positive control — no test ever asserted that a known crawler user agent *matches*. The guard for a null result has to be a case that makes it non-null, or the null is just the code path nobody exercised.

@@ -107,7 +107,11 @@ def check_defect_ledger(metrics, failures) -> None:
     for path in LEDGER_DOCS:
         if not path.exists():
             continue
-        for match in re.finditer(rf"{_NUM}\s+(?:of those\s+)?classes\s+(?:that\s+)?recurred", path.read_text(), re.I):
+        # Also matches the bare "the three that recurred" — no "classes" — which is
+        # how this figure drifted past the guard in README.md and docs/index.md.
+        for match in re.finditer(
+                rf"{_NUM}\s+(?:of those\s+)?(?:classes\s+)?(?:that\s+)?recurred",
+                path.read_text(), re.I):
             value = _as_int(match.group(1))
             if value is not None and value != recurring:
                 failures.append(
@@ -278,7 +282,7 @@ def main() -> int:
     devpost = DEVPOST.read_text()
     for label, pattern, expected in (
         ("accrued records", r"\*\*(\d+) accrued records\*\*", total),
-        ("known-crawler matches", r"\*\*(\d+) match any known AI-crawler", accrual["known_crawler_ua_matches"]),
+        ("known-crawler matches", r"\*\*(\d+) match(?:es)? (?:any known AI-crawler|a crawler user-agent signature)", accrual["known_crawler_ua_matches"]),
         ("self-originated count", r"(\d+) are this project's own instrumented tooling", accrual["self_originated_count"]),
         ("unattributed count", r"The remaining (\d+) are non-self-originated", third_party),
         ("drill server-side avg", r"([\d.]+) ms server-side average",

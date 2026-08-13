@@ -41,7 +41,13 @@ class GemmaTriageEngine:
     # Verified against the live corpus on 2026-08-08: this change moves
     # known_crawler_ua_matches by zero. It was 0 before and 0 after.
     THIRD_PARTY_BOT_USER_AGENTS = [
-        r"\bbot\b", r"bot/", r"[-_]bot", r"bot[-_]",
+        # `bot\b`, not `\bbot\b`. Requiring a word boundary BEFORE "bot" meant the
+        # single most common crawler-naming convention — a vendor prefix glued
+        # straight onto "bot" — did not match, so a real crawler that fetched
+        # /robots.txt on 2026-08-11 was counted as unattributed and
+        # known_crawler_ua_matches stayed 0. Anchoring only the trailing boundary
+        # catches that whole family without naming any vendor.
+        r"bot\b", r"bot/", r"[-_]bot", r"bot[-_]",
         r"crawler", r"spider", r"scraper", r"\bfetcher\b", r"\bindexer\b",
     ]
 

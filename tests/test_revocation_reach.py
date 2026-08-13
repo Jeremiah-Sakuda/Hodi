@@ -34,17 +34,44 @@ use available. That is a property of the scope model, not of the selection rule,
 and it is not the bug this file guards.
 """
 
+import os
 import unittest
 from datetime import datetime, timezone
 from typing import get_args
 
+from src.agents.revocation_propagator import RevocationPropagatorAgent
+from src.gateway.gateway import AgentGateway
 from src.resolve.evaluator import permits
 from src.schema.grant_event import GrantEvent
-from src.schema.lattice import is_use_type_contained, USE_TYPE_CONTAINMENT
+from src.schema.lattice import USE_TYPE_CONTAINMENT
 from src.schema.scope import Scope, UseType
+from src.schema.signing import unsigned_placeholder
 
 AT = datetime(2026, 8, 1, tzinfo=timezone.utc)
 USE_TYPES = sorted(get_args(UseType))
+
+
+_PRIOR_OFFLINE = None
+
+
+def setUpModule():
+    # The cascade WRITES. Offline forces a gateway with no Firestore client, so
+    # these 25+ cascades cannot reach production (this exact mistake once wrote
+    # revoked events into the live log — BUILD-LOG 2026-08-07).
+    global _PRIOR_OFFLINE
+    _PRIOR_OFFLINE = os.environ.get("HODI_OFFLINE")
+    os.environ["HODI_OFFLINE"] = "1"
+
+
+def tearDownModule():
+    # RESTORE, never pop. `make test` sets HODI_OFFLINE=1 for the whole run;
+    # unconditionally deleting it here put every module that ran afterwards
+    # back online — the suite went from 18s to 186s reaching for Firestore and
+    # Ollama, and offline runs stopped being offline halfway through.
+    if _PRIOR_OFFLINE is None:
+        os.environ.pop("HODI_OFFLINE", None)
+    else:
+        os.environ["HODI_OFFLINE"] = _PRIOR_OFFLINE
 
 
 def scope(use_type: str) -> Scope:
@@ -54,13 +81,28 @@ def scope(use_type: str) -> Scope:
 
 def grant(use_type: str) -> GrantEvent:
     return GrantEvent(event_id="e", grant_id="g", work_id="w", counterparty_id="c",
-                      scope=scope(use_type), kind="granted", issued_at=AT, signature="s")
+                      scope=scope(use_type), kind="granted", issued_at=AT,
+                      signature=unsigned_placeholder("grant", "g"))
 
 
 def cascade_selects(held: str, revoked: str) -> bool:
-    """The propagator's selection rule (revocation_propagator.py): a grant is
-    affected iff its held type permits the revoked use."""
-    return is_use_type_contained(held, revoked)
+    """
+    Runs the REAL cascade and reports whether it selected the grant.
+
+    This used to `return is_use_type_contained(held, revoked)` — a local
+    re-implementation of the rule. Every cell passed while testing a copy of the
+    code rather than the code, so a mutation inside
+    `execute_revocation_cascade` that changed selection for only some use types
+    survived this file, the demo and CI. The whole point of the matrix is to
+    exercise the shipped selection, so it now invokes it.
+
+    Offline (`HODI_OFFLINE=1` via setUpModule): the gateway holds no Firestore
+    client, the propagator folds `memory_bank_events`, and writes go nowhere.
+    """
+    agent = RevocationPropagatorAgent(gateway=AgentGateway(),
+                                      memory_bank_events=[grant(held)])
+    result = agent.execute_revocation_cascade(work_id="w", revoked_use_type=revoked)
+    return any(a.grant_id == "g" for a in result.affected_grants)
 
 
 def grant_permits(held: str, revoked: str) -> bool:

@@ -445,9 +445,16 @@ And a fifth column that does not exist: training-set membership. Not because we 
 because it is not determinable, there is no enum value for it, and the schema physically cannot
 express the claim. Revocation terminates a grant. It does not un-train a model.
 
-Then the measured negative: 539 accrued access records, **zero** matching any crawler signature.
-I published machine-readable consent terms at a discoverable endpoint and nothing identifying itself
-as a crawler has asked.
+Then the measured finding — **and it changed on 2026-08-12, so use these words, not the old ones**:
+1613 accrued access records. **One** matches a crawler signature. On August 11th a self-identifying
+crawler fetched `/robots.txt` — and did not fetch `/.well-known/hodi.json`, one request away, where
+the machine-readable terms are served. It asked whether it was allowed to crawl. It never asked what
+it was allowed to *do with the work*.
+
+> This is stronger than the old line ("nobody came"), and it is the thesis in one record. It is also a
+> correction: the count read zero for a week because the detector's pattern required a word boundary
+> before `bot`, so a vendor prefix glued onto `bot` never matched. If you want one sentence for it:
+> *"the number was zero until the detector could see."*
 
 > Read those numbers off `docs/metrics.json` on the day you record. `make check-docs` keeps the
 > README, the diagram and the submission text in agreement, but the diagram PNG is only as fresh as
