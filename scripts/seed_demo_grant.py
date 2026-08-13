@@ -50,7 +50,18 @@ def seed_demo_grant():
     db = build_client(project_id)
 
     issued_at = datetime.now(timezone.utc)
-    event_id = generate_deterministic_event_id(DEMO_GRANT_ID, step=1, attempt=1)
+    # Deterministic in its INPUTS, unique per seeding — the id is derived from
+    # the grant and the instant, so re-seeding APPENDS a new `granted` event
+    # (the documented re-grant mechanism) instead of overwriting one document.
+    #
+    # This previously hashed (grant_id, step=1, attempt=1) — a fixed id written
+    # with .set(), i.e. an overwrite. Every `make recording-prep` replaced the
+    # single `granted` document in place, so the live log reached 42 `revoked`
+    # events against 1 `granted`: 41 grant events had been overwritten out of
+    # existence in the very artifact the README calls append-only, and which a
+    # judge can read at /api/v1/debug/compromised_agent_read.
+    event_id = generate_deterministic_event_id(
+        DEMO_GRANT_ID, step=1, attempt=int(issued_at.timestamp() * 1000))
 
     event = GrantEvent(
         event_id=event_id,
@@ -81,7 +92,8 @@ def seed_demo_grant():
     )
 
     doc_ref = db.collection("grants").document(event_id)
-    doc_ref.set(event.model_dump())
+    # .create(), not .set(): a true append that raises rather than overwriting.
+    doc_ref.create(event.model_dump())
     print(f"Seeded grant event '{event_id}'")
     print(f"  counterparty_id: {DEMO_COUNTERPARTY}")
     print(f"  work_id:         {DEMO_WORK_ID}")
