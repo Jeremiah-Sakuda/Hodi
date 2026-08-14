@@ -27,6 +27,7 @@ from src.agents.revocation_propagator import RevocationPropagatorAgent
 from src.schema.grant_event import GrantEvent
 from src.schema.scope import Scope
 from src.schema.revocation import revocation_effect_id
+from tests.offline_env import force_offline
 
 PROPAGATOR_SA = "revocation-propagator@hodi-2026.iam.gserviceaccount.com"
 T0 = datetime(2026, 8, 1, tzinfo=timezone.utc)
@@ -44,8 +45,7 @@ def _granted(grant_id, work_id="work-essay-001", counterparty="acme-intelligence
 
 class TestRevocationIdempotency(unittest.TestCase):
     def setUp(self):
-        os.environ["HODI_OFFLINE"] = "1"
-        self.addCleanup(lambda: os.environ.pop("HODI_OFFLINE", None))
+        force_offline(self)
         self.gateway = AgentGateway(offline_reads={"grants": [_granted("g-1")]})
         self.propagator = RevocationPropagatorAgent(gateway=self.gateway)
 
@@ -134,8 +134,7 @@ class TestRevocationIdempotency(unittest.TestCase):
 
 class TestGatewayAtomicityAndCollisionSemantics(unittest.TestCase):
     def setUp(self):
-        os.environ["HODI_OFFLINE"] = "1"
-        self.addCleanup(lambda: os.environ.pop("HODI_OFFLINE", None))
+        force_offline(self)
         self.gateway = AgentGateway()
 
     def test_offline_duplicate_create_raises_like_live(self):

@@ -24,6 +24,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from src.schema.grant_event import GrantEvent
 from src.registry.registry import AgentRegistry
 from src.supervisor.supervisor import Supervisor
+from tests.offline_env import force_offline
 
 FIXTURE = "fixtures/demo_grant_log.json"
 
@@ -48,8 +49,7 @@ class TestAdkFleetDelegation(unittest.TestCase):
         provider.add_span_processor(SimpleSpanProcessor(cls.exporter))
 
     def setUp(self):
-        os.environ["HODI_OFFLINE"] = "1"
-        self.addCleanup(lambda: os.environ.pop("HODI_OFFLINE", None))
+        force_offline(self)
         self.exporter.clear()
 
         from src.fleet.adk_fleet import run_revocation_delegation
@@ -186,8 +186,7 @@ class TestQuarantineAndRerouteOnTheDelegationPath(unittest.TestCase):
         provider.add_span_processor(SimpleSpanProcessor(cls.exporter))
 
     def setUp(self):
-        os.environ["HODI_OFFLINE"] = "1"
-        self.addCleanup(lambda: os.environ.pop("HODI_OFFLINE", None))
+        force_offline(self)
         self.exporter.clear()
 
         from src.fleet.adk_fleet import run_revocation_delegation

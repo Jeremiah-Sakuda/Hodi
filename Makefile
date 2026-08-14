@@ -1,5 +1,5 @@
 .PHONY: demo demo-live test verify-scopes verify-manifest metrics lint-coverage check-docs compliance \
-        recording-prep recording-reset ledger-count red-team
+        recording-prep recording-reset ledger-count red-team deployment-status deployment-status-check
 
 demo:
 	HODI_OFFLINE=1 python3 scripts/demo.py
@@ -31,9 +31,19 @@ lint-coverage:
 check-docs:
 	python3 scripts/check_doc_metrics.py
 
+# Deployment truth, derived (HOD-715). No argument renders the table the docs
+# embed; --check validates the file's own rules (a 'verified' capability must
+# name its evidence AND its date; a 'never run' one must not carry a date).
+deployment-status:
+	python3 scripts/deployment_status.py
+
+deployment-status-check:
+	python3 scripts/deployment_status.py --check
+
 compliance:
 	python3 scripts/compliance.py
 	python3 scripts/count_defect_ledger.py --check
+	python3 scripts/deployment_status.py --check
 	python3 scripts/check_doc_metrics.py
 
 ledger-count:

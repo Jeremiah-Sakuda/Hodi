@@ -17,6 +17,7 @@ from pydantic import ValidationError
 from src.gateway.gateway import AgentGateway, GatewayPolicyDenial
 from src.schema.assertion import TypedAssertion, IncidentDecision, ClaimFinding
 from src.schema.assertion_authority import ASSERTION_AUTHORITY, may_assert
+from tests.offline_env import force_offline
 
 NOW = datetime(2026, 8, 14, tzinfo=timezone.utc)
 
@@ -88,8 +89,7 @@ class TestAuthorityMatrix(unittest.TestCase):
 
 class TestGatewayEnforcement(unittest.TestCase):
     def setUp(self):
-        os.environ["HODI_OFFLINE"] = "1"
-        self.addCleanup(lambda: os.environ.pop("HODI_OFFLINE", None))
+        force_offline(self)
         self.gateway = AgentGateway()
 
     def test_authorized_assertion_passes(self):
@@ -151,8 +151,7 @@ class TestArbiterWallsAtTheGateway(unittest.TestCase):
     """The arbiter's paired negatives (HOD-704): assertions in, nothing else."""
 
     def setUp(self):
-        os.environ["HODI_OFFLINE"] = "1"
-        self.addCleanup(lambda: os.environ.pop("HODI_OFFLINE", None))
+        force_offline(self)
         from src.agents.consent_arbiter import ConsentArbiterAgent
         self.arbiter = ConsentArbiterAgent(AgentGateway())
 

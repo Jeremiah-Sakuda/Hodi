@@ -21,12 +21,12 @@ from src.llm.vertex_gemini import (
     PINNED_MODELS, TEMPERATURE, CACHE_PATH
 )
 from src.evidence.gemma_triage import GemmaTriageEngine
+from tests.offline_env import force_offline
 
 
 class TestHod301GeminiClient(unittest.TestCase):
     def setUp(self):
-        os.environ["HODI_OFFLINE"] = "1"
-        self.addCleanup(lambda: os.environ.pop("HODI_OFFLINE", None))
+        force_offline(self)
         self.client = VertexGeminiClient()
 
     def test_pinned_model_ids_are_exact_literals(self):
@@ -77,8 +77,7 @@ class TestHod303GemmaTriage(unittest.TestCase):
     def setUp(self):
         # Offline: Gemma MaaS raises on cache miss, Ollama is absent, so the
         # heuristic fallback classifies — the NON-LOAD-BEARING property.
-        os.environ["HODI_OFFLINE"] = "1"
-        self.addCleanup(lambda: os.environ.pop("HODI_OFFLINE", None))
+        force_offline(self)
         self.engine = GemmaTriageEngine()
 
     def test_self_deploy_check_traffic_short_circuits(self):

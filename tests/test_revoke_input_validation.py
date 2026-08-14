@@ -37,6 +37,7 @@ from src.api.auth import (
 )
 from src.schema.scope import UseType
 from typing import get_args
+from tests.offline_env import force_offline
 
 ARTIST_KEY, ARTIST_SECRET = "key-artist", "artist-secret-do-not-use-in-prod"
 
@@ -47,8 +48,7 @@ REJECTED = ["Training", "TRAINING", "podcasting", "", "training ", "fine-tuning"
 
 class RevokeUseTypeValidationTest(unittest.TestCase):
     def setUp(self):
-        os.environ["HODI_OFFLINE"] = "1"
-        self.addCleanup(lambda: os.environ.pop("HODI_OFFLINE", None))
+        force_offline(self)
 
         store = InMemoryCredentialStore({
             ARTIST_KEY: {"counterparty_id": "artist-jeremiah", "secret": ARTIST_SECRET,

@@ -86,11 +86,30 @@ class FirestoreEventStore:
         return [doc.to_dict() for doc in coll.get()]
 
 
+class DurableStoreUnavailable(RuntimeError):
+    """The store could not be reached and this is not a declared offline run."""
+
+
 def default_event_store():
-    """InMemory under HODI_OFFLINE=1 or without credentials; Firestore otherwise."""
+    """
+    InMemory under HODI_OFFLINE=1; Firestore otherwise — and a failure to
+    build the Firestore client RAISES rather than degrading.
+
+    This used to `except Exception: return InMemoryEventStore()`, which meant
+    a credential problem in production silently turned the durable registry
+    and Memory Bank into process-local dicts: agent publications would vanish
+    on restart and cold-start re-hydration would return an empty fold, with
+    nothing failing. That is the same shape as the gateway's fail-open, and
+    it is the exact defect the durable store was built to remove. The offline
+    twin is a declared mode, not a fallback.
+    """
     if os.environ.get("HODI_OFFLINE") == "1":
         return InMemoryEventStore()
     try:
         return FirestoreEventStore()
-    except Exception:
-        return InMemoryEventStore()
+    except Exception as e:
+        raise DurableStoreUnavailable(
+            f"No durable event store and HODI_OFFLINE is not set ({type(e).__name__}: {e}). "
+            "Refusing to fall back to process memory — registry publications and memory-bank "
+            "state would silently stop surviving restarts."
+        ) from e
