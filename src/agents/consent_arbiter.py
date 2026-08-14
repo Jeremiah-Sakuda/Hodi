@@ -24,8 +24,9 @@ from src.gateway.gateway import AgentGateway
 from src.schema.assertion import (
     TypedAssertion, IncidentDecision, ClaimFinding, NOT_DETERMINABLE_TRAINING,
 )
+from src.schema.iam_policy import AGENT_SA_MAP
 
-ARBITER_SA = "consent-arbiter-sa@hodi-2026.iam.gserviceaccount.com"
+ARBITER_SA = AGENT_SA_MAP["consent_arbiter"]["sa_email"]
 
 CONSENT_POLICY_VERSION = "consent_policy_v1"
 

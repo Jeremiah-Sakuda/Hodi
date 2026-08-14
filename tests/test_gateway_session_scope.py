@@ -37,8 +37,9 @@ from src.api.auth import (
 from src.gateway.gateway import AgentGateway, GatewayPolicyDenial
 from src.schema.grant_event import GrantEvent
 from src.schema.scope import Scope
+from src.schema.iam_policy import AGENT_SA_MAP
 
-NEGOTIATOR_SA = "licensing-negotiator-sa@hodi-2026.iam.gserviceaccount.com"
+NEGOTIATOR_SA = AGENT_SA_MAP["licensing_negotiator"]["sa_email"]
 SESSION = "acme-intelligence-labs"
 RIVAL = "buyer-acme-2"
 

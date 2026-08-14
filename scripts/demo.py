@@ -43,11 +43,12 @@ from src.resolve.evaluator import permits
 from src.gateway.prompt_inspector import PromptInspector
 from src.gateway.gateway import AgentGateway, GatewayPolicyDenial
 from src.evidence.overclaim_lint import OverclaimLint, OverclaimLintViolation
+from src.schema.iam_policy import AGENT_SA_MAP
 
 FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"
-NEGOTIATOR_SA = "licensing-negotiator@hodi-2026.iam.gserviceaccount.com"
-EVIDENCE_SA = "evidence-agent-sa@hodi-2026.iam.gserviceaccount.com"
-PROPAGATOR_SA = "revocation-propagator-sa@hodi-2026.iam.gserviceaccount.com"
+NEGOTIATOR_SA = AGENT_SA_MAP["licensing_negotiator"]["sa_email"]
+EVIDENCE_SA = AGENT_SA_MAP["evidence_agent"]["sa_email"]
+PROPAGATOR_SA = AGENT_SA_MAP["revocation_propagator"]["sa_email"]
 
 
 class DemoAssertionError(AssertionError):
@@ -349,7 +350,7 @@ def beat_7_consent_incident():
         demo_wall_gateway = AgentGateway()
         try:
             demo_wall_gateway.submit_assertion(
-                calling_sa="evidence-agent-sa@hodi-2026.iam.gserviceaccount.com",
+                calling_sa=AGENT_SA_MAP["evidence_agent"]["sa_email"],
                 calling_role_key="evidence_agent",
                 assertion=TypedAssertion(
                     assertion_id="a-demo", assertion_class="GRANT_EXISTED",

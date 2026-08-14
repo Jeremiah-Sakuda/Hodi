@@ -56,7 +56,14 @@ if gcloud kms keys describe "${KMS_KEY}" --keyring "${KMS_KEYRING}" \
   ENV_VARS="HODI_SIGNING=kms,HODI_KMS_KEY_VERSION=${KMS_VERSION}"
   echo "  signing: Cloud KMS (${KMS_KEY})"
 else
-  echo "  signing: KMS key not found — deploying with labelled-ephemeral signing"
+  # SET the mode, do not merely announce it. This branch printed
+  # "labelled-ephemeral signing" while setting nothing, and signing.py selects a
+  # signer ONLY from an explicit HODI_SIGNING value — so a KMS-less deployment
+  # announced one behaviour and shipped another (unsigned placeholders). A
+  # deploy script that describes a capability it did not configure is the exact
+  # code/deployment disagreement this repo exists to catch.
+  ENV_VARS="HODI_SIGNING=ephemeral"
+  echo "  signing: KMS key not found — configuring labelled-ephemeral signing"
 fi
 WORKER_URL="$(gcloud run services describe "${HODI_REVOCATION_SERVICE:-hodi-revocation-worker}" \
   --region "${REGION}" --project "${PROJECT_ID}" --format='value(status.url)' 2>/dev/null || true)"

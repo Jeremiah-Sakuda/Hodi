@@ -86,11 +86,33 @@ class FirestoreEventStore:
         return [doc.to_dict() for doc in coll.get()]
 
 
+class DurableStoreUnavailable(RuntimeError):
+    """Raised when durable storage is required but cannot be constructed.
+
+    Deliberately NOT caught here. The previous version returned an
+    InMemoryEventStore on ANY exception, which meant a credential, config or
+    network fault on the deployed path produced a service that accepted
+    mutations, answered 200, and held the resulting state in one Cloud Run
+    instance's heap until it scaled to zero. A grant that a buyer was told
+    exists, and that no longer does, is the worst failure this system can
+    have — worse than refusing the request, because the refusal is visible.
+
+    Falling back to memory is legitimate ONLY where it is chosen explicitly:
+    HODI_OFFLINE=1 (the credential-free demo and the test suite) or by passing
+    a store instance directly. Everywhere else, unavailable durability is an
+    outage and must present as one.
+    """
+
+
 def default_event_store():
-    """InMemory under HODI_OFFLINE=1 or without credentials; Firestore otherwise."""
+    """InMemory ONLY under an explicit offline flag; otherwise Firestore or fail."""
     if os.environ.get("HODI_OFFLINE") == "1":
         return InMemoryEventStore()
     try:
         return FirestoreEventStore()
-    except Exception:
-        return InMemoryEventStore()
+    except Exception as exc:
+        raise DurableStoreUnavailable(
+            "durable event store unavailable and HODI_OFFLINE is not set — "
+            "refusing to serve mutations into process memory: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc

@@ -21,8 +21,9 @@ from datetime import datetime, timedelta, timezone
 from src.supervisor.lease import LeaseLedger
 from src.supervisor.supervisor import Supervisor
 from src.gateway.gateway import AgentGateway, GatewayPolicyDenial
+from src.schema.iam_policy import AGENT_SA_MAP
 
-PROPAGATOR_SA = "revocation-propagator-sa@hodi-2026.iam.gserviceaccount.com"
+PROPAGATOR_SA = AGENT_SA_MAP["revocation_propagator"]["sa_email"]
 
 
 def _write(gateway, lease_id, doc_id="d1"):

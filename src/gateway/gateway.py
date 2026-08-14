@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from datetime import datetime, timezone
 from google.cloud import firestore
 from google.api_core import exceptions as gcloud_exceptions
-from src.schema.iam_policy import is_action_permitted, get_action_permission
+from src.schema.iam_policy import is_action_permitted, get_action_permission, AGENT_SA_MAP
 from src.schema.signing import unsigned_placeholder, sign_pydantic
 
 if TYPE_CHECKING:
@@ -115,7 +115,34 @@ class AgentGateway:
         permitted, required_filter_key = get_action_permission(calling_role_key, target_collection)
 
         reason = None
-        if not permitted:
+
+        # The claimed SA must be the one the policy declares for the claimed
+        # role. Until now `calling_sa` was passed alongside `calling_role_key`,
+        # never compared to it, and used only in log text — so the two could
+        # disagree indefinitely, and they DID: the propagator passed
+        # "revocation-propagator@" while the policy declares
+        # "revocation-propagator-sa@", meaning every denial event it produced
+        # named a principal that does not exist in IAM. An audit record whose
+        # subject cannot be resolved is not an audit record.
+        #
+        # STATED PRECISELY, because this is the project's most over-claimable
+        # boundary: this binds the pair, it does NOT authenticate it. Both
+        # values still arrive from the caller, so in-process code could present
+        # a matching pair for a role it should not hold. Real non-forgeability
+        # requires the role to be derived from a verified workload credential
+        # (per-domain service, OIDC identity token, audience check) — that is
+        # the four-service split, which remains the disclosed next step. What
+        # this closes is silent drift between the identity we enforce and the
+        # identity we record.
+        declared = AGENT_SA_MAP.get(calling_role_key, {}).get("sa_email")
+        if declared and calling_sa != declared:
+            reason = (f"Calling SA '{calling_sa}' does not match the service account the policy "
+                      f"declares for role '{calling_role_key}' ('{declared}'). The identity "
+                      "enforced and the identity recorded must be the same principal.")
+
+        if reason:
+            pass  # identity mismatch already decided this call
+        elif not permitted:
             reason = f"Calling SA '{calling_sa}' ({calling_role_key}) is denied access to target collection '{target_collection}'."
         elif required_filter_key:
             # FAIL CLOSED. A missing session context is a denial, not a skip.
