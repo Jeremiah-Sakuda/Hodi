@@ -37,11 +37,42 @@ echo "[1/3] Provisioning IAM (idempotent)..."
 
 echo
 echo "[2/3] Deploying from the repository-root Dockerfile..."
+
+# Environment the service needs, assembled from what actually EXISTS — the
+# deploy never claims a capability whose backing infrastructure is absent:
+#   * HODI_SIGNING=kms + key version, only if the Cloud KMS key is reachable
+#     (setup_kms_signing.sh); otherwise the service keeps labelled-ephemeral
+#     signing, which is honest rather than broken.
+#   * HODI_REVOCATION_WORKER_URL, only if the split worker service exists
+#     (deploy_revocation_worker.sh); the registry then publishes a real
+#     endpoint instead of the in-process placeholder.
+KMS_KEY="${HODI_KMS_KEY:-hodi-provenance}"
+KMS_KEYRING="${HODI_KMS_KEYRING:-hodi-signing}"
+KMS_LOCATION="${HODI_KMS_LOCATION:-us-central1}"
+ENV_VARS=""
+if gcloud kms keys describe "${KMS_KEY}" --keyring "${KMS_KEYRING}" \
+     --location "${KMS_LOCATION}" --project "${PROJECT_ID}" >/dev/null 2>&1; then
+  KMS_VERSION="projects/${PROJECT_ID}/locations/${KMS_LOCATION}/keyRings/${KMS_KEYRING}/cryptoKeys/${KMS_KEY}/cryptoKeyVersions/1"
+  ENV_VARS="HODI_SIGNING=kms,HODI_KMS_KEY_VERSION=${KMS_VERSION}"
+  echo "  signing: Cloud KMS (${KMS_KEY})"
+else
+  echo "  signing: KMS key not found — deploying with labelled-ephemeral signing"
+fi
+WORKER_URL="$(gcloud run services describe "${HODI_REVOCATION_SERVICE:-hodi-revocation-worker}" \
+  --region "${REGION}" --project "${PROJECT_ID}" --format='value(status.url)' 2>/dev/null || true)"
+if [ -n "${WORKER_URL}" ]; then
+  ENV_VARS="${ENV_VARS:+${ENV_VARS},}HODI_REVOCATION_WORKER_URL=${WORKER_URL}"
+  echo "  revocation worker endpoint: ${WORKER_URL}"
+else
+  echo "  revocation worker: not deployed — registry keeps the in-process placeholder"
+fi
+
 gcloud run deploy "${SERVICE}" \
   --source . \
   --region "${REGION}" \
   --project "${PROJECT_ID}" \
   --service-account "${RUNTIME_SA}" \
+  ${ENV_VARS:+--update-env-vars "${ENV_VARS}"} \
   --quiet
 
 echo
@@ -61,6 +92,17 @@ fi
 # the effective permission set can create but not update or delete.
 HODI_E2E=1 GCP_PROJECT_ID="${PROJECT_ID}" HODI_SERVICE="${SERVICE}" HODI_REGION="${REGION}" \
   python3 -m unittest tests.test_grant_log_iam.TestDeployedRuntimeIdentityCannotRewriteHistory -v
+
+# When KMS signing is enabled, the public verification key must be served —
+# a signature nobody can fetch the key for is decoration, not provenance.
+if [ -n "${ENV_VARS}" ] && printf '%s' "${ENV_VARS}" | grep -q 'HODI_SIGNING=kms'; then
+  SERVICE_URL="$(gcloud run services describe "${SERVICE}" \
+    --region "${REGION}" --project "${PROJECT_ID}" --format='value(status.url)')"
+  VK_BODY="$(curl -s --max-time 90 "${SERVICE_URL}/verification-key" || true)"
+  printf '%s' "${VK_BODY}" | grep -q "BEGIN PUBLIC KEY" \
+    || { echo "FAIL: /verification-key does not serve the public key"; exit 1; }
+  echo "  /verification-key serves the KMS public key"
+fi
 
 echo
 echo "================================================================================"

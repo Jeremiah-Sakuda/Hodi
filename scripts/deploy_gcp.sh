@@ -88,10 +88,24 @@ while IFS=$'\t' read -r account_id role_name conflict_domain; do
     fi
     sleep 2
   done
-  gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
-    --member="serviceAccount:${account_id}@${PROJECT_ID}.iam.gserviceaccount.com" \
-    --role="projects/${PROJECT_ID}/roles/${ROLE_ID}" \
-    --condition=None --quiet >/dev/null
+  # HARDENING GUARD (HOD-711). If setup_workload_identity.sh has already
+  # replaced this SA's append-only binding with the (default)-conditioned one
+  # ('grant-log-only'), re-adding an UNCONDITIONAL binding here would silently
+  # re-open the cross-database boundary that script closed — the next deploy
+  # would undo the hardening with no test failing until the live E2E ran.
+  # Skip the bind when the conditioned form is present.
+  SA_EMAIL="${account_id}@${PROJECT_ID}.iam.gserviceaccount.com"
+  EXISTING_TITLES="$(gcloud projects get-iam-policy "${PROJECT_ID}" \
+    --flatten='bindings[].members' --format='value(bindings.condition.title)' \
+    --filter="bindings.members:serviceAccount:${SA_EMAIL} AND bindings.role:projects/${PROJECT_ID}/roles/${ROLE_ID}" 2>/dev/null || true)"
+  if printf '%s\n' "${EXISTING_TITLES}" | grep -q '^grant-log-only$'; then
+    echo "    (hardened: append-only already conditioned to (default) — not re-binding unconditionally)"
+  else
+    gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+      --member="serviceAccount:${SA_EMAIL}" \
+      --role="projects/${PROJECT_ID}/roles/${ROLE_ID}" \
+      --condition=None --quiet >/dev/null
+  fi
 done < /tmp/hodi_sa_plan.txt
 rm -f /tmp/hodi_sa_plan.txt
 
