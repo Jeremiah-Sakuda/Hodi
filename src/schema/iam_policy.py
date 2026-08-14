@@ -74,8 +74,12 @@ AGENT_SA_MAP: Dict[str, Dict[str, Any]] = {
 # literally lacks credentials to read X" — a read of a foreign domain fails at
 # Google IAM, not at the application layer. `(default)` holds the append-only
 # grant log every domain-appropriate identity can reach per the custom role;
-# the split databases below are provisioned by scripts/setup_workload_identity.sh
-# and are the deployed-separation target, stated as not-yet-executed here.
+# the split databases below are provisioned by scripts/setup_workload_identity.sh,
+# EXECUTED against hodi-2026 on 2026-08-14: each database exists and each agent SA's
+# grants are IAM-conditioned to its own domain plus the grant log, so a foreign-domain
+# read is refused by Google IAM before any application code runs (proven by SA
+# impersonation, HODI_E2E=1 tests/test_workload_identity.py). Live DATA still resides in
+# (default), so row-level separation there remains gateway-enforced until it migrates.
 CONFLICT_DOMAIN_DATABASE: Dict[str, str] = {
     "identity": "hodi-identity",
     "buyer_terms": "hodi-commercial",

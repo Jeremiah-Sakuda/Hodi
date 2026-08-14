@@ -126,10 +126,13 @@
     "note": "each request includes one server-side Vertex AI generateContent call (scope interpretation)"
   },
   "overclaim_lint_coverage": {
-    "measured_at_utc": "2026-08-08T03:46:24Z",
+    "measured_at_utc": "2026-08-13T15:50:15Z",
     "probe_set_size": 12,
-    "paraphrases_rejected": 4,
-    "paraphrases_not_rejected": 8,
+    "paraphrases_rejected": 12,
+    "paraphrases_not_rejected": 0,
+    "rejected_by_regex_alone": 4,
+    "rejected_by_semantic_backstop": 8,
+    "layers": "deterministic regex list, then an embedding backstop (src/evidence/semantic_backstop.py, gemini-embedding-001) that can only ADD refusals; with the backstop unreachable, coverage falls back to rejected_by_regex_alone",
     "probe_set_source": "scripts/measure_lint_coverage.py::PARAPHRASE_PROBES",
     "claim_limit": "The lint is a backstop against the exact phrasings it enumerates, not a general paraphrase detector. The STRUCTURAL guarantee is the schema: EvidenceRecord.class has no training-membership value, so the system cannot emit the claim as data. The lint only reduces the chance of it appearing in free text."
   },

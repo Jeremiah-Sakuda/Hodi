@@ -706,3 +706,29 @@ The Aug 14 checkpoint gate (HOD-006) was due today and passed 8/8 — recorded a
 4. Publish the failed first proof rather than fold it silently into the fix — "conditions narrow nothing while a broad grant stands beside them" is the transferable lesson, and the guard in `deploy_gcp.sh` is its mechanism.
 
 **Requirements touched:** HOD-102, HOD-311, HOD-706, HOD-707, HOD-711, HOD-510, HOD-620
+
+---
+
+### 2026-08-14 (session 3) — The Rubber Stamp in the Honesty Section, and the One Model Slot Spent Well
+
+**Prompt (verbatim, abridged):** "Can we ideate one where one last model could go without over engineering?" — then: fix the verbatim rubber stamp and the README line, add the embedding backstop, and the earlier suggestions still applicable.
+
+**Outcome:**
+1. **The ideation panel answered a question I had not asked, and was right.** Four lenses proposed twelve candidate model integrations; adversarial judging returned "spend no model slot on `verbatim_match` — fix it instead." I verified the claim in the code before acting: `process_verbatim_match` accepted `prompt` and `generated_output`, **read neither**, and emitted unconditionally; `process_redistribution` had no content parameter at all. The test passed output sharing nothing with any work and asserted a record *was* produced. And `README.md` said, inside "What Hodi will not claim", that *"the checking code exists"* — false, in the section whose whole value is that it is exact. Both methods now check; three tests assert the negative; mutation-verified.
+2. **"Verbatim" means exact, so a model was the wrong instrument — including the one I had proposed.** I had suggested embeddings for this slot in the previous session. That was wrong and is retracted: an embedding measures similarity, so it would let a paraphrase mint a record typed `verbatim_match` — the `SIG_REVOKED` category error again. The check is `difflib` over normalized tokens with a fixed 12-token threshold.
+3. **The model slot went where it is monotonic: the overclaim lint.** `gemini-embedding-001` (pinned, probed 200) now backs the nine regexes, taking measured paraphrase coverage **4/12 → 12/12** with **0/9** legitimate texts falsely refused. It is admissible because it runs only after every regex has declined, so it can add a refusal and never a permission — a property `tests/test_semantic_backstop.py` asserts rather than describes.
+4. **A negation bug was caught before it shipped.** The first design used a one-sided similarity cut and **refused** *"this revocation does not un-train the model"* — a sentence that denies the forbidden claim but sits near it in embedding space, and which every drafted notice is *required* to contain. Nearest-anchor classification against `PERMITTED_CLAIM_ANCHORS` fixes it; a test pins it. Without that, the backstop would have degraded every drafted notice to the template.
+5. **Availability was probed empirically before choosing, as with Gemini on 2026-08-07.** `gemini-embedding-001`, `text-embedding-005`, `text-multilingual-embedding-002`, `multimodalembedding@001` and `lyria-002` all returned 200; **`imagen-4.0` and `veo-3.0` returned 404** — absent from this project's publisher catalog, so the two flashiest options were never available regardless of merit. Recorded so the choice reads as evidence rather than preference.
+6. **Both stale deployment claims corrected at their sources** — Diagram A's note and `iam_policy.py`'s comment both still said the per-domain databases were "scripted, not yet executed" on the day after they were executed and IAM-verified.
+7. **`docs/deployment_status.json` is now generated, not typed** (`make deployment-status`). Every capability carries three separate booleans — implemented / deployed / demonstrated_live — plus a re-runnable proof command, because conflating those three is exactly how the diagram drifted. `--check` fails when the committed file disagrees with the live project, and runs as its own make target.
+8. **`deploy.sh` now warns when the revocation worker predates HEAD.** That service silently ran 85 minutes behind on 2026-08-14 — same repository, stale image, nothing failing — carrying the pre-fix SA literals and the fail-open storage path. A deploy that leaves a sibling on older code should say so.
+
+**Key decisions:**
+1. Publish `rejected_by_regex_alone: 4` beside `paraphrases_rejected: 12`, and guard both — the second figure depends on a model, and a combined number alone would hide how much of the coverage is model-dependent.
+2. Register genuine excerpts from `work-repo-001` (this repository's own README) as the matched passages rather than invent text — nothing is attributed to a work it did not come from, and works with no registered passage correctly produce no record.
+3. Correct the README bullet **in place with a dated retraction** rather than quietly rewrite it — the sentence was public, and the correction is the artifact.
+4. Keep `EvidenceRecord`'s closed enum as the invariant and say so again: the lint got better, the guarantee did not move.
+
+**Requirements touched:** HOD-320, HOD-350, HOD-510, HOD-620
+
+**Not done, deliberately:** Chirp for the audio-canary gap. The two bass recordings carry canaries labelled `AUDIO-…` that are **text strings** — they protect the listing, not the waveform — which is a real asymmetry. But there are no audio files in the repository, so it needs a recorded take, a hosted artifact, a new regional API and a redeploy: 6–9 hours days before a video. It is the strongest remaining model slot and it is post-submission work.

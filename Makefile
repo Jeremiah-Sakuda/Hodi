@@ -1,5 +1,6 @@
 .PHONY: demo demo-live test verify-scopes verify-manifest metrics lint-coverage check-docs compliance \
-        recording-prep recording-reset ledger-count red-team
+        recording-prep recording-reset ledger-count deployment-status \
+        deployment-status-check embedding-cache red-team
 
 demo:
 	HODI_OFFLINE=1 python3 scripts/demo.py
@@ -38,6 +39,19 @@ compliance:
 
 ledger-count:
 	python3 scripts/count_defect_ledger.py --write-metrics
+
+# The capability truth table — implemented / deployed / demonstrated_live,
+# probed from the live project so it cannot drift from reality by hand.
+deployment-status:
+	python3 scripts/deployment_status.py
+
+deployment-status-check:
+	python3 scripts/deployment_status.py --check
+
+# Records real embedding vectors into the durable cache so the offline suite and
+# `make demo` stay credential-free.
+embedding-cache:
+	python3 scripts/build_embedding_cache.py
 
 # The ONE reproducible deployment path. Deploying by hand is how the runtime
 # identity gets lost: without --service-account the service silently reverts to

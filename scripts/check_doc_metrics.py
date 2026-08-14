@@ -288,7 +288,11 @@ def main() -> int:
         ("drill server-side avg", r"([\d.]+) ms server-side average",
          metrics["failure_tolerance_drill"]["server_side_avg_ms"]),
         ("lint probe set", r"a (\d+)-paraphrase probe set", lint["probe_set_size"] if lint else None),
-        ("lint rejections", r"\*\*it rejects (\d+)\*\*", lint["paraphrases_rejected"] if lint else None),
+        # Devpost now states the composed figure as "**12 of 12**"; the regex-only
+        # fallback is checked separately below so BOTH published numbers are guarded.
+        ("lint rejections", r"\*\*(\d+) of 12\*\*", lint["paraphrases_rejected"] if lint else None),
+        ("lint regex-only fallback", r"falls back to (\d+) if that model is unreachable",
+         lint["rejected_by_regex_alone"] if lint else None),
     ):
         if expected is None:
             continue
