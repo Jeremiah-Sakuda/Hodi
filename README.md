@@ -93,7 +93,7 @@ Fetches the **live** `/works` manifest and verifies the corpus-integrity propert
 make test
 ```
 
-Runs the full offline suite — 412 tests, credential-free, including the cross-buyer attack suite, the work-scoped authorization adversarial suite, the route-authentication coverage guard, the 56-case containment truth table, the ADK delegation, and the quarantine drill. Twelve tests that genuinely require live Firestore or live IAM (byte-identity at rest, and reading the deployed runtime identity back from IAM, cannot be proven against an in-memory buffer) are skipped unless you set `HODI_E2E=1`, because they write to real collections.
+Runs the full offline suite — 426 tests, credential-free, including the cross-buyer attack suite, the work-scoped authorization adversarial suite, the route-authentication coverage guard, the 56-case containment truth table, the ADK delegation, and the quarantine drill. Twelve tests that genuinely require live Firestore or live IAM (byte-identity at rest, and reading the deployed runtime identity back from IAM, cannot be proven against an in-memory buffer) are skipped unless you set `HODI_E2E=1`, because they write to real collections.
 
 ```bash
 make compliance
@@ -254,6 +254,7 @@ Every "is it deployed" claim below is **generated** from [docs/deployment_status
 | `per_domain_databases` | ○ scripted, never run | scripts/setup_workload_identity.sh (never run); tests/test_workload_identity.py::TestForeignDomainReadIsDeniedByIAM is written and HODI_E2E-gated | — |
 | `split_revocation_worker` | ○ scripted, never run | scripts/deploy_revocation_worker.sh (never run) | — |
 | `durable_trace_backend` | ○ scripted, never run | src/observability/tracing.py + tests/test_tracing_backend.py (offline) | — |
+| `live_release_verification` | ○ scripted, never run | .github/workflows/verify-live.yml (authored; the WIF pool, provider and repository variables are not configured, so it has never run) | — |
 | `scheduled_jobs` | ✓ verified | docs/metrics.json :: daily_crawler_accrual_metrics (audit rows persisted by the scheduled job); Google-Cloud-Scheduler appears in distinct_user_agents | 2026-08-13T15:50:15Z |
 
 `○ scripted, never run` means exactly that: the script is in this repository and reproducible, and it has not been executed against the live project. `▣ in-process only` means the boundary is enforced by application code inside one Cloud Run process — real and tested, but not a cloud-infrastructure boundary.

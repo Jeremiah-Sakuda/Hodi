@@ -1,4 +1,5 @@
 {
+  "_IMPORTANT_the_deployed_revision_predates_this_repository": "The 'verified' entries below describe revision hodi-evidence-endpoint-00039-846, deployed 2026-08-12. The repository has moved substantially since: mandatory work_id on the licensing path, request-window containment, execution leases, revocation idempotency, the consent-incident flow, caller-identity binding, and work registration are all in this codebase and NOT in that revision. So 'verified' here means 'this property was proven of the deployed revision', never 'the current HEAD is deployed'. Re-deploying (make deploy) and re-running .github/workflows/verify-live.yml is what would make these entries describe the current code.",
   "_comment": "Machine-readable deployment truth (HOD-715). Every 'is X deployed' claim in the docs is DERIVED from this file by scripts/deployment_status.py and guarded by `make check-docs`, because hand-maintained executed/not-executed prose drifted once: the README said asymmetric signing 'has not been built' for a commit after it was built, and an external review caught it. A capability may only be 'verified' if it names the evidence that verified it AND when — the generator refuses the file otherwise.",
   "status_vocabulary": {
     "verified": "Checked against the live deployment; evidence_source and last_verified_utc are both required and are what makes the claim admissible.",
@@ -67,6 +68,13 @@
       "status": "scripted_not_executed",
       "detail": "Cloud Trace export of the delegation spans (HODI_TRACE_EXPORT=cloud). The exporter selection is tested offline; no deployment has run with it enabled, so no waterfall has been captured from a backend.",
       "evidence_source": "src/observability/tracing.py + tests/test_tracing_backend.py (offline)",
+      "last_verified_utc": null,
+      "revision": null
+    },
+    "live_release_verification": {
+      "status": "scripted_not_executed",
+      "detail": "A workflow_dispatch job that runs the deployed boundary proof, the live manifest check, the HODI_E2E Firestore/IAM suite and a real KMS sign/verify/tamper against a chosen environment, then RECORDS the result back into this file via scripts/record_live_verification.py. It authenticates by Workload Identity Federation — no long-lived service-account key exists to leak.",
+      "evidence_source": ".github/workflows/verify-live.yml (authored; the WIF pool, provider and repository variables are not configured, so it has never run)",
       "last_verified_utc": null,
       "revision": null
     },

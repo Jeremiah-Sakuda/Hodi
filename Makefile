@@ -1,5 +1,5 @@
 .PHONY: demo demo-live test verify-scopes verify-manifest metrics lint-coverage check-docs compliance \
-        recording-prep recording-reset ledger-count red-team deployment-status deployment-status-check
+        recording-prep recording-reset ledger-count red-team buyer-client deployment-status deployment-status-check
 
 demo:
 	HODI_OFFLINE=1 python3 scripts/demo.py
@@ -9,6 +9,12 @@ demo:
 # just as a demo.
 red-team:
 	HODI_OFFLINE=1 python3 scripts/red_team.py
+
+# A buyer-side system that verifies receipts with Hodi's PUBLIC key and stops
+# when the artist revokes (HOD-719). The evidence that a counterparty honours
+# the rail, not just that Hodi records it.
+buyer-client:
+	HODI_OFFLINE=1 python3 scripts/buyer_client.py
 
 test:
 	HODI_OFFLINE=1 python3 -m unittest discover -s tests
