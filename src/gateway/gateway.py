@@ -2,12 +2,15 @@ import os
 import json
 import uuid
 import subprocess
-from typing import Dict, Any, List, Optional
+from typing import TYPE_CHECKING, Dict, Any, List, Optional
 from pydantic import BaseModel
 from datetime import datetime, timezone
 from google.cloud import firestore
 from src.schema.iam_policy import is_action_permitted, get_action_permission
 from src.schema.signing import unsigned_placeholder
+
+if TYPE_CHECKING:
+    from src.supervisor.lease import LeaseLedger
 
 class PolicyDenialEvent(BaseModel):
     event_type: str = "PolicyDenialEvent"
@@ -69,7 +72,8 @@ class AgentGateway:
     Reads from / writes to Firestore directly (H7 real path).
     """
 
-    def __init__(self, offline_reads: Optional[Dict[str, List[dict]]] = None):
+    def __init__(self, offline_reads: Optional[Dict[str, List[dict]]] = None,
+                 lease_ledger: Optional["LeaseLedger"] = None):
         self.denial_events: list = []
         project_id = os.environ.get("GCP_PROJECT_ID", "hodi-2026")
         self.db = _build_firestore_client(project_id)
@@ -78,6 +82,13 @@ class AgentGateway:
         # runs first, so an offline read is denied exactly when a live one is —
         # this only supplies the data a permitted read would have returned.
         self._offline_reads: Dict[str, List[dict]] = offline_reads or {}
+        # Execution-lease enforcement (HOD-707). When a ledger is attached the
+        # gateway is operating in a SUPERVISED context, and every side-effecting
+        # write must present a lease that is valid AT THE MOMENT OF THE WRITE.
+        # Fail closed: with a ledger attached, a write with no lease at all is
+        # a violation, not a legacy path — a missing lease and a revoked lease
+        # are the same answer, exactly as a missing session context is on reads.
+        self._lease_ledger = lease_ledger
 
     def _enforce(self, calling_sa: str, calling_role_key: str, target_collection: str, filters: Dict[str, Any] = None, session_context: Dict[str, Any] = None):
         permitted, required_filter_key = get_action_permission(calling_role_key, target_collection)
@@ -193,8 +204,49 @@ class AgentGateway:
         docs = coll.get()
         return [doc.to_dict() for doc in docs]
 
-    def write_document(self, calling_sa: str, calling_role_key: str, target_collection: str, doc_id: str, data: Dict[str, Any]):
+    def _enforce_lease(self, calling_sa: str, calling_role_key: str,
+                       target_collection: str, lease_id: Optional[str]) -> None:
+        """
+        Immediately-before-commit lease check (HOD-707). Only active when a
+        ledger is attached (supervised context). The check happens HERE, at the
+        gateway, because the worker whose lease was revoked is exactly the
+        worker whose cooperation cannot be assumed — the same reasoning as
+        TaskAbandoned being written by the supervisor.
+        """
+        if self._lease_ledger is None:
+            return
+        state = self._lease_ledger.state(lease_id) if lease_id else None
+        if state is not None and state.status == "active":
+            return
+        if lease_id is None:
+            reason = (f"Calling SA '{calling_sa}' ({calling_role_key}) attempted a supervised write to "
+                      f"'{target_collection}' with NO execution lease. In a supervised context a write "
+                      f"without a lease is a violation, not a legacy path.")
+        else:
+            reason = (f"Calling SA '{calling_sa}' ({calling_role_key}) attempted a write to "
+                      f"'{target_collection}' under a stale execution lease '{lease_id}' "
+                      f"(status: {state.status}"
+                      + (f", revoked: {state.revoked_reason}" if state.revoked_reason else "")
+                      + "). The supervisor has already routed around this worker; its commit is refused.")
+        denial = PolicyDenialEvent(
+            event_id=f"denial-{uuid.uuid4()}",
+            calling_sa=calling_sa,
+            target_role=calling_role_key,
+            requested_collection=target_collection,
+            attempted_filters={"lease_id": lease_id},
+            session_context={"lease_status": state.status if state else "absent"},
+            timestamp=datetime.now(timezone.utc),
+            policy_consulted="execution_lease_v1",
+            reason=reason,
+        )
+        self.denial_events.append(denial)
+        _emit_denial_log(denial)
+        raise GatewayPolicyDenial(denial)
+
+    def write_document(self, calling_sa: str, calling_role_key: str, target_collection: str,
+                       doc_id: str, data: Dict[str, Any], lease_id: Optional[str] = None):
         self._enforce(calling_sa, calling_role_key, target_collection)
+        self._enforce_lease(calling_sa, calling_role_key, target_collection, lease_id)
         if self.db:
             # `.create()`, not `.set()`. `.set()` is an UPSERT — it silently
             # overwrites an existing document — and Firestore's IAM backend
@@ -207,7 +259,8 @@ class AgentGateway:
             # id is a bug that should fail loudly, never a silent replace.
             self.db.collection(target_collection).document(doc_id).create(data)
 
-    def deliver_revocation_notice(self, sender: str, counterparty_id: str, notice: Any) -> Any:
+    def deliver_revocation_notice(self, sender: str, counterparty_id: str, notice: Any,
+                                  lease_id: Optional[str] = None) -> Any:
         from src.schema.revocation import RevocationReceipt
 
         self.write_document(
@@ -215,7 +268,8 @@ class AgentGateway:
             calling_role_key="revocation_propagator",
             target_collection="revocation_notices",
             doc_id=str(uuid.uuid4()),
-            data=notice.model_dump() if hasattr(notice, 'model_dump') else notice.dict()
+            data=notice.model_dump() if hasattr(notice, 'model_dump') else notice.dict(),
+            lease_id=lease_id,
         )
 
         receipt = RevocationReceipt(

@@ -183,11 +183,16 @@ class RevocationPropagatorADKAgent(HodiADKAgent):
     def __init__(self, shared: FleetState):
         super().__init__(name="revocation_propagator", role_key="revocation_propagator", shared=shared)
 
-    def run_cascade(self):
+    def run_cascade(self, lease_id: str = None):
         """The unit of work the Supervisor bounds. `loop_forever` in shared state
         makes this worker hang — the fault injection HOD-342 is specified against
         ("a worker forced into a loop is quarantined, its task rerouted, and the
-        request completes")."""
+        request completes").
+
+        `lease_id` is the execution lease the Supervisor issued for THIS
+        dispatch (HOD-707). It is threaded to every side-effecting write; when
+        the Supervisor abandons this worker it revokes the lease first, so a
+        late wake-up of this exact code path is refused at the gateway."""
         from src.agents.revocation_propagator import RevocationPropagatorAgent
 
         if self.shared.get("loop_forever"):
@@ -201,6 +206,7 @@ class RevocationPropagatorADKAgent(HodiADKAgent):
         return propagator.execute_revocation_cascade(
             work_id=self.shared["work_id"],
             revoked_use_type=self.shared["revoked_use_type"],
+            lease_id=lease_id,
         )
 
     async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
@@ -423,14 +429,28 @@ def build_fleet(counterparty_id: str, work_id: str, revoked_use_type: str,
                         for c in info["permitted_collections"]],
             ))
 
+    supervisor = supervisor or Supervisor(deadline_seconds=10.0)
+    # Execution leases fence the supervised path (HOD-707). The delegation
+    # runs one ledger shared by the supervisor (which issues and revokes) and
+    # the gateway (which checks immediately before each write), so an
+    # abandoned worker's late commit is refused however it wakes. A caller
+    # who supplies a gateway keeps that gateway's own lease posture.
+    if supervisor.lease_ledger is None:
+        from src.supervisor.lease import LeaseLedger
+        supervisor.lease_ledger = LeaseLedger()
+    if gateway is None:
+        gateway = AgentGateway(lease_ledger=supervisor.lease_ledger)
+    elif gateway._lease_ledger is None:
+        gateway._lease_ledger = supervisor.lease_ledger
+
     shared = FleetState({
         "counterparty_id": counterparty_id,
         "work_id": work_id,
         "revoked_use_type": revoked_use_type,
-        "gateway": gateway or AgentGateway(),
+        "gateway": gateway,
         "registry": registry,
         "fallback_events": fallback_events or [],
-        "supervisor": supervisor or Supervisor(deadline_seconds=10.0),
+        "supervisor": supervisor,
         "quarantine_engine": QuarantineEngine(registry=registry),
         "loop_forever": loop_forever,
     })
