@@ -1,8 +1,14 @@
 .PHONY: demo demo-live test verify-scopes verify-manifest metrics lint-coverage check-docs compliance \
-        recording-prep recording-reset ledger-count
+        recording-prep recording-reset ledger-count red-team
 
 demo:
 	HODI_OFFLINE=1 python3 scripts/demo.py
+
+# The five-attack red-team drill (HOD-712). Credential-free, offline, and
+# every boundary that yields exits nonzero — so it runs in CI as a guard, not
+# just as a demo.
+red-team:
+	HODI_OFFLINE=1 python3 scripts/red_team.py
 
 test:
 	HODI_OFFLINE=1 python3 -m unittest discover -s tests
