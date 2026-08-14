@@ -134,7 +134,14 @@ def beat_4_poisoned_request(events):
             req = json.load(f)
         raw = req["document_text"].encode("utf-8")
         result = inspector.inspect(raw)
-        active = active_grant_events([e for e in events if e.counterparty_id == req["counterparty_id"]], at=t_eval)
+        # The authorization tuple is principal × work × scope × time (HOD-701):
+        # the active set handed to permits() is scoped to BOTH the fixture's
+        # counterparty and its work_id, exactly as the deployed handler scopes
+        # its gateway read.
+        active = active_grant_events(
+            [e for e in events
+             if e.counterparty_id == req["counterparty_id"] and e.work_id == req["work_id"]],
+            at=t_eval)
         evaluation = permits(active, Scope(**req["requested_scope"]), at=t_eval)
         outcomes[name] = evaluation
         detections[name] = result.injection_detected

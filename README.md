@@ -76,7 +76,7 @@ Proves the cross-buyer boundary against the **deployed** service in two independ
 make verify-scopes
 ```
 
-Prints the lattice table from its declaration as data and runs the 47-case containment truth table across all five gating dimensions simultaneously (use-type, model class, commercial status, territory, temporal validity), including empty-territory semantics, union-across-grants cases, and the fold-before-containment cases (a revoked grant's original event in the append-only log must never permit a request).
+Prints the lattice table from its declaration as data and runs the 56-case containment truth table across all five gating dimensions simultaneously (use-type, model class, commercial status, territory, temporal validity), including empty-territory semantics, union-across-grants cases, the fold-before-containment cases (a revoked grant's original event in the append-only log must never permit a request), and the request-window containment cases (a grant valid through September, asked in August for rights through December, answers no — currency is not containment).
 
 ```bash
 make verify-manifest
@@ -88,7 +88,7 @@ Fetches the **live** `/works` manifest and verifies the corpus-integrity propert
 make test
 ```
 
-Runs the full offline suite — 256 tests, credential-free, including the cross-buyer attack suite, the route-authentication coverage guard, the 47-case containment truth table, the ADK delegation, and the quarantine drill. Ten tests that genuinely require live Firestore or live IAM (byte-identity at rest, and reading the deployed runtime identity back from IAM, cannot be proven against an in-memory buffer) are skipped unless you set `HODI_E2E=1`, because they write to real collections.
+Runs the full offline suite — 274 tests, credential-free, including the cross-buyer attack suite, the work-scoped authorization adversarial suite, the route-authentication coverage guard, the 56-case containment truth table, the ADK delegation, and the quarantine drill. Ten tests that genuinely require live Firestore or live IAM (byte-identity at rest, and reading the deployed runtime identity back from IAM, cannot be proven against an in-memory buffer) are skipped unless you set `HODI_E2E=1`, because they write to real collections.
 
 ```bash
 make compliance

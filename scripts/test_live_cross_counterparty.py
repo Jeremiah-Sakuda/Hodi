@@ -84,6 +84,11 @@ def part_b_production_path():
 
     body = json.dumps({
         "counterparty_id": VICTIM_COUNTERPARTY,
+        # work_id present so the replay still probes the AUTH layer after
+        # HOD-701 made the field mandatory: without it the new schema refuses
+        # the body as 422 before authentication ever runs, and the exploit
+        # replay would be asserting the wrong boundary.
+        "work_id": "work-essay-001",
         "requested_scope": VICTIM_SCOPE,
         "raw_document_b64": "aGVsbG8=",
     }).encode("utf-8")
