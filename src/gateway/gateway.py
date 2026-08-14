@@ -12,6 +12,7 @@ from src.schema.signing import unsigned_placeholder, sign_pydantic
 
 if TYPE_CHECKING:
     from src.supervisor.lease import LeaseLedger
+    from src.gateway.caller_identity import CallerIdentity
 
 class PolicyDenialEvent(BaseModel):
     event_type: str = "PolicyDenialEvent"
@@ -140,7 +141,69 @@ class AgentGateway:
         # would make every idempotency test a test of nothing.
         self._offline_writes: Dict[str, Dict[str, Dict[str, Any]]] = {}
 
-    def _enforce(self, calling_sa: str, calling_role_key: str, target_collection: str, filters: Dict[str, Any] = None, session_context: Dict[str, Any] = None):
+    def _identify(self, calling_sa: str, calling_role_key: str, target_collection: str,
+                  identity: Optional["CallerIdentity"] = None) -> "CallerIdentity":
+        """
+        Establish WHO is calling before deciding what they may do (HOD-717).
+
+        Until this existed, `calling_role_key` selected the policy and
+        `calling_sa` was recorded in the log and otherwise ignored — nothing
+        checked that they belonged together. Now the binding is validated
+        against iam_policy.py on every call, and the identity carries how it
+        was established: `oidc_verified` (a Google-signed token whose issuer,
+        audience, expiry and verified email were checked) or
+        `in_process_trusted` (code in this process — a label for a limit, not
+        an authentication).
+
+        In strict mode the unverified category is refused outright, which is
+        the posture a split-service deployment runs in.
+        """
+        from src.gateway.caller_identity import (
+            CallerIdentity, IdentityVerificationError, strict_identity_required)
+        try:
+            caller = CallerIdentity.coerce(identity, calling_sa, calling_role_key)
+        except IdentityVerificationError as e:
+            self._deny(calling_sa=calling_sa or "unidentified",
+                       calling_role_key=calling_role_key or "unidentified",
+                       target_collection=target_collection,
+                       policy="caller_identity_v1", reason=str(e))
+        if strict_identity_required() and not caller.is_verified:
+            self._deny(calling_sa=caller.service_account, calling_role_key=caller.role_key,
+                       target_collection=target_collection,
+                       policy="caller_identity_v1",
+                       reason=(f"This deployment requires a verified workload identity and "
+                               f"the caller presented {caller.verification!r}. An in-process "
+                               "role assertion is only as trustworthy as the process."))
+        return caller
+
+    def _deny(self, calling_sa: str, calling_role_key: str, target_collection: str,
+              policy: str, reason: str, **context):
+        """Build, record, emit and raise one structured denial. Every refusal
+        in this class goes through here, so a denial is never silent and never
+        a bare exception."""
+        denial = PolicyDenialEvent(
+            event_id=f"denial-{uuid.uuid4()}",
+            calling_sa=calling_sa,
+            target_role=calling_role_key,
+            requested_collection=target_collection,
+            attempted_filters=context.get("filters"),
+            session_context=context.get("session_context"),
+            timestamp=datetime.now(timezone.utc),
+            policy_consulted=policy,
+            reason=reason,
+        )
+        self.denial_events.append(denial)
+        _emit_denial_log(denial)
+        raise GatewayPolicyDenial(denial)
+
+    def _enforce(self, calling_sa: str, calling_role_key: str, target_collection: str,
+                 filters: Dict[str, Any] = None, session_context: Dict[str, Any] = None,
+                 identity: Optional["CallerIdentity"] = None):
+        # WHO first, then WHAT. The role used for the policy lookup below is
+        # the one bound to the caller's identity, not a string it supplied.
+        caller = self._identify(calling_sa, calling_role_key, target_collection, identity)
+        calling_sa, calling_role_key = caller.service_account, caller.role_key
+
         permitted, required_filter_key = get_action_permission(calling_role_key, target_collection)
 
         reason = None
@@ -261,8 +324,11 @@ class AgentGateway:
             "payload": payload
         }
 
-    def read_collection(self, calling_sa: str, calling_role_key: str, target_collection: str, filters: Dict[str, Any] = None, session_context: Dict[str, Any] = None) -> List[Dict[str, Any]]:
-        self._enforce(calling_sa, calling_role_key, target_collection, filters=filters, session_context=session_context)
+    def read_collection(self, calling_sa: str, calling_role_key: str, target_collection: str,
+                        filters: Dict[str, Any] = None, session_context: Dict[str, Any] = None,
+                        identity: Optional["CallerIdentity"] = None) -> List[Dict[str, Any]]:
+        self._enforce(calling_sa, calling_role_key, target_collection, filters=filters,
+                      session_context=session_context, identity=identity)
         if not self.db:
             # Offline: serve injected documents plus anything written through
             # this gateway instance (a read after a write must see the write,
@@ -321,8 +387,9 @@ class AgentGateway:
         raise GatewayPolicyDenial(denial)
 
     def write_document(self, calling_sa: str, calling_role_key: str, target_collection: str,
-                       doc_id: str, data: Dict[str, Any], lease_id: Optional[str] = None):
-        self._enforce(calling_sa, calling_role_key, target_collection)
+                       doc_id: str, data: Dict[str, Any], lease_id: Optional[str] = None,
+                       identity: Optional["CallerIdentity"] = None):
+        self._enforce(calling_sa, calling_role_key, target_collection, identity=identity)
         self._enforce_lease(calling_sa, calling_role_key, target_collection, lease_id)
         if self.db:
             # `.create()`, not `.set()`. `.set()` is an UPSERT — it silently

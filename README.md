@@ -93,7 +93,7 @@ Fetches the **live** `/works` manifest and verifies the corpus-integrity propert
 make test
 ```
 
-Runs the full offline suite — 390 tests, credential-free, including the cross-buyer attack suite, the work-scoped authorization adversarial suite, the route-authentication coverage guard, the 56-case containment truth table, the ADK delegation, and the quarantine drill. Twelve tests that genuinely require live Firestore or live IAM (byte-identity at rest, and reading the deployed runtime identity back from IAM, cannot be proven against an in-memory buffer) are skipped unless you set `HODI_E2E=1`, because they write to real collections.
+Runs the full offline suite — 412 tests, credential-free, including the cross-buyer attack suite, the work-scoped authorization adversarial suite, the route-authentication coverage guard, the 56-case containment truth table, the ADK delegation, and the quarantine drill. Twelve tests that genuinely require live Firestore or live IAM (byte-identity at rest, and reading the deployed runtime identity back from IAM, cannot be proven against an in-memory buffer) are skipped unless you set `HODI_E2E=1`, because they write to real collections.
 
 ```bash
 make compliance
@@ -105,7 +105,7 @@ Extracts every requirement ID from the PRD and diffs §4 against the §2 complia
 make red-team
 ```
 
-Runs the five-attack red-team drill (see *Autonomous consent incident response*): an injected instruction, a compromised negotiator, a compromised evidence agent, a rogue worker committing after quarantine, and a tampered incident package. Every boundary that yields exits nonzero, and the legitimate transaction completes at the end. Credential-free and offline.
+Runs the six-attack red-team drill (see *Autonomous consent incident response*): an injected instruction, a compromised negotiator, a compromised evidence agent, a rogue worker committing after quarantine, and a tampered incident package. Every boundary that yields exits nonzero, and the legitimate transaction completes at the end. Credential-free and offline.
 
 **All of the above run in CI** on every push and pull request ([.github/workflows/verify.yml](.github/workflows/verify.yml)) — the offline suite, the demo, the red-team drill, the truth table, compliance, doc-drift, and lint coverage. Nothing in CI needs credentials or the deployed service; the four targets that do (`demo-live`, `verify-manifest`, `metrics`, and the `HODI_E2E` tests) are deliberately excluded and named in the workflow so their absence is a decision, not an oversight.
 

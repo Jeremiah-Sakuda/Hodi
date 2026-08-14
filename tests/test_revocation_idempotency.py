@@ -28,8 +28,9 @@ from src.schema.grant_event import GrantEvent
 from src.schema.scope import Scope
 from src.schema.revocation import revocation_effect_id
 from tests.offline_env import force_offline
+from src.schema.iam_policy import AGENT_SA_MAP
 
-PROPAGATOR_SA = "revocation-propagator@hodi-2026.iam.gserviceaccount.com"
+PROPAGATOR_SA = AGENT_SA_MAP["revocation_propagator"]["sa_email"]
 T0 = datetime(2026, 8, 1, tzinfo=timezone.utc)
 
 
