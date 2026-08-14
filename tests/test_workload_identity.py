@@ -116,6 +116,52 @@ class TestFrontDoorCannotReachDomainDatabases(unittest.TestCase):
     Asserting only the first would pass on a completely broken service account.
     """
 
+    def _impersonate_or_skip(self, sa_email, database):
+        """
+        Build a client acting as `sa_email`, or SKIP with the reason.
+
+        Impersonation needs serviceAccountTokenCreator on the target, and the
+        CI release verifier deliberately does not hold it on the front door —
+        the point of that identity is that it holds as little as possible. A
+        runner that cannot impersonate must say so and skip, not hang: the
+        first CI run of this test spent twenty minutes in credential retry
+        backoff before it was cancelled, which is a worse failure than a red
+        test because nothing tells you what is wrong.
+        """
+        try:
+            return self._impersonate(sa_email, database)
+        except Exception as e:  # noqa: BLE001
+            self.skipTest(f"cannot impersonate {sa_email} from this runner: "
+                          f"{type(e).__name__}: {e}")
+
+    def test_the_front_door_holds_no_unconditioned_database_grant(self):
+        """
+        The policy-SHAPE half, which needs only read access to IAM and
+        therefore runs anywhere the live suite runs.
+
+        An unconditioned grant beside a conditioned one narrows nothing. This
+        catches that directly, and it catches it even in a run where a read
+        happened to fail for some unrelated reason — which a denial test alone
+        would quietly pass.
+        """
+        import json as _json
+        import subprocess as _sp
+        project = os.environ.get("GCP_PROJECT_ID", "hodi-2026")
+        front_door = f"hodi-runtime-sa@{project}.iam.gserviceaccount.com"
+        out = _sp.run(["gcloud", "projects", "get-iam-policy", project, "--format=json"],
+                      capture_output=True, text=True)
+        if out.returncode != 0:
+            self.skipTest(f"could not read the project IAM policy: {out.stderr.strip()[:200]}")
+        policy = _json.loads(out.stdout)
+        member = f"serviceAccount:{front_door}"
+        offenders = [b["role"] for b in policy.get("bindings", [])
+                     if member in b.get("members", []) and not b.get("condition")
+                     and ("datastore" in b["role"] or "GrantWriter" in b["role"])]
+        self.assertFalse(
+            offenders,
+            f"the front door holds UNCONDITIONED database grants {offenders}. It can read every "
+            "domain database directly, so the domain services are decoration.")
+
     def _impersonate(self, sa_email, database):
         from google.cloud import firestore
         from google.auth import impersonated_credentials
@@ -149,7 +195,7 @@ class TestFrontDoorCannotReachDomainDatabases(unittest.TestCase):
             if database == "(default)":
                 continue
             with self.subTest(database=database):
-                client = self._impersonate(front_door, database)
+                client = self._impersonate_or_skip(front_door, database)
                 with self.assertRaises(
                         (gexc.PermissionDenied, gexc.Forbidden),
                         msg=(f"the front door read {database}. The domain services are "
@@ -163,5 +209,5 @@ class TestFrontDoorCannotReachDomainDatabases(unittest.TestCase):
         """
         project = os.environ.get("GCP_PROJECT_ID", "hodi-2026")
         front_door = f"hodi-runtime-sa@{project}.iam.gserviceaccount.com"
-        client = self._impersonate(front_door, "(default)")
+        client = self._impersonate_or_skip(front_door, "(default)")
         list(client.collection("grants").limit(1).stream())  # must not raise
