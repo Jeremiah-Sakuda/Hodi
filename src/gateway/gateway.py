@@ -175,6 +175,30 @@ class AgentGateway:
         _emit_denial_log(denial)
         return denial
 
+    def log_containment_denial(self, counterparty_id: str, freeze_id: str,
+                               incident_id: str) -> PolicyDenialEvent:
+        """
+        Records a licensing request refused because the principal's
+        negotiation is frozen by a standing consent incident (HOD-705).
+        Same structured event, same log, same non-silence as every denial.
+        """
+        denial = PolicyDenialEvent(
+            event_id=f"denial-{uuid.uuid4()}",
+            calling_sa="api-layer (containment gate)",
+            target_role="licensing_negotiator",
+            requested_collection="grants",
+            attempted_filters={"counterparty_id": counterparty_id},
+            session_context={"freeze_id": freeze_id, "incident_id": incident_id},
+            timestamp=datetime.now(timezone.utc),
+            policy_consulted="incident_containment_v1",
+            reason=(f"Negotiation for counterparty '{counterparty_id}' is frozen by "
+                    f"consent incident '{incident_id}' (freeze '{freeze_id}'). "
+                    "Licensing is refused while the incident record stands."),
+        )
+        self.denial_events.append(denial)
+        _emit_denial_log(denial)
+        return denial
+
     def log_principal_type_denial(self, calling_sa: str, key_id: str, principal_type: str,
                                   required_principal_type: str, operation: str) -> PolicyDenialEvent:
         """
@@ -326,6 +350,39 @@ class AgentGateway:
                     raise DocumentAlreadyExists(collection, doc_id)
             for collection, doc_id, data in writes:
                 self._offline_writes.setdefault(collection, {})[doc_id] = dict(data)
+
+    def submit_assertion(self, calling_sa: str, calling_role_key: str, assertion) -> Any:
+        """
+        The epistemic gate (HOD-703). An assertion enters the fleet's record
+        only if the submitting ROLE holds authority for its CLASS — the same
+        fail-closed shape as collection policy, consulted from
+        ASSERTION_AUTHORITY (data, not branching), refused as the same
+        structured PolicyDenialEvent.
+
+        Note what never reaches this check: a claim with no assertion class —
+        MODEL_TRAINED_ON_WORK above all — dies at the TypedAssertion schema
+        before any code runs. The gate governs who may say the SAYABLE; the
+        schema keeps the unsayable unsayable.
+        """
+        from src.schema.assertion_authority import may_assert
+        if not may_assert(calling_role_key, assertion.assertion_class):
+            denial = PolicyDenialEvent(
+                event_id=f"denial-{uuid.uuid4()}",
+                calling_sa=calling_sa,
+                target_role=calling_role_key,
+                requested_collection="incident_assertions",
+                attempted_filters={"assertion_class": assertion.assertion_class},
+                session_context={"asserted_by_role": assertion.asserted_by_role},
+                timestamp=datetime.now(timezone.utc),
+                policy_consulted="assertion_authority_v1",
+                reason=(f"Role '{calling_role_key}' lacks authority for assertion class "
+                        f"'{assertion.assertion_class}'. Who may claim what is policy, and "
+                        "this claim is outside this role's epistemic position."),
+            )
+            self.denial_events.append(denial)
+            _emit_denial_log(denial)
+            raise GatewayPolicyDenial(denial)
+        return assertion
 
     def deliver_revocation_notice(self, sender: str, counterparty_id: str, notice: Any,
                                   lease_id: Optional[str] = None) -> Any:

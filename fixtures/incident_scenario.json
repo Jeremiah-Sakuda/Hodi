@@ -1,0 +1,33 @@
+{
+  "description": "Consent-incident scenario fixture (HOD-705) for `make demo` Beat 7 and the offline suite. Every adversary is FICTIONAL and unnamed: 'VoraciousBot' and 'fictional-scraper.example' correspond to no real product, company, or crawler. The declared user agent is self-declared by construction — that limit is part of the record.",
+  "work": {
+    "work_id": "work-essay-001",
+    "artist_id": "artist-jeremiah",
+    "declared_access_policy": "human_reference_only"
+  },
+  "access_record": {
+    "record_id": "ca-fixture-0001",
+    "user_agent": "VoraciousBot/1.0 (+https://fictional-scraper.example/bot)",
+    "path": "/works/work-essay-001",
+    "observed_at": "2026-08-13T09:14:22+00:00",
+    "detail": "fetched the work's canonical page; did not fetch /.well-known/hodi.json"
+  },
+  "declared_principal": "fictional-scraper-co",
+  "scenario_b_grant": {
+    "event_id": "evt-incident-grant-b",
+    "grant_id": "grant-incident-b",
+    "work_id": "work-essay-001",
+    "counterparty_id": "fictional-scraper-co",
+    "scope": {
+      "use_type": "rag_retrieval",
+      "model_class": "all_models",
+      "commercial": false,
+      "attribution_required": true,
+      "territory": ["WW"],
+      "valid_from": "2026-08-01T00:00:00+00:00"
+    },
+    "kind": "granted",
+    "issued_at": "2026-08-01T00:00:00+00:00",
+    "signature": "UNSIGNED_PLACEHOLDER:grant:grant-incident-b"
+  }
+}

@@ -176,8 +176,20 @@ class TestLicenseHandlerFoldsBeforeContainment(unittest.TestCase):
             HEADER_KEY_ID: self.KEY, HEADER_TIMESTAMP: ts,
             HEADER_SIGNATURE: compute_signature(self.SECRET, self.KEY, ts, raw)})
 
+    @staticmethod
+    def _reads(grant_events):
+        """Patched read_collection: serves the grant fixture for `grants` and
+        an empty set for everything else — the handler now also reads
+        `negotiation_freezes` (HOD-705 containment gate), and a patch that
+        answered EVERY collection with grant events would freeze the caller."""
+        def _side_effect(*args, **kwargs):
+            target = kwargs.get("target_collection") or (args[2] if len(args) > 2 else None)
+            return grant_events if target == "grants" else []
+        return _side_effect
+
     def test_a_revoked_grant_does_not_license_through_the_handler(self):
-        with patch.object(AgentGateway, "read_collection", return_value=self.raw_events):
+        with patch.object(AgentGateway, "read_collection",
+                          side_effect=self._reads(self.raw_events)):
             r = self._post("/api/v1/license", {
                 "work_id": "w",
                 "requested_scope": {
@@ -193,7 +205,8 @@ class TestLicenseHandlerFoldsBeforeContainment(unittest.TestCase):
     def test_an_active_grant_still_licenses(self):
         """Paired positive: folding must not deny everything."""
         active_only = [self.raw_events[0]]
-        with patch.object(AgentGateway, "read_collection", return_value=active_only):
+        with patch.object(AgentGateway, "read_collection",
+                          side_effect=self._reads(active_only)):
             r = self._post("/api/v1/license", {
                 "work_id": "w",
                 "requested_scope": {
