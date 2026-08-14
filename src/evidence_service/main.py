@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from google.cloud import firestore
 from src.api.buyer_api import router as buyer_router
 from src.gateway.gateway import GatewayPolicyDenial
+from pydantic import BaseModel
 from opentelemetry import trace as otel_trace
 from src.observability.tracing import active_exporter_kind
 
@@ -526,6 +527,110 @@ def verify_scheduler_oidc(request: Request) -> str:
         logger.warning(f"Accrual audit rejected caller '{email}'.")
         raise HTTPException(status_code=403, detail="OIDC token verification failed.")
     return email
+
+
+def verify_front_door_oidc(request: Request) -> str:
+    """
+    Verify the caller of a domain operation is the front door (HOD-733).
+
+    DEFENCE IN DEPTH, NOT THE ONLY DEFENCE. Domain services deploy with
+    --no-allow-unauthenticated, so Cloud Run refuses anyone without
+    roles/run.invoker before this code runs; that is the boundary. This check
+    is the second one, in-process, so the service also refuses a caller that
+    somehow holds invoker but is not the front door.
+
+    Separate from verify_scheduler_oidc deliberately: that one pins the Cloud
+    Scheduler invoker, and reusing it here would have made every domain call
+    fail as the wrong caller, or — far worse if it had been written the other
+    way — let the scheduler's identity perform domain writes.
+    """
+    header = request.headers.get("authorization", "")
+    if not header.lower().startswith("bearer "):
+        raise HTTPException(status_code=403, detail="Missing OIDC bearer token.")
+    token = header.split(" ", 1)[1].strip()
+    try:
+        from google.oauth2 import id_token as google_id_token
+        from google.auth.transport import requests as google_requests
+        claims = google_id_token.verify_oauth2_token(token, google_requests.Request())
+    except Exception as e:
+        logger.warning(f"Domain-operation OIDC verification failed: {e}")
+        raise HTTPException(status_code=403, detail="OIDC token verification failed.")
+
+    expected = os.environ.get("HODI_FRONT_DOOR_SA",
+                              f"hodi-runtime-sa@{GCP_PROJECT}.iam.gserviceaccount.com")
+    email = claims.get("email", "")
+    if not claims.get("email_verified") or email != expected:
+        logger.warning(f"Domain operation rejected caller '{email}' (expected '{expected}').")
+        raise HTTPException(status_code=403, detail="OIDC token verification failed.")
+    return email
+
+
+class DomainOperation(BaseModel):
+    role: str
+    collection: str
+    filters: Optional[Dict[str, Any]] = None
+    session_context: Optional[Dict[str, Any]] = None
+    doc_id: Optional[str] = None
+    data: Optional[Dict[str, Any]] = None
+
+
+def _domain_service_or_404(req: "DomainOperation") -> str:
+    """
+    Establish the role THIS service is, and refuse anything else (HOD-733).
+
+    The role is read from HODI_SERVICE_ROLE — set by the deploy, alongside the
+    service account Cloud Run starts the container with — and NEVER from the
+    request body. A caller may ask the custodian service for buyer terms; it
+    will be refused, and it would be refused by IAM anyway, because this
+    workload's identity is conditioned to its own database.
+
+    This is the same correction the buyer API already carries for
+    counterparty_id after the cross-buyer breach: identity is a property of the
+    credential, not a field someone sends.
+    """
+    from src.gateway.domain_client import this_service_role
+    role = this_service_role()
+    if not role:
+        # Not a domain service. The route does not exist here at all rather
+        # than existing and refusing — a front door that answers domain
+        # operations is the monolith this split removes.
+        raise HTTPException(status_code=404, detail="Not found.")
+    if req.role != role:
+        logger.warning(
+            f"DOMAIN_ROLE_REFUSED: this service is '{role}'; caller asked for '{req.role}'.")
+        raise HTTPException(
+            status_code=403,
+            detail=f"This workload serves '{role}' only; it cannot act as '{req.role}'.")
+    return role
+
+
+@app.post("/internal/domain/read", response_class=JSONResponse)
+async def domain_read(req: DomainOperation, request: Request):
+    """A domain read, performed by the workload that owns the domain."""
+    role = _domain_service_or_404(req)
+    verify_front_door_oidc(request)
+    from src.gateway.gateway import AgentGateway
+    from src.schema.iam_policy import AGENT_SA_MAP
+    docs = AgentGateway().read_collection(
+        calling_sa=AGENT_SA_MAP[role]["sa_email"], calling_role_key=role,
+        target_collection=req.collection, filters=req.filters,
+        session_context=req.session_context)
+    return {"role": role, "collection": req.collection, "documents": docs}
+
+
+@app.post("/internal/domain/write", response_class=JSONResponse)
+async def domain_write(req: DomainOperation, request: Request):
+    """A domain append, performed by the workload that owns the domain."""
+    role = _domain_service_or_404(req)
+    verify_front_door_oidc(request)
+    if not req.doc_id or req.data is None:
+        raise HTTPException(status_code=422, detail="doc_id and data are required.")
+    from src.gateway.gateway import AgentGateway
+    from src.schema.iam_policy import AGENT_SA_MAP
+    AgentGateway().write_document(
+        calling_sa=AGENT_SA_MAP[role]["sa_email"], calling_role_key=role,
+        target_collection=req.collection, doc_id=req.doc_id, data=req.data)
+    return {"role": role, "collection": req.collection, "doc_id": req.doc_id, "status": "APPENDED"}
 
 
 @app.get("/internal/accrual_audit", response_class=JSONResponse)

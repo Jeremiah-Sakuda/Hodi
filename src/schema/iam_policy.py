@@ -98,6 +98,55 @@ def database_for_role(agent_role: str) -> str:
     return CONFLICT_DOMAIN_DATABASE.get(info["conflict_domain"], "(default)")
 
 
+# Collections that live in `(default)` NO MATTER WHICH ROLE READS THEM.
+#
+# The domain split is per-domain data; these are the things every domain
+# identity legitimately shares, or that are not domain data at all:
+#
+#   grants                 the append-only grant log. This is the point of the
+#                          system and every domain-appropriate identity must
+#                          reach it — which is exactly why row-level separation
+#                          INSIDE it is gateway-enforced and cannot be solved by
+#                          moving databases. Stated rather than blurred.
+#   revocation_notices     the revocation domain maps to `(default)` by design
+#   revocation_outbox      (CONFLICT_DOMAIN_DATABASE["revocation"]), so its data
+#   leases                 is already where its identity is scoped.
+#   agent_registry_events  fleet infrastructure, not any domain's data
+#   counterparty_credentials  authentication material, read by the front door
+#                          before any role has been established
+DEFAULT_DATABASE_COLLECTIONS = frozenset({
+    "grants",
+    "revocation_notices",
+    "revocation_outbox",
+    "leases",
+    "agent_registry_events",
+    "counterparty_credentials",
+    "e2e_memory_bank_events",
+})
+
+
+def database_for_collection(agent_role: str, collection_name: str) -> str:
+    """
+    The database a given (role, collection) pair resolves to.
+
+    Routing on the ROLE alone is wrong: the rights custodian reads both `works`
+    (identity domain, hodi-identity) and `grants` (the shared log, `(default)`).
+    A role-only map would send the grant log into a domain database and split
+    the one collection the whole fleet has to agree on.
+
+    This function is what makes CONFLICT_DOMAIN_DATABASE load-bearing. It was
+    declared, IAM-conditioned and proven by impersonation on 2026-08-14 while
+    `database_for_role` was called from nowhere in the codebase — a boundary
+    that existed in policy and in IAM, and carried no traffic. Two dead routing
+    env vars (`HODI_ROLE`, `HODI_DB_ROUTING`) had already been removed from the
+    worker deploy for the same reason; this is the consumer they lacked.
+    """
+    root = (collection_name or "").split("/")[0]
+    if root in DEFAULT_DATABASE_COLLECTIONS:
+        return "(default)"
+    return database_for_role(agent_role)
+
+
 def get_action_permission(agent_role: str, collection_name: str) -> tuple[bool, str | None]:
     """
     Checks if an agent role is authorized to access a given collection.
