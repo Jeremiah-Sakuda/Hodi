@@ -119,3 +119,50 @@ class TestEvidenceEngine(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RequiredFixturesAreTrackedTest(unittest.TestCase):
+    """
+    Every fixture the offline suite depends on must be COMMITTED, not merely
+    present on the author's disk.
+
+    fixtures/work_passages.json was silently matched by a `.gitignore` rule of
+    `*sa*.json` — intended for service-account keys, but matching any filename
+    containing "sa", including "work_pas-sa-ges". The verbatim tests passed
+    locally and failed only in CI, where the file had never been committed. A
+    fixture that exists for one machine is not a fixture.
+    """
+
+    REQUIRED = [
+        "fixtures/work_passages.json",
+        "fixtures/embedding_cache.json",
+        "fixtures/gemini_response_cache.json",
+        "fixtures/demo_grant_log.json",
+    ]
+
+    def test_required_fixtures_are_not_gitignored(self):
+        import subprocess
+        from pathlib import Path
+        root = Path(__file__).resolve().parent.parent
+        ignored = []
+        for rel in self.REQUIRED:
+            self.assertTrue((root / rel).exists(), f"{rel} is missing from the working tree")
+            result = subprocess.run(["git", "-C", str(root), "check-ignore", "-q", rel],
+                                    capture_output=True)
+            if result.returncode == 0:
+                ignored.append(rel)
+        self.assertEqual(ignored, [],
+                         "these fixtures are gitignored and will be absent in CI: "
+                         f"{ignored}")
+
+    def test_required_fixtures_are_tracked_by_git(self):
+        import subprocess
+        from pathlib import Path
+        root = Path(__file__).resolve().parent.parent
+        untracked = []
+        for rel in self.REQUIRED:
+            result = subprocess.run(["git", "-C", str(root), "ls-files", "--error-unmatch", rel],
+                                    capture_output=True)
+            if result.returncode != 0:
+                untracked.append(rel)
+        self.assertEqual(untracked, [], f"fixtures not committed: {untracked}")

@@ -1,0 +1,18 @@
+{
+  "_comment": "Registered passages a verbatim_match is checked AGAINST (HOD-320). `Work` carries content_hash but no body, so the comparison needs the protected text itself. Registering an excerpt is the rights-holder action a real deployment performs; only work-repo-001 is populated here, and its passage is genuine text from that work (this repository's own README) — nothing is invented and nothing is attributed to a work it did not come from. Works with no registered passage yield NO verbatim_match record, which is the correct and honest outcome rather than a default hit.",
+  "min_run_tokens_note": "The threshold lives in src/evidence/verbatim_probe.py (MIN_VERBATIM_RUN_TOKENS), not here — a per-work threshold would let a comparison be tuned until it hit.",
+  "passages": {
+    "work-repo-001": [
+      {
+        "passage_id": "repo-readme-thesis",
+        "source": "README.md, opening paragraph of this repository (work-repo-001, the verified_control work)",
+        "text": "Hodi is a governed fleet of institutional agents that administers creative consent end to end: registering works with proof of control, expressing scoped machine-readable terms, negotiating with buyers under confidentiality, and propagating revocations across affected grants."
+      },
+      {
+        "passage_id": "repo-readme-monolith",
+        "source": "README.md, conflict-of-interest topology section (work-repo-001)",
+        "text": "A single agent would need the union of all four permission sets — precisely the position no honest broker may occupy. A monolith here would itself be the violation."
+      }
+    ]
+  }
+}
