@@ -1,6 +1,6 @@
 # Hodi — recording script
 
-> **CURRENT AS OF 2026-08-14T17:35Z, revision `hodi-evidence-endpoint-00045-dkz`.** Every command in
+> **CURRENT AS OF 2026-08-14T21:10Z, revision `hodi-evidence-endpoint-00054-swn`.** Every command in
 > this file was executed against that deployed revision on that date, and every duration below is the
 > round-trip that run produced. The earlier stale-banner warning is retired because the thing it
 > warned about was fixed rather than restated — see the two paragraphs immediately below, which record
@@ -23,10 +23,10 @@
 
 **Target 3:30 · hard cap 4:00 · 30 seconds of insurance**
 Everything except the recording. All durations below were **measured** — the source for each is named,
-and the whole sequence was re-run end to end on **2026-08-14** against revision `00045-dkz`. The
+and the whole sequence was re-run end to end on **2026-08-14** against revision `00054-swn`. The
 boundary denial returns **6/6 HTTP 403 including Part C**; the hero cascade appends under create-only
 IAM with the affected set, derived scopes and issued notices all correct; a non-owner revoke is
-refused 403. Warm cascade ~0.7 s. Re-measure with `make metrics` if you record more than a day from now.
+refused 403. Warm cascade ~1.9 s. Re-measure with `make metrics` if you record more than a day from now.
 
 > **The signature narration changed, and it changed in your favour.** Earlier versions of this script
 > told you to say the `signature` field reads `UNSIGNED_PLACEHOLDER`. **It no longer does.** The
@@ -51,32 +51,34 @@ with them:
 **The actions are far faster than the beats.** This is the single thing to internalise before you
 record:
 
-| Action | Measured (2026-08-14, rev `00045-dkz`, unless noted) | Beat budget |
+| Action | Measured (2026-08-14, rev `00054-swn`, unless noted) | Beat budget |
 |---|---|---|
-| Revocation cascade, **1 affected grant** | **644 – 863 ms** round-trip, ~737 ms avg | 45 s |
+| Revocation cascade, **1 affected grant** | **1785 – 2119 ms** round-trip, ~1896 ms avg | 45 s |
 | Revocation cascade, **2 affected grants** | **5086 / 5275 / 4953 ms** (2026-08-09) — see the trap below | — |
-| `POST /api/v1/license`, **permitted** (Frame A) | **541 – 980 ms**, ~712 ms avg over 6 warm runs | — |
-| `POST /api/v1/license`, **denied** (Frame C) | **455 ms** — a denial issues no receipt, so it signs nothing | — |
-| Natural-language license | **3378 / 3554 / 3623 ms**, ~3.5 s avg warm | 30 s |
+| `POST /api/v1/license`, **permitted** (Frame A) | **1495 – 2036 ms**, ~1675 ms avg over 6 warm runs | — |
+| `POST /api/v1/license`, **denied** (Frame C) | **1591 ms** — it pays the custodian hop before it can refuse | — |
+| Natural-language license | **3751 / 3885 / 4141 ms**, ~3.9 s avg warm | 30 s |
 | Full boundary test, 6 denials | **8.4 s** cold, ~2.2 s warm (2026-08-09) | 20 s |
 | `make demo`, all 7 beats | **1.4 – 1.8 s** (2026-08-09) | — |
 | Quarantine drill | 1114 ms server-side; **7.3 s** cold / 1.5 s warm round-trip (2026-08-09) | 20 s |
 
-**Two figures rose since the last script, and both rose for the same reason: the proof got real.**
-The cascade went ~519 → ~737 ms when it gained an execution lease and an idempotency outbox, and the
-permitted licence went ~399 → ~712 ms because its receipt is now signed by Cloud KMS rather than
-stamped with a placeholder. The denial stayed fast precisely *because* it signs nothing. If you find
-yourself wishing for the old numbers, note what they were the speed of.
+**Every figure rose, and the reason is the architecture.** The cascade went ~737 → ~1896 ms and the
+permitted licence ~712 → ~1675 ms when the four conflict-domain roles became four separately-deployed
+Cloud Run workloads. Both paths check that the artist owns the work; that check reads `works`; and
+`works` now lives in `hodi-identity` behind the rights-custodian service, so an in-process call became
+an authenticated HTTPS hop the front door **cannot bypass** — its identity is refused by Google IAM on
+every domain database. About 1.2 seconds is what the boundary costs. If you find yourself wishing for
+the old numbers, note what they were the speed of: one process holding credentials for every domain.
 
-So the hero beat is **not** 45 seconds of waiting. It is ~0.7 s of action wrapped in 45 s of
+So the hero beat is **not** 45 seconds of waiting. It is ~1.9 s of action wrapped in 45 s of
 *before* and *after*: the license granted, the command, the cascade output, the same license refused.
 Plan the shot as three static frames with one instant transition, not as a progress bar.
 
 ### The 5-second trap in the hero beat — read this before the first take
 
 The cascade's cost is **one Gemini notice-drafting call per affected grant that is not in the
-committed response cache.** With one affected grant it is ~0.7 s. With two it is ~5.4 s, and it is
-reproducibly so — not a cold start you can warm away.
+committed response cache.** With one affected grant it is ~1.9 s. With two, add roughly 4.5 s of live
+model call on top, and it is reproducibly so — not a cold start you can warm away.
 
 `work-repo-001` carries two grants: `grant-acme-il-001` (the demo grant, cached, fast) and
 `grant-seed-2` to `buyer-acme-2` (**not** cached — every revocation touching it pays a live model
@@ -84,15 +86,16 @@ call). As left on 2026-08-09, `grant-seed-2` is **revoked**, so the affected set
 fast. Pre-flight step 5 verifies this; do not skip it.
 
 If you would rather show the cascade reaching two counterparties, that is a legitimate choice and the
-story is arguably richer — but budget **5.3 s** of dead air, do not burn in a wall clock that
+story is arguably richer — but budget **~6.5 s** of dead air, do not burn in a wall clock that
 contradicts the "one call, instant" framing, and re-grant `grant-seed-2` first (snippet in
 *Between takes*). **The recommendation is the one-grant shot.** The thesis of this beat is
 containment across the *scope lattice* — all four use types derived from the partial order — and one
 affected grant demonstrates that completely.
 
-**Do not speed-ramp or cut mid-command.** The wall clock is the proof. If a command takes 500 ms,
-show that it took 500 ms — a legal revocation cascading across the lattice in half a second is a
-stronger claim than a long one.
+**Do not speed-ramp or cut mid-command.** The wall clock is the proof. If a command takes 1.9 s, show
+that it took 1.9 s. A legal revocation cascading across the lattice in under two seconds — while every
+domain read crosses an authenticated service boundary the caller cannot bypass — is a stronger claim
+than a faster number produced by one process trusted with everything.
 
 ---
 
@@ -150,7 +153,7 @@ cd "path/to/Hodi"
    ```bash
    make recording-prep
    ```
-   Expect: `RECORDING STATE READY — cascade on the ~0.7 s path.` If it says `~5.4 s`, the affected
+   Expect: `RECORDING STATE READY — cascade on the ~1.9 s path.` If it says `~6.6 s`, the affected
    set is 2 — read its report, it names the grant responsible.
 
 5. **Confirm the boundary holds on the deployed service.**
@@ -324,7 +327,7 @@ print(json.dumps(r, indent=2))
 EOF
 ```
 
-**Measured: 3378 / 3554 / 3623 ms**, ~3.5 s warm (2026-08-14, rev `00045-dkz`), `permitted = true`.
+**Measured: 3751 / 3885 / 4141 ms**, ~3.9 s warm (2026-08-14, rev `00054-swn`), `permitted = true`.
 One server-side Gemini call. **Burn in the wall clock.**
 
 **On screen:** the plain-English request, then the returned `interpreted_scope` — verified on
@@ -372,9 +375,9 @@ print(json.dumps(r, indent=2))
 EOF
 ```
 
-**Measured: 541 – 980 ms, ~712 ms over 6 warm runs, `permitted = True`**, `licensable_set =
+**Measured: 1495 – 2036 ms, ~1675 ms over 6 warm runs, `permitted = True`**, `licensable_set =
 ["training", "open_weights"]`, with a receipt whose `signature` is a real
-`KMS-ECDSA-P256-SHA256:…` envelope (2026-08-14, rev `00045-dkz`). This frame is immune to log
+`KMS-ECDSA-P256-SHA256:…` envelope (2026-08-14, rev `00054-swn`). This frame is immune to log
 churn — it reads the *fold*, not the event dump, so it looks identical on take one and take five.
 
 **Frame B (the action, ~5 s).** Paste and run:
@@ -399,7 +402,7 @@ json.dump(r["issued_notices"][0], open("/tmp/hodi_notice.json", "w"))
 EOF
 ```
 
-**Measured: 644 – 863 ms** round-trip warm, ~737 ms average (2026-08-14, revision 00045-dkz), with
+**Measured: 1785 – 2119 ms** round-trip warm, ~1896 ms average (2026-08-14, revision 00054-swn), with
 one affected grant. `metrics.json` records 2263 ms cold / 737 ms warm. It rose from ~519 ms when the
 cascade gained an execution lease and an idempotency outbox — a retry cannot double-issue a notice,
 and an abandoned worker cannot commit late. **Burn in the wall clock — under a second, and it is
@@ -421,9 +424,10 @@ On screen, in the response (all seven top-level keys confirmed present on 2026-0
 **Frame C (after, ~20 s).** Re-run **the Frame A command, unchanged.** Same request, same
 counterparty, same scope.
 
-**Measured: 455 ms, `permitted = False`**, `licensable_set = []`, `explicit_exclusions =
-["fine_tuning", "open_weights"]` (2026-08-14, rev `00045-dkz`). The denial is *faster* than the
-permit because it issues no receipt, and therefore signs nothing.
+**Measured: 1591 ms, `permitted = False`**, `licensable_set = []`, `explicit_exclusions =
+["fine_tuning", "open_weights"]` (2026-08-14, rev `00054-swn`). The denial is no longer the fast
+path: it pays the same rights-custodian hop before it can refuse, which is the correct order —
+you cannot decide a request about a work without first establishing the work.
 
 > **Accuracy note (read once).** The demo grant is held at **`training`** (the broadest use),
 > so revoking `training` correctly terminates it and the notice withdraws all four downstream
@@ -437,7 +441,7 @@ because anyone wrote that rule in code. The original grant is **not deleted** �
 that supersedes, and the log still shows what was permitted before. And the notice says the grant is
 terminated. It does **not** say the model forgot anything, because a lint refuses to let it.
 
-> The A→C flip is the whole beat: *the identical request, granted and then refused, under a second
+> The A→C flip is the whole beat: *the identical request, granted and then refused, about two seconds
 > apart.* That is worth more on camera than any amount of JSON, and it cannot be faked by a stub —
 > the same endpoint answered both times.
 
@@ -450,7 +454,7 @@ curl -s https://hodi-evidence-endpoint-406699565497.us-central1.run.app/verifica
 python3 scripts/hodi_verify.py /tmp/hodi_notice.json --key /tmp/hodi_pub.pem
 ```
 
-**Verified 2026-08-14 against rev `00045-dkz`:** `✓ document signature valid
+**Verified 2026-08-14 against rev `00054-swn`:** `✓ document signature valid
 (KMS-ECDSA-P256-SHA256)` → `VERIFIED`, exit 0. Then change one byte and run it again:
 
 ```bash
@@ -595,9 +599,11 @@ That is 33 s of reserve without touching the hero, the security beat, Diagram B,
 
 ## Things that will bite you
 
-- **Cold start.** `min-instances=0`. Any beat hitting the deployed service after ~15 minutes idle
-  pays up to 7 s. Warm before every take.
-- **Two affected grants costs ~5.4 s, not ~0.7 s.** One uncached Gemini notice-drafting call per
+- **Cold start, now on more than one service.** `min-instances=0` everywhere. A cold cascade measured
+  **3973 ms** with the front door AND the rights-custodian workload both cold, against ~1896 ms warm.
+  Warming the front door alone is no longer enough — `make recording-prep` step 5 touches the
+  delegating path so the custodian is warm too.
+- **Two affected grants costs ~6.5 s, not ~1.9 s.** One uncached Gemini notice-drafting call per
   affected grant. Verify the affected set is 1 in pre-flight step 5. This is the single most likely
   way the hero beat goes wrong.
 - **Both secrets.** Frames A/C need the counterparty key, Frame B needs the artist key, and neither

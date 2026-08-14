@@ -36,7 +36,16 @@ AGENT_SA_MAP: Dict[str, Dict[str, Any]] = {
         "role_name": "Evidence Agent",
         "description": "Ingests crawler access logs and checks canaries. CANNOT read commercial terms or identity.",
         "conflict_domain": "evidence",
-        "permitted_collections": ["crawler_access", "canaries", "evidence_records"],
+        # The per-class evidence collections /evidence-counts reports, plus the
+        # daily audit rows, were ABSENT from this list — and the omission was
+        # invisible because that endpoint read them with a RAW Firestore client:
+        # no gateway, no policy check, no denial event. It surfaced the moment
+        # the read was routed through the gateway for the domain split. The
+        # counts had never been authorised; they had merely never been asked.
+        # These are evidence-domain data owned by this role.
+        "permitted_collections": ["crawler_access", "canaries", "evidence_records",
+                                  "canary_hits", "verbatim_matches",
+                                  "redistribution_findings", "accrual_audits"],
         "denied_collections": ["artists", "buyer_terms", "grants", "revocation_notices", "revocation_outbox"]
     },
     "revocation_propagator": {

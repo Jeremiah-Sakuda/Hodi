@@ -312,13 +312,53 @@ def extract_client_ip(request: Request) -> str:
         return request.client.host
     return "0.0.0.0"
 
+
+# ---------------------------------------------------------------------------
+# Evidence-domain access, through the gateway rather than a raw client.
+#
+# `crawler_access` and `accrual_audits` live in `hodi-evidence` now, and the
+# front door deliberately holds NO grant there — that is the point of the split.
+# These four call sites used the module-level `(default)` client directly, so
+# after the migration they silently read an almost-empty collection and kept
+# APPENDING new records to the database the data had just left. `/evidence-counts`
+# reported 3 where the corpus is 1904, and the collection existed in two places
+# at once, which is worse than either. Routing them through AgentGateway means
+# the evidence service answers under its own identity and its own database.
+# ---------------------------------------------------------------------------
+def _evidence_gateway():
+    from src.gateway.gateway import AgentGateway
+    return AgentGateway()
+
+
+EVIDENCE_SA = None  # resolved lazily; iam_policy is the source
+
+
+def _evidence_sa() -> str:
+    global EVIDENCE_SA
+    if EVIDENCE_SA is None:
+        from src.schema.iam_policy import AGENT_SA_MAP
+        EVIDENCE_SA = AGENT_SA_MAP["evidence_agent"]["sa_email"]
+    return EVIDENCE_SA
+
+
+def evidence_read(collection: str, filters=None):
+    return _evidence_gateway().read_collection(
+        calling_sa=_evidence_sa(), calling_role_key="evidence_agent",
+        target_collection=collection, filters=filters)
+
+
+def evidence_append(collection: str, record: dict) -> str:
+    import uuid as _uuid
+    doc_id = str(_uuid.uuid4())
+    _evidence_gateway().write_document(
+        calling_sa=_evidence_sa(), calling_role_key="evidence_agent",
+        target_collection=collection, doc_id=doc_id, data=record)
+    return doc_id
+
+
 def check_robots_fetched_first(ip: str) -> bool:
     try:
-        docs = db.collection(COLLECTION_NAME)\
-                 .where("ip", "==", ip)\
-                 .where("path", "==", "/robots.txt")\
-                 .limit(1)\
-                 .get()
+        docs = evidence_read(COLLECTION_NAME, {"ip": ip, "path": "/robots.txt"})
         return len(docs) > 0
     except Exception as e:
         logger.error(f"Error checking robots.txt history: {e}")
@@ -343,11 +383,18 @@ def log_access_to_firestore(request: Request, path: str):
         "referrer": referrer,
         "hostname": hostname,
         "robots_txt_fetched_first": robots_fetched,
-        "logged_at": firestore.SERVER_TIMESTAMP
+        # An explicit UTC instant, not firestore.SERVER_TIMESTAMP. The sentinel
+        # is resolved by the Firestore client at write time and cannot be JSON
+        # -serialised, so it does not survive the hop to the evidence service —
+        # it would fail the append rather than degrade, but the record is
+        # clearer this way regardless: the time is the observing service's
+        # clock, stated, rather than a value that means different things
+        # depending on which process happened to write it.
+        "logged_at": datetime.now(timezone.utc).isoformat()
     }
 
     try:
-        db.collection(COLLECTION_NAME).add(record)
+        evidence_append(COLLECTION_NAME, record)
         logger.info(f"Access logged: host={hostname}, path={path}, ip={ip}, robots_first={robots_fetched}")
     except Exception as e:
         logger.error(f"Failed to log access to Firestore: {e}")
@@ -659,7 +706,7 @@ async def run_accrual_audit(request: Request):
     caller = verify_scheduler_oidc(request)
     from src.evidence.gemma_triage import GemmaTriageEngine
     try:
-        docs = [d.to_dict() for d in db.collection(COLLECTION_NAME).stream()]
+        docs = evidence_read(COLLECTION_NAME)
     except Exception as e:
         logger.error(f"Accrual audit failed to read crawler_access: {e}")
         return JSONResponse(status_code=503, content={"status": "unavailable", "error": str(e)})
@@ -688,7 +735,7 @@ async def run_accrual_audit(request: Request):
         # a fixed id (which upserts and needs datastore.entities.update — the
         # permission the runtime identity is denied). The UTC date stays a
         # queryable field for "the audit(s) from day D".
-        db.collection("accrual_audits").add(audit)
+        evidence_append("accrual_audits", audit)
     except Exception as e:
         logger.error(f"Accrual audit failed to persist: {e}")
         return JSONResponse(status_code=503, content={"status": "unavailable", "error": str(e)})
@@ -712,10 +759,15 @@ async def get_evidence_counts(request: Request):
         "verbatim_match": "verbatim_matches",
         "redistribution": "redistribution_findings",
     }
+    # Counted through the gateway, so each class is read from the database its
+    # domain actually lives in. Reading the raw `(default)` client here survived
+    # the migration and reported 7 crawler_access records against a corpus of
+    # 1904 — a live surface confidently serving a number from the database the
+    # data had just left. "unavailable" on failure, never a plausible number.
     counts = {}
     for evidence_class, collection in class_collections.items():
         try:
-            counts[evidence_class] = len(db.collection(collection).get())
+            counts[evidence_class] = len(evidence_read(collection))
         except Exception as e:
             logger.error(f"Failed to count '{collection}': {e}")
             counts[evidence_class] = "unavailable"
