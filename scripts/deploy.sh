@@ -74,6 +74,28 @@ else
   echo "  revocation worker: not deployed — registry keeps the in-process placeholder"
 fi
 
+# Domain services, DISCOVERED from Cloud Run rather than read from a local file.
+# If the four per-domain workloads are deployed, the front door delegates every
+# domain read and write to them and stops touching domain data itself. If they
+# are not, HODI_DOMAIN_SERVICE_URLS stays unset and the gateway runs in-process
+# exactly as before — the split is a property of the deployment, not an
+# assumption in the code.
+DOMAIN_URLS=""
+for role in rights_custodian licensing_negotiator evidence_agent consent_arbiter; do
+  svc="hodi-$(echo "${role}" | tr '_' '-')"
+  url="$(gcloud run services describe "${svc}" --region "${REGION}" \
+          --project "${PROJECT_ID}" --format='value(status.url)' 2>/dev/null || true)"
+  if [ -n "${url}" ]; then
+    DOMAIN_URLS="${DOMAIN_URLS:+${DOMAIN_URLS}|}${role}=${url}"
+  fi
+done
+if [ -n "${DOMAIN_URLS}" ]; then
+  ENV_VARS="${ENV_VARS:+${ENV_VARS},}HODI_DOMAIN_SERVICE_URLS=${DOMAIN_URLS}"
+  echo "  domain services: delegating to $(( $(echo "${DOMAIN_URLS}" | tr -cd '|' | wc -c) + 1 )) workloads"
+else
+  echo "  domain services: none deployed — gateway stays in-process"
+fi
+
 # Durable trace backend, set only if BOTH halves of it actually exist: the API
 # enabled, and the runtime identity holding roles/cloudtrace.agent. Setting
 # HODI_TRACE_EXPORT=cloud without those makes the exporter fail to build and the

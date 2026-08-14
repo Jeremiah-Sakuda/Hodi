@@ -36,3 +36,4 @@ venv/
 .vscode/
 .idea/
 Hodi-frontend designs/
+.hodi_domain_service_urls.json

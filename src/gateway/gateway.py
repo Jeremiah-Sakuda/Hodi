@@ -7,7 +7,9 @@ from pydantic import BaseModel
 from datetime import datetime, timezone
 from google.cloud import firestore
 from google.api_core import exceptions as gcloud_exceptions
-from src.schema.iam_policy import is_action_permitted, get_action_permission, AGENT_SA_MAP
+from src.schema.iam_policy import (is_action_permitted, get_action_permission, AGENT_SA_MAP,
+                                   database_for_collection)
+from src.gateway.domain_client import DomainServiceClient
 from src.schema.signing import unsigned_placeholder, sign_pydantic
 
 if TYPE_CHECKING:
@@ -76,7 +78,7 @@ class DurableStorageUnavailable(RuntimeError):
     """
 
 
-def _build_firestore_client(project_id: str):
+def _build_firestore_client(project_id: str, database: Optional[str] = None):
     """
     ADC first; falls back to the gcloud CLI token for local dev shells without
     ADC. Returns None ONLY when the caller has explicitly declared an offline
@@ -90,15 +92,21 @@ def _build_firestore_client(project_id: str):
     """
     if os.environ.get("HODI_OFFLINE") == "1":
         return None
+    # `database` selects a NAMED Firestore database. Omitting it silently means
+    # `(default)`, which is how the per-domain split stayed inert: the databases
+    # and their IAM conditions were real and every client went to `(default)`.
+    kwargs = {"project": project_id}
+    if database and database != "(default)":
+        kwargs["database"] = database
     try:
-        return firestore.Client(project=project_id)
+        return firestore.Client(**kwargs)
     except Exception as adc_error:
         try:
             token = subprocess.check_output(
                 ["gcloud", "auth", "print-access-token"], stderr=subprocess.DEVNULL
             ).decode("utf-8").strip()
             from google.oauth2 import credentials as oauth2_credentials
-            return firestore.Client(project=project_id, credentials=oauth2_credentials.Credentials(token))
+            return firestore.Client(credentials=oauth2_credentials.Credentials(token), **kwargs)
         except Exception as cli_error:
             raise DurableStorageUnavailable(
                 f"No Firestore client for project '{project_id}' and HODI_OFFLINE is not set. "
@@ -118,10 +126,22 @@ class AgentGateway:
     """
 
     def __init__(self, offline_reads: Optional[Dict[str, List[dict]]] = None,
-                 lease_ledger: Optional["LeaseLedger"] = None):
+                 lease_ledger: Optional["LeaseLedger"] = None,
+                 domains: Optional["DomainServiceClient"] = None):
         self.denial_events: list = []
         project_id = os.environ.get("GCP_PROJECT_ID", "hodi-2026")
-        self.db = _build_firestore_client(project_id)
+        self._project_id = project_id
+        # Remote half of the split fleet. Empty unless HODI_DOMAIN_SERVICE_URLS
+        # is set by the deploy, so in-process behaviour — and therefore the
+        # credential-free demo and the whole offline suite — is unchanged.
+        # Injectable so the split can be exercised without credentials or a
+        # network; env-driven by default, and empty unless a deploy set it.
+        self._domains = domains if domains is not None else DomainServiceClient()
+        # One client PER DATABASE, built lazily. `self.db` remains the
+        # `(default)` client: the grant log lives there and most of this
+        # class still reads it directly.
+        self._clients: Dict[str, Any] = {}
+        self.db = self._db_for_database("(default)")
         # Documents served to read_collection when there is no live Firestore
         # (HODI_OFFLINE / tests), keyed by collection. Policy enforcement still
         # runs first, so an offline read is denied exactly when a live one is —
@@ -351,11 +371,39 @@ class AgentGateway:
             "payload": payload
         }
 
+    def _db_for_database(self, database: str):
+        """Lazily-built client for one named database (HOD-733)."""
+        if database not in self._clients:
+            self._clients[database] = _build_firestore_client(self._project_id, database)
+        return self._clients[database]
+
+    def _db_for(self, calling_role_key: str, target_collection: str):
+        """
+        The client this (role, collection) pair must use.
+
+        Domain data goes to the role's domain database, where that role's IAM
+        grant is CONDITIONED to that database — so a foreign-domain read is
+        refused by Google IAM before any application code runs. The shared
+        collections (the grant log above all) stay in `(default)`.
+        """
+        return self._db_for_database(
+            database_for_collection(calling_role_key, target_collection))
+
     def read_collection(self, calling_sa: str, calling_role_key: str, target_collection: str,
                         filters: Dict[str, Any] = None, session_context: Dict[str, Any] = None,
                         identity: Optional["CallerIdentity"] = None) -> List[Dict[str, Any]]:
         self._enforce(calling_sa, calling_role_key, target_collection, filters=filters,
                       session_context=session_context, identity=identity)
+        # Delegate BEFORE the offline branch, because delegation is decided by
+        # policy and configuration, not by whether this process happens to hold
+        # a Firestore client. `DomainServiceClient.handles()` is False under
+        # HODI_OFFLINE, so the credential-free demo can never reach the network
+        # here — but a test may inject a client and exercise the real path.
+        if self._domains.handles(calling_role_key) \
+                and database_for_collection(calling_role_key, target_collection) != "(default)":
+            return self._domains.read(calling_role_key, target_collection,
+                                      filters, session_context)
+
         if not self.db:
             # Offline: serve injected documents plus anything written through
             # this gateway instance (a read after a write must see the write,
@@ -367,7 +415,7 @@ class AgentGateway:
                 docs = [d for d in docs if all(d.get(k) == v for k, v in filters.items())]
             return docs
 
-        coll = self.db.collection(target_collection)
+        coll = self._db_for(calling_role_key, target_collection).collection(target_collection)
         if filters:
             for k, v in filters.items():
                 coll = coll.where(k, "==", v)
@@ -431,7 +479,13 @@ class AgentGateway:
             # OPERATION-DERIVED deterministic ids (HOD-708) the collision is
             # the idempotency signal, surfaced as DocumentAlreadyExists.
             try:
-                self.db.collection(target_collection).document(doc_id).create(data)
+                if self._domains.handles(calling_role_key) \
+                        and database_for_collection(calling_role_key,
+                                                    target_collection) != "(default)":
+                    self._domains.write(calling_role_key, target_collection, doc_id, data)
+                else:
+                    self._db_for(calling_role_key, target_collection) \
+                        .collection(target_collection).document(doc_id).create(data)
             except gcloud_exceptions.AlreadyExists:
                 raise DocumentAlreadyExists(target_collection, doc_id)
         else:
@@ -458,10 +512,28 @@ class AgentGateway:
             self._enforce(calling_sa, calling_role_key, collection)
             self._enforce_lease(calling_sa, calling_role_key, collection, lease_id)
 
+        # A Firestore batch is PER DATABASE. Once collections can route to
+        # different databases, a batch spanning two of them cannot be atomic —
+        # and the whole point of this method is that the caller gets all the
+        # writes or none. Refuse rather than quietly degrade into two batches:
+        # the idempotency machinery (HOD-708) depends on the revocation event
+        # and its outbox record landing together, and a silently non-atomic
+        # "atomic" write is how a double-issued notice becomes possible.
+        databases = {database_for_collection(calling_role_key, c) for c, _d, _x in writes}
+        if len(databases) > 1:
+            self._deny(
+                calling_sa=calling_sa, calling_role_key=calling_role_key,
+                target_collection=",".join(sorted({c for c, _d, _x in writes})),
+                policy="domain_database_routing_v1",
+                reason=("Atomic write spans multiple Firestore databases "
+                        f"({sorted(databases)}); Firestore cannot commit that as one batch, "
+                        "and this method's contract is all-or-none."))
+
         if self.db:
-            batch = self.db.batch()
+            db = self._db_for_database(next(iter(databases)))
+            batch = db.batch()
             for collection, doc_id, data in writes:
-                batch.create(self.db.collection(collection).document(doc_id), data)
+                batch.create(db.collection(collection).document(doc_id), data)
             try:
                 batch.commit()
             except gcloud_exceptions.AlreadyExists:
