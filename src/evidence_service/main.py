@@ -9,6 +9,12 @@ from fastapi.staticfiles import StaticFiles
 from google.cloud import firestore
 from src.api.buyer_api import router as buyer_router
 from src.gateway.gateway import GatewayPolicyDenial
+from opentelemetry import trace as otel_trace
+from src.observability.tracing import active_exporter_kind
+
+# Resolved once at import, the same way the provider resolved its exporter, so
+# the middleware costs nothing on the console path.
+_TRACE_FLUSH_NEEDED = active_exporter_kind() == "cloud_trace"
 
 # Configure structured logging
 logging.basicConfig(
@@ -21,6 +27,40 @@ app = FastAPI(title="Hodi Evidence Endpoint", version="1.3.0")
 
 # Import Buyer API
 app.include_router(buyer_router)
+
+@app.middleware("http")
+async def flush_spans_before_the_instance_freezes(request: Request, call_next):
+    """
+    Push buffered spans to the durable backend before the response returns.
+
+    WHY THIS IS NECESSARY AND WAS NOT OBVIOUS. `BatchSpanProcessor` flushes on a
+    BACKGROUND THREAD. Cloud Run throttles a container's CPU to approximately
+    nothing between requests, so that thread does not get scheduled: spans are
+    created correctly, the exporter is built correctly, no error is logged
+    anywhere — and nothing is ever written. Measured directly: with
+    HODI_TRACE_EXPORT=cloud set and the exporter constructing without error,
+    four real requests produced ZERO traces in the Cloud Trace API.
+
+    That is the most dangerous shape a defect can take in this project: every
+    component reports success and the claim is still false. The fix is one
+    bounded flush inside the request, where CPU is guaranteed.
+
+    It is a no-op unless the cloud exporter is actually the active one, so the
+    credential-free offline path and the console exporter are untouched.
+    """
+    response = await call_next(request)
+    if _TRACE_FLUSH_NEEDED:
+        try:
+            provider = otel_trace.get_tracer_provider()
+            if hasattr(provider, "force_flush"):
+                # Bounded: a slow trace backend must never hold a licensing
+                # decision open. A dropped span is an observability loss; a
+                # hung request is an outage.
+                provider.force_flush(timeout_millis=2000)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Span flush failed, spans for this request may be lost: {e}")
+    return response
+
 
 @app.exception_handler(GatewayPolicyDenial)
 async def gateway_policy_denial_handler(request: Request, exc: GatewayPolicyDenial):

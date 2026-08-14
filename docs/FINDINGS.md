@@ -510,3 +510,39 @@ HTTP 422  {"type":"missing","loc":["body","work_id"],"msg":"Field required"}
 **Where it landed.** Staging green, then production green with write-back: [run 31827960181](https://github.com/Jeremiah-Sakuda/Hodi/actions/runs/31827960181) recorded six capabilities as verified against revision `00046-fmn`, **including itself**, and the evidence is the run URL. `scripted_not_executed` went from two capabilities to one.
 
 **The lesson, and it is not about CI.** This project's discipline is that a claim must be derived from its evidence. `scripted_not_executed` was an honest label, and honest labelling made the gap comfortable enough to leave. **A check that has never run is not a weaker check — it is an unknown**, and four of the things it turned out to be checking were false.
+
+---
+
+## Named finding — the durable trace backend could never have worked, and three separate mechanisms each reported success while it didn't
+
+**Found:** 2026-08-14 · **Requirements:** HOD-714, HOD-732 · **Status:** executed, verified live against a real trace id, guarded
+
+**The setting was a no-op.** `HODI_TRACE_EXPORT=cloud` selected a Cloud Trace exporter, and `opentelemetry-exporter-gcp-trace` **was not in `requirements.lock`**. The import therefore failed, the code caught the exception, and the `except` block was a bare `pass`. For the entire life of that setting the "durable trace backend" could only ever have been the console exporter. The service started healthy, spans kept printing to stdout, and nothing anywhere said otherwise. This is why the capability was honestly marked `scripted_not_executed` — but that label described a script that had not been run, when the truth was a mechanism that could not have run.
+
+**Then it still didn't work, for a completely different reason.** With the package pinned and the exporter constructing without error, four real requests produced **zero** traces. `BatchSpanProcessor` flushes on a background thread, and Cloud Run throttles a container's CPU to approximately nothing between requests, so that thread is never scheduled. No error, no warning, no spans. Fixed with one bounded `force_flush` inside the request, where CPU is guaranteed — a dropped span is an observability loss, a hung request is an outage, so the flush has a 2-second ceiling.
+
+**And then the measuring instrument turned out to be broken.** Having found zero traces, the obvious conclusion was that export was still failing. It was not. `cloudtrace.googleapis.com/v1/…/traces` **`LIST`** returned 0 results for a window in which a span demonstrably existed — proven by writing a known span via `v2 batchWrite` and fetching it back by id, which **found** it, while the same span was absent from `LIST` over the same window. **The oracle could not detect a true positive.** Every "0 traces" reading up to that point was an artifact of the query, not a measurement of the system. Trace ids now come from the Cloud Run request log and from the API response, and are fetched by id.
+
+**And the id being reported was the wrong trace.** The endpoint wrapped the delegation in its own root span and returned that span's trace id. The ADK runner starts its **own** root `invocation` span in its own execution context, so the delegation is one coherent trace that an outer wrapper does not adopt. Measured locally against a collecting exporter: **12 spans, 11 correlated under ADK's root and the wrapper alone in a second trace.** Cloud Trace confirmed it exactly — the returned id resolved to a single useless span. The id is now read from inside the run, by the agents themselves, so it names the trace the waterfall is actually in.
+
+**What is now true, and checkable by anyone.** `POST /api/v1/fleet/delegation_drill` returns the `trace_id` it wrote and the `trace_exporter` that wrote it. Trace `35f6bc26c177a22e99d7d491ead3b6b1`, retrieved from Cloud Trace by id, contains **11 spans in one waterfall**:
+
+```
+invocation
+   invoke_agent fleet_orchestrator
+      invoke_agent licensing_negotiator
+         negotiator.read_grants          identity=licensing-negotiator-sa  policy=gateway_policy_v1      outcome=PERMITTED
+      registry.discover                  identity=licensing-negotiator-sa  policy=registry_role_scope_v1 outcome=NOT_DISCLOSED
+      invoke_agent rights_custodian
+         custodian.initiate_revocation   identity=rights-custodian-sa      policy=gateway_policy_v1      outcome=INITIATED
+      registry.discover                  identity=rights-custodian-sa      policy=registry_role_scope_v1 outcome=DISCOVERED
+      invoke_agent revocation_propagator
+         propagator.execute_cascade      identity=revocation-propagator-sa policy=supervisor_deadline_v1 outcome=ABANDONED
+      supervisor.quarantine_and_reroute  identity=revocation-propagator-sa policy=quarantine_policy_v1   outcome=QUARANTINED_AND_REROUTED
+```
+
+The conflict topology is legible in the trace itself: the buyer's negotiator asks the registry for the propagator and gets `NOT_DISCLOSED`; the artist's custodian asks and gets `DISCOVERED`.
+
+**What is now structural.** `tests/test_trace_backend_honesty.py` asserts the exporter is pinned to an exact version, that the cloud→console fallback logs at ERROR and names what to check, that `deploy.sh` verifies **both** the API and `roles/cloudtrace.agent` before setting the flag, that a requested-but-unavailable backend is reported as its own distinct value rather than collapsing into `console`, and that the drill returns the fleet's trace id rather than one it minted. Mutation-verified against all three real defects.
+
+**The lesson.** Four mechanisms in sequence — an env var, an exporter, a flush, an id — each reported success, and the claim was false at every step. The one that cost the most was the broken oracle, because it produced confident evidence *for* a wrong conclusion. **Before believing a negative result, check that the instrument can detect a positive one.**

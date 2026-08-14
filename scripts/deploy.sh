@@ -74,6 +74,24 @@ else
   echo "  revocation worker: not deployed — registry keeps the in-process placeholder"
 fi
 
+# Durable trace backend, set only if BOTH halves of it actually exist: the API
+# enabled, and the runtime identity holding roles/cloudtrace.agent. Setting
+# HODI_TRACE_EXPORT=cloud without those makes the exporter fail to build and the
+# service fall back to the console — spans still print, nothing durable is
+# written, and the deployment looks healthy the whole time. That fallback is now
+# loud (src/observability/tracing.py), but the deploy should not create the
+# condition in the first place.
+if gcloud services list --enabled --project "${PROJECT_ID}" --format='value(config.name)' 2>/dev/null \
+     | grep -qx "cloudtrace.googleapis.com" \
+   && gcloud projects get-iam-policy "${PROJECT_ID}" --flatten='bindings[].members' \
+        --filter="bindings.members:serviceAccount:${RUNTIME_SA} AND bindings.role:roles/cloudtrace.agent" \
+        --format='value(bindings.role)' 2>/dev/null | grep -q .; then
+  ENV_VARS="${ENV_VARS:+${ENV_VARS},}HODI_TRACE_EXPORT=cloud"
+  echo "  traces: Cloud Trace (API enabled, runtime identity holds cloudtrace.agent)"
+else
+  echo "  traces: console only — cloudtrace API or roles/cloudtrace.agent missing"
+fi
+
 gcloud run deploy "${SERVICE}" \
   --source . \
   --region "${REGION}" \

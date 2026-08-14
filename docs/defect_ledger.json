@@ -107,6 +107,11 @@
           "id": "registry-test-assumed-an-empty-durable-store",
           "summary": "test_discovery_does_not_disclose_deregistered_agents asserted len(found)==1 against AgentRegistry(), which defaults to the durable append-only store. It holds only against an empty registry, so it failed on a system behaving correctly. Rewritten to assert the actual property against a per-run agent id.",
           "source": "docs/FINDINGS.md — a capability recorded as scripted, never run"
+        },
+        {
+          "id": "trace-list-oracle-could-not-see-a-true-positive",
+          "summary": "The check used to conclude 'no traces are landing' was itself broken: the Cloud Trace v1 LIST endpoint returned 0 results for a window in which a span demonstrably existed — proven by writing one via v2 batchWrite and fetching it back by id, which found it. Every zero reading was an artifact of the query, producing confident evidence for a wrong conclusion.",
+          "source": "docs/FINDINGS.md — the durable trace backend could never have worked"
         }
       ]
     },
@@ -124,6 +129,11 @@
           "id": "ci-verifier-required-signing-power",
           "summary": "The live-verification workflow's KMS step required roles/cloudkms.signer on the CI identity — the power to forge any Hodi receipt — to sign a receipt and then verify the signature it had just made. A closed loop proving CI can use a key, not that the service is honest. It also set HODI_SIGNING=kms without HODI_KMS_KEY_VERSION, so it could never have run.",
           "source": "docs/FINDINGS.md — a capability recorded as scripted, never run"
+        },
+        {
+          "id": "batch-span-flush-never-scheduled-on-cloud-run",
+          "summary": "With the exporter finally building, four real requests still produced zero traces: BatchSpanProcessor flushes on a background thread and Cloud Run throttles CPU to nothing between requests, so the flush was never scheduled. No error, no warning, no spans. Fixed with a bounded force_flush inside the request.",
+          "source": "docs/FINDINGS.md — the durable trace backend could never have worked"
         }
       ]
     },
@@ -141,6 +151,11 @@
           "id": "recording-script-missing-work-id",
           "summary": "docs/VIDEO-SCRIPT.md carried a top banner warning that work_id had become mandatory on /api/v1/license and /api/v1/license/natural, while three of its four on-camera command bodies still omitted it. Executed against the deployed service on 2026-08-14, Beat 3 and the hero's Frames A and C each returned HTTP 422 'work_id Field required'. The warning was correct for days and changed nothing, because a banner is not a mechanism. Fixed and guarded by tests/test_recording_script_contract.py, which derives the route-to-model table from src/api/buyer_api.py rather than transcribing it.",
           "source": "docs/FINDINGS.md — the recording script would have failed on camera"
+        },
+        {
+          "id": "trace-exporter-never-in-the-lockfile",
+          "summary": "HODI_TRACE_EXPORT=cloud selected a Cloud Trace exporter whose package was not in requirements.lock, so the import failed and a bare `except: pass` fell back to the console. The durable trace backend could ONLY ever have been the console exporter, and the service reported healthy throughout.",
+          "source": "docs/FINDINGS.md — the durable trace backend could never have worked"
         }
       ]
     },
@@ -210,6 +225,11 @@
           "id": "manifest-row-replacement-erased-seed-fields",
           "summary": "GET /works unioned the committed seed with persisted rows at ROW level, so every persisted row silently deleted the eight fields it did not carry: no canary on any work, no control_proof on the one verified_control work, and /works/{id}/proof answering HTTP 500. Overriding what a row asserts is correct; erasing what it is silent about is not.",
           "source": "docs/FINDINGS.md — the public manifest was serving no canaries"
+        },
+        {
+          "id": "delegation-drill-returned-the-wrong-trace-id",
+          "summary": "The drill wrapped the delegation in its own root span and returned that trace id. The ADK runner roots its own `invocation` span in its own execution context, so the delegation is a different trace the wrapper does not adopt — measured as 12 spans, 11 under ADK's root and the wrapper alone in a second trace. The returned id resolved in Cloud Trace to a single useless span.",
+          "source": "docs/FINDINGS.md — the durable trace backend could never have worked"
         }
       ]
     },
