@@ -96,20 +96,22 @@
   "h6_revocation_cascade_real_corpus_scale": {
     "measurement_surface": "deployed-over-network",
     "idle_forcing_method": "revision-update (gcloud run services update)",
-    "measured_at_utc": "2026-08-12T16:45:00Z",
+    "measured_at_utc": "2026-08-14T17:05:00Z",
     "runtime_identity": "hodi-runtime-sa (append+read only; no datastore update/delete)",
-    "cold_start_ms": 3049.0,
+    "cold_start_ms": 2263.0,
     "warm_runs_ms": [
-      461.0,
-      479.0,
-      496.0,
-      506.0,
       644.0,
-      527.0
+      659.0,
+      688.0,
+      696.0,
+      733.0,
+      759.0,
+      851.0,
+      863.0
     ],
-    "warm_avg_ms": 518.8,
-    "note": "Re-measured 2026-08-12 after two changes on the deployed path: the cascade selection was corrected (a grant is terminated iff it PERMITS the revoked use, not iff the revoked type contains it), and /api/v1/revoke now verifies the authenticated artist owns the work via a rights-custodian read of `works` before any append. Warm latency is unchanged (~0.5 s); the ownership read is marginal. The prior ~150 ms rise over the pre-2026-08-10 editor-SA revision is the cost of append-only being enforced by runtime IAM (.create() existence-check + viewer-role reads).",
-    "revision": "hodi-evidence-endpoint-00039-846"
+    "warm_avg_ms": 736.6,
+    "note": "Re-measured 2026-08-14 on revision 00045-dkz, the first deployment carrying both parallel sessions' work. Warm rose from ~519 ms to ~737 ms: the cascade now takes an execution lease and writes an idempotency outbox record alongside the revocation event, so a retry cannot double-issue a notice and an abandoned worker cannot commit late. The added ~220 ms is the cost of exactly-once business effects; it is reported rather than absorbed because the recording script quotes this figure.",
+    "revision": "hodi-evidence-endpoint-00045-dkz"
   },
   "natural_language_license_path": {
     "measurement_surface": "deployed-over-network",
