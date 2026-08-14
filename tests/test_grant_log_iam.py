@@ -214,9 +214,20 @@ class TestDeployedRuntimeIdentityCannotRewriteHistory(unittest.TestCase):
             raise unittest.SkipTest(f"could not read runtime SA for '{cls.service}'")
         cls.runtime_sa = described.stdout.strip()
 
-        policy = json.loads(subprocess.run(
+        # check=True raised a bare CalledProcessError with gcloud's stderr
+        # discarded, so a permission problem in CI surfaced as an eight-line
+        # traceback naming no cause. A verification step that cannot say why it
+        # failed is most of the way to not being a verification step.
+        got = subprocess.run(
             ["gcloud", "projects", "get-iam-policy", cls.project, "--format=json"],
-            capture_output=True, text=True, check=True).stdout)
+            capture_output=True, text=True)
+        if got.returncode != 0:
+            raise AssertionError(
+                "could not read the project IAM policy, so the runtime identity's roles "
+                "cannot be proven.\n"
+                f"  exit: {got.returncode}\n"
+                f"  stderr: {got.stderr.strip()[:800]}")
+        policy = json.loads(got.stdout)
         member = f"serviceAccount:{cls.runtime_sa}"
         cls.roles = sorted(b["role"] for b in policy["bindings"] if member in b.get("members", []))
 
