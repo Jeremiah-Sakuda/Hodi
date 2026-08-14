@@ -260,16 +260,16 @@ Every "is it deployed" claim below is **generated** from [docs/deployment_status
 
 | Capability | State | Evidence | Last verified (UTC) |
 |---|---|---|---|
-| `evidence_endpoint` | ✓ verified | https://github.com/Jeremiah-Sakuda/Hodi/actions/runs/31827960181 | 2026-08-14T18:18:54Z |
-| `append_only_runtime_identity` | ✓ verified | https://github.com/Jeremiah-Sakuda/Hodi/actions/runs/31827960181 | 2026-08-14T18:18:54Z |
-| `cross_buyer_boundary_over_network` | ✓ verified | https://github.com/Jeremiah-Sakuda/Hodi/actions/runs/31827960181 | 2026-08-14T18:18:54Z |
+| `evidence_endpoint` | ✓ verified | https://github.com/Jeremiah-Sakuda/Hodi/actions/runs/31833084705 | 2026-08-14T19:25:36Z |
+| `append_only_runtime_identity` | ✓ verified | https://github.com/Jeremiah-Sakuda/Hodi/actions/runs/31833084705 | 2026-08-14T19:25:36Z |
+| `cross_buyer_boundary_over_network` | ✓ verified | https://github.com/Jeremiah-Sakuda/Hodi/actions/runs/31833084705 | 2026-08-14T19:25:36Z |
 | `gemini_scope_interpretation` | ✓ verified | docs/metrics.json :: natural_language_license_path (deployed-over-network timings) | 2026-08-07T18:43:00Z |
 | `conflict_domain_separation` | ▣ in-process only | HODI_E2E=1 tests.test_workload_identity (live IAM denial, 7/7); tests.test_identity_binding + tests.test_caller_identity (offline); make demo-live (deployed, over the network) | 2026-08-14T17:00:00Z |
-| `kms_signing` | ✓ verified | https://github.com/Jeremiah-Sakuda/Hodi/actions/runs/31827960181 | 2026-08-14T18:18:54Z |
-| `per_domain_databases` | ✓ verified | https://github.com/Jeremiah-Sakuda/Hodi/actions/runs/31827960181 | 2026-08-14T18:18:54Z |
+| `kms_signing` | ✓ verified | https://github.com/Jeremiah-Sakuda/Hodi/actions/runs/31833084705 | 2026-08-14T19:25:36Z |
+| `per_domain_databases` | ✓ verified | https://github.com/Jeremiah-Sakuda/Hodi/actions/runs/31833084705 | 2026-08-14T19:25:36Z |
 | `split_revocation_worker` | ✓ verified | scripts/deploy_revocation_worker.sh (executed 2026-08-14; proves the deployed identity, permissions and invocation before reporting success) | 2026-08-14T00:00:00Z |
 | `durable_trace_backend` | ✓ verified | Cloud Trace traceId 35f6bc26c177a22e99d7d491ead3b6b1 — 11 spans, retrieved via cloudtrace.googleapis.com/v1/projects/hodi-2026/traces/{id}: invocation > invoke_agent fleet_orchestrator > {licensing_negotiator PERMITTED, registry.discover NOT_DISCLOSED, rights_custodian INITIATED, registry.discover DISCOVERED, revocation_propagator ABANDONED, supervisor QUARANTINED_AND_REROUTED} | 2026-08-14T19:20:00Z |
-| `live_release_verification` | ✓ verified | https://github.com/Jeremiah-Sakuda/Hodi/actions/runs/31827960181 | 2026-08-14T18:18:54Z |
+| `live_release_verification` | ✓ verified | https://github.com/Jeremiah-Sakuda/Hodi/actions/runs/31833084705 | 2026-08-14T19:25:36Z |
 | `scheduled_jobs` | ✓ verified | Cloud Logging: resource.type=cloud_scheduler_job, job_id=hodi-daily-accrual-audit, AttemptFinished 2026-08-14T09:00:58Z 'Original HTTP response code number = 200'; docs/metrics.json :: daily_crawler_accrual_metrics (rows persisted by that job); Google-Cloud-Scheduler appears in distinct_user_agents | 2026-08-14T17:20:00Z |
 
 `○ scripted, never run` means exactly that: the script is in this repository and reproducible, and it has not been executed against the live project. `▣ in-process only` means the boundary is enforced by application code inside one Cloud Run process — real and tested, but not a cloud-infrastructure boundary.
