@@ -42,9 +42,23 @@ URLS = {"rights_custodian": "https://custodian.example",
 
 
 class EnvIsolated(unittest.TestCase):
+    """
+    Restores EVERY variable it sets, including HODI_OFFLINE.
+
+    The first version captured only the two domain variables and set
+    HODI_OFFLINE=1 without restoring it — so every test that ran afterwards in
+    the same process inherited a declared-offline run. It was invisible locally,
+    because the offline suite is already HODI_OFFLINE=1, and it broke the LIVE
+    suite in CI: `FirestoreEventStore constructed under HODI_OFFLINE=1`. This
+    project has made this exact mistake before, in tearDownModule, where it
+    turned an 18-second suite into 186 seconds. A test that leaks environment is
+    a test that decides what other tests are allowed to be.
+    """
+
+    MUTATES = ("HODI_DOMAIN_SERVICE_URLS", "HODI_SERVICE_ROLE", "HODI_OFFLINE")
+
     def setUp(self):
-        self._prior = {k: os.environ.get(k)
-                       for k in ("HODI_DOMAIN_SERVICE_URLS", "HODI_SERVICE_ROLE")}
+        self._prior = {k: os.environ.get(k) for k in self.MUTATES}
         os.environ["HODI_OFFLINE"] = "1"
 
     def tearDown(self):

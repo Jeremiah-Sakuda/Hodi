@@ -181,6 +181,16 @@ class TestFrontDoorCannotReachDomainDatabases(unittest.TestCase):
         creds = impersonated_credentials.Credentials(
             source_credentials=source, target_principal=sa_email,
             target_scopes=["https://www.googleapis.com/auth/cloud-platform"])
+        # MINT THE TOKEN NOW. Impersonated credentials are lazy: building them
+        # always succeeds, and the failure to mint surfaces later, inside the
+        # gRPC read, as a transport error indistinguishable from the
+        # PermissionDenied this test is trying to observe. That is how the first
+        # CI run turned "this runner may not impersonate" into six errors and
+        # twenty-four minutes of retries. Refreshing here separates "cannot
+        # act as this identity" (skip) from "acted as it and was refused"
+        # (the assertion).
+        from google.auth.transport.requests import Request as _AuthRequest
+        creds.refresh(_AuthRequest())
         return firestore.Client(project=project, credentials=creds, database=database)
 
     def test_front_door_is_denied_every_domain_database(self):
