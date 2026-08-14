@@ -49,7 +49,13 @@ echo "==========================================================================
 
 echo
 echo "[1] APIs"
-for api in iamcredentials.googleapis.com sts.googleapis.com; do
+# cloudresourcemanager is here because of a failure worth naming: the
+# append-only IAM proof (tests/test_grant_log_iam.py) reads the project policy,
+# and that had only ever run from a developer laptop, where USER credentials
+# take a different quota path. From a service identity it could not run at all
+# — the API had never been enabled on this project. A check that only passes
+# under one particular set of credentials is not a property of the system.
+for api in iamcredentials.googleapis.com sts.googleapis.com cloudresourcemanager.googleapis.com; do
   if gcloud services list --enabled --project="$PROJECT_ID" --format='value(config.name)' \
        | grep -qx "$api"; then
     ok "$api already enabled"
