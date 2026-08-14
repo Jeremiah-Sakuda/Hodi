@@ -74,7 +74,16 @@ class TestBuyerApiE2E(unittest.TestCase):
         })
 
     def _scope_body(self, raw_document: bytes):
+        # work_id is REQUIRED on ScopeRequest and has no default. This body
+        # omitted it and every request here returned 422 rather than exercising
+        # anything — for as long as work-scoping had existed, because nothing
+        # ran these tests: they are HODI_E2E-gated, the offline suite skips
+        # them, and the workflow that runs them (verify-live.yml) had never
+        # executed. The seeded grant is on "w1", so that is what a permit must
+        # be requested against.
         return {
+            "work_id": self.active_grant.work_id,
+            "counterparty_id": E2E_COUNTERPARTY,
             "requested_scope": {
                 "use_type": "fine_tuning", "model_class": "open_weights",
                 "attribution_required": True, "commercial": False,

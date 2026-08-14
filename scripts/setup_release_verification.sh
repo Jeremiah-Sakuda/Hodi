@@ -102,10 +102,15 @@ fi
 
 # Deliberately narrow. Read what is deployed, read the public key, and write only
 # to the collections the E2E suite is documented to write to.
+# roles/iam.securityReviewer is READ-ONLY on IAM. It is here because
+# tests/test_grant_log_iam.py proves the deployed runtime identity holds no
+# datastore update/delete by READING the project policy; without it the test
+# errors in setUpClass and the append-only claim goes unproven in CI.
 for role in roles/run.viewer \
             roles/cloudkms.publicKeyViewer \
             roles/datastore.user \
             roles/logging.viewer \
+            roles/iam.securityReviewer \
             roles/cloudscheduler.viewer; do
   if gcloud projects get-iam-policy "$PROJECT_ID" \
        --flatten="bindings[].members" \
@@ -140,6 +145,33 @@ for wif_role in roles/iam.workloadIdentityUser roles/iam.serviceAccountTokenCrea
     --member="$PRINCIPAL" --quiet >/dev/null
   ok "${wif_role#roles/iam.} bound to attribute.repository/${REPO}"
 done
+
+echo
+echo "[4b] impersonation of ONE fleet identity, to prove a denial"
+# tests/test_workload_identity.py proves the evidence agent CANNOT read the
+# identity database. Proving a denial requires being able to attempt it, so the
+# verifier must be able to act as that one agent — and only that one.
+#
+# Stated plainly rather than buried: this is the largest privilege the verifier
+# holds. It is bounded by the evidence agent's own scope, which the per-domain
+# split already narrows to its own database, so the blast radius is exactly the
+# thing the architecture claims to bound. It is granted PER SERVICE ACCOUNT, not
+# project-wide, so it does not extend to the custodian, the negotiator or the
+# propagator.
+EVIDENCE_SA="evidence-agent-sa@${PROJECT_ID}.iam.gserviceaccount.com"
+gcloud iam service-accounts add-iam-policy-binding "$EVIDENCE_SA" \
+  --project="$PROJECT_ID" --role="roles/iam.serviceAccountTokenCreator" \
+  --member="serviceAccount:$SA" --quiet >/dev/null
+ok "verifier may impersonate ${EVIDENCE_SA} (only, and only to prove it is denied)"
+for other in rights-custodian-sa licensing-negotiator-sa revocation-propagator-sa consent-arbiter-sa; do
+  if gcloud iam service-accounts get-iam-policy "${other}@${PROJECT_ID}.iam.gserviceaccount.com" \
+       --project="$PROJECT_ID" --flatten='bindings[].members' \
+       --filter="bindings.members:serviceAccount:$SA" \
+       --format='value(bindings.role)' 2>/dev/null | grep -q .; then
+    die "verifier can impersonate ${other} — it was scoped to the evidence agent alone."
+  fi
+done
+ok "verifier cannot impersonate the other four domain identities"
 
 echo
 echo "[5] PROOF — the narrowing is present, read back from IAM"

@@ -12,6 +12,7 @@ same fold against real Firestore with two separate clients.
 
 import os
 import unittest
+import uuid
 from datetime import datetime, timedelta, timezone
 
 from src.memory.event_store import InMemoryEventStore, DuplicateEventId
@@ -116,12 +117,29 @@ class TestRegistrySurvivesInstanceDeath(unittest.TestCase):
         self.assertEqual(history["negotiator-v1"].status, "deregistered")
 
     def test_discovery_does_not_disclose_deregistered_agents(self):
+        """
+        The property is about THIS agent, not about the registry's population.
+
+        This asserted `len(found) == 1` and `discover(...) == []`, which holds
+        only against an empty registry. AgentRegistry() now defaults to the
+        DURABLE store (see test_the_default_registry_is_durable_not_process_local
+        below), and that store is append-only and shared, so under HODI_E2E the
+        registry legitimately contains publications from earlier runs and both
+        assertions fail on a system that is behaving correctly. An oracle that
+        only passes against a world nobody deployed is not testing the property.
+        """
         registry = AgentRegistry()
-        registry.register(_pub("propagator-v1", "revocation_propagator"))
-        found = registry.discover("revocation_propagator", "rights_custodian")
-        self.assertEqual(len(found), 1)
-        registry.deregister("propagator-v1", reason="quarantined_by_supervisor")
-        self.assertEqual(registry.discover("revocation_propagator", "rights_custodian"), [])
+        agent_id = f"propagator-e2e-{uuid.uuid4().hex[:8]}"
+        registry.register(_pub(agent_id, "revocation_propagator"))
+
+        def ids():
+            return {p.agent_id for p in
+                    registry.discover("revocation_propagator", "rights_custodian")}
+
+        self.assertIn(agent_id, ids(), "a registered agent was not discoverable")
+        registry.deregister(agent_id, reason="quarantined_by_supervisor")
+        self.assertNotIn(agent_id, ids(),
+                         "a deregistered agent is still disclosed by discovery")
 
     def test_non_disclosure_for_unauthorized_roles_is_unchanged(self):
         registry = AgentRegistry()
