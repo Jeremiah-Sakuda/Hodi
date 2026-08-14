@@ -361,3 +361,43 @@ The judge-feedback build touched three Google surfaces materially. Recording wha
 **OTel → Cloud Trace is a one-line processor swap, and the discipline is keeping attributes exporter-independent.** The span attributes a Fleet judge cares about (`agent.identity`, `policy.consulted`, `outcome`) are set on the span regardless of destination; only the `BatchSpanProcessor`'s exporter changes (`ConsoleSpanExporter` → `CloudTraceSpanExporter`), gated on `HODI_TRACE_EXPORT=cloud` and a non-offline environment. The failure mode worth flagging: an unavailable exporter must degrade to console, never throw — losing a delegation's spans to a backend hiccup is worse than printing them. The Antigravity finding from Aug 8 stands unchanged (no headless multi-agent surface; ADK + OTel carry the three required attributes), and this makes the "durable backend, not just console" half of the observability story real without touching the span schema.
 
 **Assertion authority as a second policy plane.** The most reusable idea from this build for the broader agent-systems audience: zero trust is usually framed as data access ("who may read X"). Applying the identical mechanism — data-declared policy, gateway-enforced, structured denial — to *epistemic* authority ("who may CLAIM X") cost almost nothing to add beside the existing collection policy, and it is what lets a downstream adjudicator's conclusion be reproduced rather than trusted. The structural refusal composes with the schema: the claim a role must never make (training membership) simply has no assertion class, so it dies at construction before the authority check runs.
+
+---
+
+## Named finding — `verbatim_match` was a rubber stamp, and the README said the checking code existed
+
+**Found:** 2026-08-14, by an ideation panel asked where one more model could go — it answered "nowhere; fix this instead"
+**Requirements:** HOD-320, HOD-350, HOD-620
+**Status:** closed — both methods now check, the false sentence is corrected in place
+
+**The defect.** `EvidenceEngine.process_verbatim_match(prompt, generated_output, work_id, source_uri)` **read neither `prompt` nor `generated_output`.** It built a constant detail string — an f-string with no interpolation fields — and emitted an `EvidenceRecord` unconditionally. `process_redistribution(work_id, mirror_uri)` was worse: it took no content parameter at all, so it could not have verified a redistribution even in principle, and emitted one on every call.
+
+**The test blessed it.** `tests/test_evidence_engine.py` passed `generated_output="Verbatim essay excerpt"` — sharing nothing with `work-essay-001` or any other registered work — then asserted a record **was** produced, checking only `class_name` and `claim_limit`. A test that cannot distinguish a match from a non-match is not a test of a matcher; it is a signature on the rubber stamp.
+
+**And the README claimed otherwise.** `README.md` stated, inside **"What Hodi will not claim"**: *"The class exists in the schema and the checking code exists; no live hit is claimed."* There was no checking code. That sentence sat among deliberately exact neighbours — 1613 accrued records with 1 crawler match, 4-of-12 measured lint coverage, `UNSIGNED_PLACEHOLDER` — and borrowed their credibility. It is the third time this project has published a claim its mechanism did not support, and the first where the false clause was inside the honesty section itself.
+
+**What mitigates it, stated so the correction is not overstated either.** `EvidenceEngine` has **no production caller** — it is imported only by two test files — so no such record was ever minted on the live service. The defect was latent, not exploited. That is also precisely why it was safe to fix days before a recording.
+
+**The fix, and why it is deliberately not a model.** `src/evidence/verbatim_probe.py` performs a longest-contiguous-token-run comparison over stdlib `difflib` against a **registered passage** (`fixtures/work_passages.json`), with a fixed published threshold of 12 normalized tokens. A run below threshold returns `None` — the outcome the old code could not produce. `process_redistribution` gained `mirror_content` and `canary_string` and now requires either exact canary containment or such a run.
+
+**"Verbatim" means exact, so an embedding would have been the wrong instrument.** Routing this through a similarity model would let a paraphrase mint a record typed `verbatim_match` — the same category error as naming a constant `SIG_REVOKED` and calling it a signature. The check is deterministic, offline, credential-free and explainable in one sentence. A model was considered for this slot and rejected on those grounds.
+
+**What is now structural.** Three tests assert the negative — unrelated output, a paraphrase, and a bare mirror URI each produce **no record** — and the positive case asserts the detail string describes *that* match (token count and matched-run hash) rather than a constant. Mutation-verified: restoring unconditional emission fails them. The README bullet now states what the check does, what it does not establish (co-occurrence of text, never training-set membership), and carries the dated correction of the sentence it replaced.
+
+---
+
+## Named finding — the overclaim lint rejected 4 of 12 paraphrases, and now rejects 12
+
+**Found:** 2026-08-08 (measured), addressed 2026-08-14 · **Requirements:** HOD-320, HOD-350 · **Status:** improved and re-measured; the schema remains the invariant
+
+**The disclosed weakness.** `OverclaimLint` is nine regexes. Measured against a 12-paraphrase probe set seeded from phrasings it was deliberately not written against, it rejected **4**. That number was published rather than hidden, and the README said plainly that the schema is the invariant and the lint only reduces the chance of a bad sentence.
+
+**The addition.** `src/evidence/semantic_backstop.py` embeds candidate text with `gemini-embedding-001` (pinned; probed HTTP 200 on 2026-08-14, `text-embedding-005` documented as fallback) and compares it to plain-language anchors. Measured coverage went **4/12 → 12/12**, with **0 of 9** legitimate texts falsely refused.
+
+**Why a model is admissible here and nowhere else.** Hodi's standing rule is that a model never decides anything. This one decides nothing about rights, grants, or evidence classification — it inspects text *Hodi itself is about to emit*, and it runs only **after** every regex has already declined to reject. So the composition is monotonic in strictness: there is no input for which enabling it PERMITS text the regexes would have blocked. A wrong embedding therefore yields a false refusal — Hodi emits the deterministic template instead of a drafted notice — never a false permission. `tests/test_semantic_backstop.py` asserts that property directly rather than describing it.
+
+**The bug this design was corrected for, before it shipped.** A one-sided similarity threshold **refused** *"This grant is hereby terminated. This revocation does not un-train the model."* Embeddings handle negation poorly: a sentence that DENIES the forbidden claim sits close to it. That was not hypothetical — every drafted notice is *required* to contain "does not un-train" (`src/llm/notice_drafter.py`), so the naive backstop would have refused the exact text the system exists to produce, degrading every notice to the template. The fix is nearest-anchor classification: a candidate is refused only if it is near a forbidden claim **and nearer to it than to anything Hodi is legitimately supposed to say** (`PERMITTED_CLAIM_ANCHORS`). `test_negated_claims_are_not_refused` keeps it fixed.
+
+**Both figures stay published.** `metrics.json` records `paraphrases_rejected: 12`, `rejected_by_regex_alone: 4`, and `rejected_by_semantic_backstop: 8`, because the second layer depends on a model that can regress or become unreachable — in which case coverage falls back to 4 and the backstop disables itself rather than guessing. `make check-docs` guards **both** numbers; claiming the fallback is 12 fails the build. Vectors are recorded from live Vertex into `fixtures/embedding_cache.json` by `make embedding-cache`, so `make demo` stays credential-free.
+
+**What has not changed.** The structural guarantee is still the schema: `EvidenceRecord` has no field capable of expressing training-set membership, and that — not the lint — is what stands between Hodi and the claim.

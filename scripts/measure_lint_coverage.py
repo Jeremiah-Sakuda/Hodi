@@ -68,11 +68,25 @@ def main() -> int:
         print(f"  - {m}")
 
     metrics = json.loads(METRICS.read_text())
+    # Record the REGEX-ONLY figure alongside the composed one. The backstop is a
+    # model, and a model can regress or become unreachable; publishing only the
+    # combined number would hide how much of the coverage depends on it.
+    import re as _re
+    regex_only = [p for p in PARAPHRASE_PROBES
+                  if any(_re.search(pat, (p if isinstance(p, str) else p[0]).lower())
+                         for pat in OverclaimLint.FORBIDDEN_PHRASES)]
+
     metrics["overclaim_lint_coverage"] = {
         "measured_at_utc": metrics.get("timestamp"),
         "probe_set_size": total,
         "paraphrases_rejected": len(caught),
         "paraphrases_not_rejected": len(missed),
+        "rejected_by_regex_alone": len(regex_only),
+        "rejected_by_semantic_backstop": len(caught) - len(regex_only),
+        "layers": ("deterministic regex list, then an embedding backstop "
+                   "(src/evidence/semantic_backstop.py, gemini-embedding-001) that can only ADD "
+                   "refusals; with the backstop unreachable, coverage falls back to "
+                   "rejected_by_regex_alone"),
         "probe_set_source": "scripts/measure_lint_coverage.py::PARAPHRASE_PROBES",
         "claim_limit": (
             "The lint is a backstop against the exact phrasings it enumerates, not a "

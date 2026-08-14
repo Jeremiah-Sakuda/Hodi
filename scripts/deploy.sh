@@ -111,6 +111,33 @@ if [ -n "${ENV_VARS}" ] && printf '%s' "${ENV_VARS}" | grep -q 'HODI_SIGNING=kms
   echo "  /verification-key serves the KMS public key"
 fi
 
+# The revocation worker is a SEPARATE service that `make deploy` does not build.
+# On 2026-08-14 it silently ran 85 minutes behind HEAD — same repository, stale
+# image, nothing failing — carrying the pre-fix SA literals and the fail-open
+# storage path. A deploy that leaves a sibling service on older code should say
+# so rather than let the operator assume one coherent release.
+WORKER_SERVICE="${HODI_REVOCATION_SERVICE:-hodi-revocation-worker}"
+WORKER_REV_CREATED="$(gcloud run revisions describe \
+  "$(gcloud run services describe "${WORKER_SERVICE}" --region "${REGION}" \
+       --project "${PROJECT_ID}" --format='value(status.latestReadyRevisionName)' 2>/dev/null)" \
+  --region "${REGION}" --project "${PROJECT_ID}" \
+  --format='value(metadata.creationTimestamp)' 2>/dev/null || true)"
+if [ -n "${WORKER_REV_CREATED}" ]; then
+  HEAD_EPOCH="$(git -C "$(dirname "$0")/.." log -1 --format=%ct)"
+  WORKER_EPOCH="$(date -j -f '%Y-%m-%dT%H:%M:%S' "${WORKER_REV_CREATED%%.*}" +%s 2>/dev/null \
+                  || date -d "${WORKER_REV_CREATED}" +%s 2>/dev/null || echo 0)"
+  if [ "${WORKER_EPOCH}" -lt "${HEAD_EPOCH}" ] 2>/dev/null; then
+    echo
+    echo "WARNING: ${WORKER_SERVICE} was built BEFORE the current HEAD commit."
+    echo "         It is running older code from this same repository."
+    echo "         Redeploy it:  ./scripts/deploy_revocation_worker.sh"
+  else
+    echo "  revocation worker: build postdates HEAD (coherent release)"
+  fi
+else
+  echo "  revocation worker: not deployed"
+fi
+
 echo
 echo "================================================================================"
 echo "DEPLOYED AND VERIFIED — ${SERVICE} runs as a create-only identity."

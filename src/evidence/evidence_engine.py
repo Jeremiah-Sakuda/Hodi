@@ -3,6 +3,27 @@ from datetime import datetime, timezone
 from src.schema.evidence import EvidenceRecord, CLAIM_LIMIT_LITERAL
 from src.evidence.gemma_triage import GemmaTriageEngine
 from src.evidence.overclaim_lint import OverclaimLint
+from src.evidence.verbatim_probe import (
+    MIN_VERBATIM_RUN_TOKENS, contains_canary, longest_contiguous_run,
+)
+
+import json
+from pathlib import Path
+
+_PASSAGES_PATH = Path(__file__).resolve().parent.parent.parent / "fixtures" / "work_passages.json"
+
+
+def registered_passages(work_id: str) -> List[Dict[str, str]]:
+    """The protected excerpts a verbatim_match is checked against.
+
+    A work with no registered passage yields NO record — the honest outcome.
+    `Work` carries only a content_hash, so the text itself must be registered
+    (fixtures/work_passages.json) for any comparison to be possible."""
+    try:
+        with open(_PASSAGES_PATH) as f:
+            return json.load(f).get("passages", {}).get(work_id, [])
+    except (OSError, ValueError):
+        return []
 
 class EvidenceEngine:
     """
@@ -65,13 +86,37 @@ class EvidenceEngine:
         self._records_by_class["canary_hit"].append(ev)
         return ev
 
-    def process_verbatim_match(self, prompt: str, generated_output: str, work_id: str, source_uri: str) -> EvidenceRecord:
+    def process_verbatim_match(self, prompt: str, generated_output: str, work_id: str,
+                               source_uri: str) -> Optional[EvidenceRecord]:
         """
-        Emits a verbatim_match EvidenceRecord.
-        Note: verbatim_match depends on external model output surfaces.
+        Emits a verbatim_match EvidenceRecord ONLY when a run of registered text
+        of at least MIN_VERBATIM_RUN_TOKENS actually appears in `generated_output`.
+
+        This method previously read neither `prompt` nor `generated_output` and
+        emitted unconditionally — a check in name only, with a constant detail
+        string. It now returns None when there is no run, which is the outcome
+        the old implementation could not produce. `prompt` is retained because
+        it is part of the observation's provenance; it is deliberately NOT
+        matched against, since a match in the prompt would only establish that
+        the operator supplied the text.
         """
+        best = None
+        for passage in registered_passages(work_id):
+            run = longest_contiguous_run(passage.get("text", ""), generated_output)
+            if run and (best is None or run.token_count > best[0].token_count):
+                best = (run, passage)
+
+        if best is None:
+            return None
+
+        run, passage = best
         record_id = f"ev-verb-{len(self._records_by_class['verbatim_match'])+1}"
-        detail_text = f"Verbatim text string match observed in model completion output."
+        detail_text = (
+            f"A {run.token_count}-token contiguous run of registered passage "
+            f"'{passage.get('passage_id', 'unknown')}' appears in the observed model output "
+            f"(matched-run sha256 {run.passage_sha256[:16]}; threshold "
+            f"{MIN_VERBATIM_RUN_TOKENS} tokens). Co-occurrence of text only."
+        )
         self.lint.lint_text(detail_text)
 
         ev = EvidenceRecord(
@@ -81,15 +126,50 @@ class EvidenceEngine:
             observed_at=datetime.now(timezone.utc),
             source_uri=source_uri,
             detail=detail_text,
-            claim_limit=CLAIM_LIMIT_LITERAL
+            claim_limit=CLAIM_LIMIT_LITERAL,
+            metadata={
+                "matched_run_tokens": str(run.token_count),
+                "matched_run_sha256": run.passage_sha256,
+                "registered_passage_id": str(passage.get("passage_id", "unknown")),
+            },
         )
         self._records_by_class["verbatim_match"].append(ev)
         return ev
 
-    def process_redistribution(self, work_id: str, mirror_uri: str) -> EvidenceRecord:
-        """Emits a redistribution EvidenceRecord."""
+    def process_redistribution(self, work_id: str, mirror_uri: str,
+                               mirror_content: str = "",
+                               canary_string: Optional[str] = None) -> Optional[EvidenceRecord]:
+        """
+        Emits a redistribution EvidenceRecord ONLY when the content served at
+        `mirror_uri` actually carries the work: either the planted canary
+        (exact containment) or a run of registered text at or above
+        MIN_VERBATIM_RUN_TOKENS.
+
+        This method previously took no content parameter at all — `(work_id,
+        mirror_uri)` — so it could not have verified anything even in
+        principle, yet emitted unconditionally. `mirror_content` and
+        `canary_string` default to empty so existing callers do not break; with
+        no content supplied the method now returns None rather than asserting a
+        redistribution nobody observed.
+        """
+        basis = None
+        if contains_canary(canary_string, mirror_content):
+            basis = f"planted canary '{canary_string}' present in the content served at the mirror URI"
+        else:
+            for passage in registered_passages(work_id):
+                run = longest_contiguous_run(passage.get("text", ""), mirror_content)
+                if run:
+                    basis = (f"a {run.token_count}-token contiguous run of registered passage "
+                             f"'{passage.get('passage_id', 'unknown')}' present at the mirror URI "
+                             f"(matched-run sha256 {run.passage_sha256[:16]})")
+                    break
+
+        if basis is None:
+            return None
+
         record_id = f"ev-redis-{len(self._records_by_class['redistribution'])+1}"
-        detail_text = f"Unlicensed redistribution of registered work observed at mirror URI."
+        detail_text = (f"Registered work observed at a third-party mirror URI: {basis}. "
+                       "Presence of the work at that URI only; licence status is not asserted here.")
         self.lint.lint_text(detail_text)
 
         ev = EvidenceRecord(
