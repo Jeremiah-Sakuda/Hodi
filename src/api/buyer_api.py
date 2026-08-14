@@ -336,6 +336,13 @@ class RevokeRequest(BaseModel):
     # a single-element set that matched no grant. Now the request is refused
     # with HTTP 422 and the valid vocabulary, before any of that runs.
     revoked_use_type: UseType
+    # Client idempotency key (HOD-708). A caller retrying after a timeout or
+    # 5xx sends the SAME operation_id and the cascade replays into the same
+    # deterministic effect ids — no duplicated revocation events, no
+    # double-issued notices. Omitted = the server mints one (returned in the
+    # response), and a re-POST without it is a NEW operation.
+    operation_id: Optional[str] = Field(default=None, min_length=8, max_length=128,
+                                        pattern=r"^[A-Za-z0-9_.:-]+$")
 
 @router.post("/api/v1/revoke", response_model=CascadeResult)
 async def revoke_scope(req: RevokeRequest, request: Request):
@@ -369,7 +376,8 @@ async def revoke_scope(req: RevokeRequest, request: Request):
 
     propagator = RevocationPropagatorAgent(gateway=gateway, memory_bank_events=[])
     return propagator.execute_revocation_cascade(
-        work_id=req.work_id, revoked_use_type=req.revoked_use_type
+        work_id=req.work_id, revoked_use_type=req.revoked_use_type,
+        operation_id=req.operation_id,
     )
 
 class DelegationDrillRequest(BaseModel):

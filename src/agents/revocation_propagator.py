@@ -1,15 +1,17 @@
 import uuid
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from datetime import datetime, timezone
 from src.schema.grant_event import GrantEvent, Receipt
-from src.schema.revocation import RevocationNotice, RevocationReceipt
+from src.schema.revocation import (
+    RevocationNotice, RevocationReceipt, NoticeOutboxRecord, revocation_effect_id,
+)
 from src.schema.signing import unsigned_placeholder
 from src.schema.lattice import (
     USE_TYPE_CONTAINMENT, MODEL_CLASS_CONTAINMENT, use_type_derivation_chain,
     is_use_type_contained,
 )
 from src.resolve.resolver import resolve
-from src.gateway.gateway import AgentGateway
+from src.gateway.gateway import AgentGateway, DocumentAlreadyExists
 from pydantic import BaseModel
 
 from src.schema.grant_event import GrantEvent, Receipt, Scope
@@ -25,11 +27,19 @@ class AffectedGrant(BaseModel):
     original_scope: Scope
 
 class CascadeResult(BaseModel):
+    # The operation's idempotency key (HOD-708): retrying with the SAME
+    # operation_id replays into deterministic ids and cannot double any
+    # effect. A new operation_id is a new operation, and an already-revoked
+    # grant is simply no longer active, so it is not affected again.
+    operation_id: str
     revoked_use_type: str
     derived_scopes: List[str]
     structured_derivation: List[DerivedScope]
     affected_grants: List[AffectedGrant]
     issued_notices: List[RevocationReceipt]
+    # How many terminate/outbox pairs were found already committed by a prior
+    # run of this operation — nonzero exactly when this call was a retry.
+    replayed_effects: int = 0
 
 PROPAGATOR_SA = "revocation-propagator@hodi-2026.iam.gserviceaccount.com"
 
@@ -67,7 +77,8 @@ class RevocationPropagatorAgent:
             target_collection="artists")
 
     def execute_revocation_cascade(self, work_id: str, revoked_use_type: str,
-                                   lease_id: str = None) -> CascadeResult:
+                                   lease_id: str = None,
+                                   operation_id: str = None) -> CascadeResult:
         """
         Revokes the specified use_type for a given work across all active grants.
 
@@ -87,6 +98,11 @@ class RevocationPropagatorAgent:
         there is one definition of "this scope permits that use". See the named
         finding in docs/FINDINGS.md and tests/test_revocation_reach.py.
         """
+        # The operation's idempotency key (HOD-708). A caller retrying a failed
+        # revocation passes the SAME operation_id and every effect id derives
+        # from it; a fresh call without one is a fresh operation.
+        operation_id = operation_id or f"revop-{uuid.uuid4()}"
+
         # `derived_scopes` describes what a terminated grant LOSES: the revoked
         # use and every narrower use it implies. It is the containment closure of
         # the revoked type — correct as the withdrawal description, and unrelated
@@ -119,9 +135,16 @@ class RevocationPropagatorAgent:
         ]
         
         affected_grants = []
-        issued_notices = []
-        
-        for gid in unique_grant_ids:
+        newly_committed = 0
+
+        # PHASE 1 — TERMINATE + RECORD THE OBLIGATION, ATOMICALLY (HOD-708).
+        # For each affected grant, the revoked GrantEvent and the notice-outbox
+        # record are committed in ONE atomic batch under ids derived from the
+        # operation: 'the grant is terminated' and 'a notice is owed' are one
+        # fact, never two facts a crash can split. A retry of the same
+        # operation derives the same ids and collides on create() — the
+        # collision IS the idempotency signal, and it is skipped, not errored.
+        for gid in sorted(unique_grant_ids):
             state = resolve(gid, events=events)
             if state.status == "active" and state.active_scope:
                 # Affected iff the grant PERMITS the revoked use: the held type
@@ -133,59 +156,122 @@ class RevocationPropagatorAgent:
                         counterparty_id=state.counterparty_id,
                         original_scope=state.active_scope
                     ))
-                    
-                    # 3. Emit signed notices via Gateway using opaque counterparty_id.
+
                     # Notice text is Gemini-drafted and gated by RevocationLint;
                     # if drafting is unavailable or fails the lint, the linted
                     # deterministic template is used (src/llm/notice_drafter.py).
+                    # Drafted BEFORE commit and stored IN the outbox record, so
+                    # a retry delivers the same text that was committed, not a
+                    # fresh drafting that might differ.
                     from src.llm.notice_drafter import NoticeDrafter
                     notice_text, _notice_source = NoticeDrafter().draft(
                         grant_id=gid, work_id=work_id, counterparty_id=state.counterparty_id
                     )
-                    notice = RevocationNotice(
-                        grant_id=gid,
-                        counterparty_id=state.counterparty_id,
-                        revoked_at=datetime.now(timezone.utc),
-                        notice_text=notice_text
-                    )
-                    
-                    receipt = self.gateway.deliver_revocation_notice(
-                        sender=PROPAGATOR_SA,
-                        counterparty_id=state.counterparty_id,
-                        notice=notice,
-                        lease_id=lease_id,
-                    )
-                    
-                    # 4. Generate the revoked GrantEvent and write to append-only log
-                    new_event_id = str(uuid.uuid4())
+                    now = datetime.now(timezone.utc)
+                    revoked_event_id = revocation_effect_id(operation_id, gid, "revoked_event")
+                    outbox_id = revocation_effect_id(operation_id, gid, "outbox")
                     revoked_event = GrantEvent(
-                        event_id=new_event_id,
+                        event_id=revoked_event_id,
                         grant_id=gid,
                         work_id=work_id,
                         counterparty_id=state.counterparty_id,
                         scope=state.active_scope,
                         kind="revoked",
-                        issued_at=datetime.now(timezone.utc),
+                        issued_at=now,
                         signature=unsigned_placeholder("revoked", gid)
                     )
-                    self.gateway.write_document(
-                        calling_sa=PROPAGATOR_SA,
-                        calling_role_key="revocation_propagator",
-                        target_collection="grants",
-                        doc_id=new_event_id,
-                        data=revoked_event.model_dump(),
-                        lease_id=lease_id,
+                    outbox_record = NoticeOutboxRecord(
+                        outbox_id=outbox_id,
+                        operation_id=operation_id,
+                        grant_id=gid,
+                        work_id=work_id,
+                        counterparty_id=state.counterparty_id,
+                        notice_text=notice_text,
+                        revoked_at=now,
+                        created_at=now,
                     )
-                    
-                    if raw_events == []: # testing only
-                        self.memory_bank_events.append(revoked_event)
-                        
-                    issued_notices.append(receipt)
-                    
+                    try:
+                        self.gateway.write_documents_atomic(
+                            calling_sa=PROPAGATOR_SA,
+                            calling_role_key="revocation_propagator",
+                            writes=[
+                                ("grants", revoked_event_id, revoked_event.model_dump()),
+                                ("revocation_outbox", outbox_id, outbox_record.model_dump()),
+                            ],
+                            lease_id=lease_id,
+                        )
+                        newly_committed += 1
+                        if raw_events == []:  # testing only: mirror into the in-memory bank
+                            self.memory_bank_events.append(revoked_event)
+                    except DocumentAlreadyExists:
+                        # This operation already committed this grant's pair
+                        # and the read raced it (stale snapshot). The
+                        # obligation stands; delivery is phase 2's job.
+                        pass
+
+        # PHASE 2 — DISCHARGE THE OBLIGATIONS (retryable, at-least-once safe).
+        issued_notices = self.deliver_pending_notices(operation_id=operation_id, lease_id=lease_id)
+
+        # Each outbox row yields exactly one receipt, so obligations found
+        # beyond those committed in THIS call are a prior attempt's — nonzero
+        # exactly when this call was a retry. (On a retry the fold already
+        # shows the grant revoked, so it is not re-affected; the leftover
+        # obligation is what phase 2 discharges.)
+        replayed = max(0, len(issued_notices) - newly_committed)
+
         return CascadeResult(
+            operation_id=operation_id,
             revoked_use_type=revoked_use_type,
             derived_scopes=derived_scopes,
             structured_derivation=structured_derivation,
             affected_grants=affected_grants,
-            issued_notices=issued_notices
+            issued_notices=issued_notices,
+            replayed_effects=replayed,
         )
+
+    def deliver_pending_notices(self, operation_id: str, lease_id: str = None) -> List[RevocationReceipt]:
+        """
+        Delivers every notice the operation's outbox owes (HOD-708 phase 2).
+
+        Exactly-once BUSINESS effect over at-least-once EXECUTION: delivery
+        writes the notice under a deterministic id, so a redelivery attempt
+        collides and is skipped — the notice document's existence IS the
+        discharge marker, itself append-only. The receipt is derived from the
+        same operation, so a retry returns the same receipt identity rather
+        than minting a second.
+        """
+        outbox_rows = self.gateway.read_collection(
+            calling_sa=PROPAGATOR_SA,
+            calling_role_key="revocation_propagator",
+            target_collection="revocation_outbox",
+            filters={"operation_id": operation_id},
+        )
+        receipts: List[RevocationReceipt] = []
+        for row in sorted(outbox_rows, key=lambda r: r["grant_id"]):
+            record = NoticeOutboxRecord(**row)
+            notice = RevocationNotice(
+                grant_id=record.grant_id,
+                counterparty_id=record.counterparty_id,
+                revoked_at=record.revoked_at,
+                notice_text=record.notice_text,
+            )
+            notice_id = revocation_effect_id(operation_id, record.grant_id, "notice")
+            try:
+                self.gateway.write_document(
+                    calling_sa=PROPAGATOR_SA,
+                    calling_role_key="revocation_propagator",
+                    target_collection="revocation_notices",
+                    doc_id=notice_id,
+                    data=notice.model_dump(),
+                    lease_id=lease_id,
+                )
+            except DocumentAlreadyExists:
+                pass  # already delivered by a prior attempt — the obligation is discharged
+            receipts.append(RevocationReceipt(
+                revocation_id=revocation_effect_id(operation_id, record.grant_id, "receipt"),
+                grant_id=record.grant_id,
+                counterparty_id=record.counterparty_id,
+                revoked_at=record.revoked_at,
+                signature=unsigned_placeholder("revocation_receipt", record.grant_id),
+            ))
+        return receipts

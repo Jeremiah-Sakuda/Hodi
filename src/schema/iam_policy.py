@@ -14,7 +14,7 @@ AGENT_SA_MAP: Dict[str, Dict[str, Any]] = {
         "description": "Holds artist identity, registered works, and control proofs. CANNOT read buyer terms or evidence.",
         "conflict_domain": "identity",
         "permitted_collections": ["works", "artists", "control_proofs"],
-        "denied_collections": ["buyer_terms", "crawler_access", "canaries", "revocation_notices"]
+        "denied_collections": ["buyer_terms", "crawler_access", "canaries", "revocation_notices", "revocation_outbox"]
     },
     "licensing_negotiator": {
         "sa_email": "licensing-negotiator-sa@hodi-2026.iam.gserviceaccount.com",
@@ -29,7 +29,7 @@ AGENT_SA_MAP: Dict[str, Dict[str, Any]] = {
             "receipts",
             {"collection": "grants", "required_filter_key": "counterparty_id"}
         ],
-        "denied_collections": ["artists", "works", "crawler_access", "canaries", "revocation_notices"]
+        "denied_collections": ["artists", "works", "crawler_access", "canaries", "revocation_notices", "revocation_outbox"]
     },
     "evidence_agent": {
         "sa_email": "evidence-agent-sa@hodi-2026.iam.gserviceaccount.com",
@@ -37,14 +37,17 @@ AGENT_SA_MAP: Dict[str, Dict[str, Any]] = {
         "description": "Ingests crawler access logs and checks canaries. CANNOT read commercial terms or identity.",
         "conflict_domain": "evidence",
         "permitted_collections": ["crawler_access", "canaries", "evidence_records"],
-        "denied_collections": ["artists", "buyer_terms", "grants", "revocation_notices"]
+        "denied_collections": ["artists", "buyer_terms", "grants", "revocation_notices", "revocation_outbox"]
     },
     "revocation_propagator": {
         "sa_email": "revocation-propagator-sa@hodi-2026.iam.gserviceaccount.com",
         "role_name": "Revocation Propagator",
         "description": "Computes affected grants and emits signed notices/receipts. CANNOT hold artist identity or read buyer terms.",
         "conflict_domain": "revocation",
-        "permitted_collections": ["grants", "revocation_notices"],
+        # revocation_outbox (HOD-708): the 'notice owed' record committed
+        # atomically with the revoked event; delivery discharges it. Same
+        # conflict domain as the notices themselves.
+        "permitted_collections": ["grants", "revocation_notices", "revocation_outbox"],
         "denied_collections": ["artists", "buyer_terms", "crawler_access", "canaries"]
     }
 }
