@@ -19,10 +19,18 @@ name: verify-live
 # JSON key in a repository secret would be the same defect class this project
 # spends its time removing — a credential that outlives its purpose.
 #
-# STATUS: authored, NEVER EXECUTED. The WIF pool, provider and repository
-# secrets do not exist yet, so this workflow has never run and
-# docs/deployment_status.json does not claim it has. Setting it up is the
-# remaining work; the job definition is not.
+# STATUS: EXECUTED. First green run 2026-08-14 against revision 00046-fmn
+# (staging, then production with write-back), and docs/deployment_status.json
+# now carries the run URL that proved it, written by the run itself.
+#
+# Its first four attempts all failed, and every failure was real rather than
+# plumbing: the E2E license bodies omitted the now-required work_id and had been
+# asserting nothing; a registry test assumed an empty durable store; the
+# cloudresourcemanager API had never been enabled, so the append-only IAM proof
+# could only ever run from a laptop with user credentials; and the live manifest
+# was serving no canaries and no control proof while /works/{id}/proof answered
+# HTTP 500. A capability recorded as "scripted, never run" was not a modest gap
+# in the story. It was hiding a live defect on a public endpoint.
 
 on:
   workflow_dispatch:
