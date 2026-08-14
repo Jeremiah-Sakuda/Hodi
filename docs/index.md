@@ -17,7 +17,7 @@ Created for the All Things Agentic Hackathon.
 ## Writing
 
 - **[Seven ways to lie to yourself in code](blog/seven-ways-to-lie-to-yourself-in-code.html)** — the
-  defect ledger: forty defects, nine classes, the four that recurred, and the four structural
+  defect ledger: forty-one defects, nine classes, the four that recurred, and the four structural
   guards that answer them.
 
 ## Project documents
