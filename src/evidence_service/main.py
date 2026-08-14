@@ -44,9 +44,18 @@ app.mount("/console", StaticFiles(directory=console_dir, html=True), name="conso
 
 # Removed mock grants for H7 (uses live Firestore data via AgentGateway)
 
-# Initialize Firestore
+# Initialize Firestore.
+#
+# Under a DECLARED offline run (HODI_OFFLINE=1) there is no client, and the
+# handlers that need one already render "unavailable" rather than a plausible
+# number (the Literal Metric Rendering Rule). Anything else — no credentials
+# when none were declared — still raises at import, because a deployed
+# evidence service that cannot reach Firestore must fail to start rather than
+# serve an empty manifest that looks like a real one. Same fail-closed rule
+# as the gateway (HOD-716); the only difference is that this module is also
+# imported by the offline suite, which declares itself.
 GCP_PROJECT = os.environ.get("GCP_PROJECT_ID", "hodi-2026")
-db = firestore.Client(project=GCP_PROJECT)
+db = None if os.environ.get("HODI_OFFLINE") == "1" else firestore.Client(project=GCP_PROJECT)
 COLLECTION_NAME = "crawler_access"
 
 # Canonical Base URLs
@@ -82,7 +91,14 @@ def get_effective_base_url() -> str:
 ACTIVE_BASE_URL = get_effective_base_url()
 logger.info(f"Active Effective Base URL: {ACTIVE_BASE_URL}")
 
-def get_registered_works() -> List[Dict[str, Any]]:
+def seed_corpus_works() -> List[Dict[str, Any]]:
+    """
+    The COMMITTED SEED corpus (HOD-718): the author's five real registered
+    works, kept in the repository so a clean clone serves a meaningful
+    manifest with no database behind it. It is a labelled seed, NOT a
+    stand-in — get_registered_works() unions it with everything actually
+    registered through POST /api/v1/works and marks which is which.
+    """
     base = get_effective_base_url()
     return [
         {
@@ -166,6 +182,46 @@ def get_registered_works() -> List[Dict[str, Any]]:
             "canary_planted_at": "2026-08-06T12:40:00Z"
         }
     ]
+
+def get_registered_works() -> List[Dict[str, Any]]:
+    """
+    The manifest: everything registered through POST /api/v1/works, unioned
+    with the committed seed corpus (HOD-718).
+
+    This used to BE the literal list. That made "register your work" a claim
+    the running system could not honour — a new registration required a code
+    change and a deploy — and it is the gap an external review named. Now a
+    registration persists through the rights custodian and appears here.
+
+    Two honesty properties:
+      * every row carries `source`: "registered" (persisted through the API)
+        or "seed_corpus" (committed in this repository). A reader can always
+        tell which they are looking at.
+      * if the registry is unreachable the seed is still served, but each row
+        is marked `registry_unavailable` — the manifest never silently
+        implies it is showing live state when it is not.
+    """
+    seed = {w["work_id"]: {**w, "source": "seed_corpus"} for w in seed_corpus_works()}
+    try:
+        from src.gateway.gateway import AgentGateway
+        from src.schema.iam_policy import AGENT_SA_MAP
+        rows = AgentGateway().read_collection(
+            calling_sa=AGENT_SA_MAP["rights_custodian"]["sa_email"],
+            calling_role_key="rights_custodian", target_collection="works")
+    except Exception as e:
+        logger.error(f"Works registry unavailable, serving the committed seed only: {e}")
+        return [{**w, "registry_unavailable": True} for w in seed.values()]
+
+    base = get_effective_base_url()
+    registered = {
+        r["work_id"]: {**r, "source": "registered",
+                       "hodi_record_uri": f"{base}/works/{r['work_id']}"}
+        for r in rows if r.get("work_id")
+    }
+    # A registered row wins over a seed row of the same id: the seed is a
+    # starting point, not an override of what an artist actually did.
+    return list({**seed, **registered}.values())
+
 
 def extract_client_ip(request: Request) -> str:
     """
