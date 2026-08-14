@@ -68,6 +68,32 @@ AGENT_SA_MAP: Dict[str, Dict[str, Any]] = {
     }
 }
 
+# Conflict domain → named Firestore database (HOD-711). Splitting the domains
+# across NAMED DATABASES, each with per-SA IAM, moves the conflict boundary
+# from "our program promises this agent won't read X" to "this workload
+# literally lacks credentials to read X" — a read of a foreign domain fails at
+# Google IAM, not at the application layer. `(default)` holds the append-only
+# grant log every domain-appropriate identity can reach per the custom role;
+# the split databases below are provisioned by scripts/setup_workload_identity.sh
+# and are the deployed-separation target, stated as not-yet-executed here.
+CONFLICT_DOMAIN_DATABASE: Dict[str, str] = {
+    "identity": "hodi-identity",
+    "buyer_terms": "hodi-commercial",
+    "evidence": "hodi-evidence",
+    "revocation": "(default)",
+    "adjudication": "hodi-adjudication",
+}
+
+
+def database_for_role(agent_role: str) -> str:
+    """The named Firestore database a role's workload identity is scoped to
+    (HOD-711). Unknown roles map to '(default)'."""
+    info = AGENT_SA_MAP.get(agent_role)
+    if not info:
+        return "(default)"
+    return CONFLICT_DOMAIN_DATABASE.get(info["conflict_domain"], "(default)")
+
+
 def get_action_permission(agent_role: str, collection_name: str) -> tuple[bool, str | None]:
     """
     Checks if an agent role is authorized to access a given collection.
