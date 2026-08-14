@@ -8,6 +8,7 @@ from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
 
 from src.schema.scope import Scope, ScopeEvaluationResult, UseType
+from src.schema.iam_policy import AGENT_SA_MAP
 from src.schema.signing import unsigned_placeholder, sign_pydantic, SIGNATURE_CLAIM_LIMIT
 from src.schema.grant_event import GrantEvent, Receipt
 from src.resolve.evaluator import permits
@@ -23,13 +24,18 @@ from src.api.auth import (
 router = APIRouter()
 armor = PromptInspector()
 
-# The licensing negotiator agent acts under its own service account
-NEGOTIATOR_SA = "licensing-negotiator@hodi-2026.iam.gserviceaccount.com"
-PROPAGATOR_SA = "revocation-propagator-sa@hodi-2026.iam.gserviceaccount.com"
+# Service accounts are READ FROM THE POLICY, never retyped (HOD-717).
+# These were hand-written literals, and one of them was wrong:
+# "licensing-negotiator@…" is not the identity iam_policy.py declares
+# ("licensing-negotiator-sa@…"), so every denial event this path ever logged
+# named a service account that does not exist. The gateway now binds role to
+# identity on every call, which is what surfaced it.
+NEGOTIATOR_SA = AGENT_SA_MAP["licensing_negotiator"]["sa_email"]
+PROPAGATOR_SA = AGENT_SA_MAP["revocation_propagator"]["sa_email"]
 # Ownership is a RIGHTS-CUSTODIAN concern: it holds works and artist identity.
 # The propagator must not — it cannot read `works` at all — so the "does this
 # artist own this work" gate lives here, at the API layer, before delegation.
-RIGHTS_CUSTODIAN_SA = "rights-custodian-sa@hodi-2026.iam.gserviceaccount.com"
+RIGHTS_CUSTODIAN_SA = AGENT_SA_MAP["rights_custodian"]["sa_email"]
 
 # Injectable so tests never touch the production credential collection.
 _credential_store = CredentialStore()

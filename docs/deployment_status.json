@@ -37,7 +37,7 @@
     },
     "conflict_domain_separation": {
       "status": "in_process_only",
-      "detail": "Which agent may read whose data is enforced by the policy gateway inside ONE Cloud Run process, using the same iam_policy.py data the generated matrix renders. This is an application-layer boundary, not a GCP IAM boundary. Caller identity on that boundary is trusted-by-construction in-process (see src/gateway/caller_identity.py) — the OIDC-verified path exists and applies only to split services, which are not deployed.",
+      "detail": "Which agent may read whose data is enforced by the policy gateway inside ONE Cloud Run process, using the same iam_policy.py data the generated matrix renders. This is an application-layer boundary, not a GCP IAM boundary. The role/service-account BINDING is now checked on every call (HOD-717), and the OIDC-verified path plus strict mode (HODI_REQUIRE_VERIFIED_IDENTITY=1, which refuses in-process identities outright) are implemented and tested — but this deployment does NOT run in strict mode, because strict mode is only satisfiable once the services are split. So caller identity here remains trusted-by-construction: exactly as trustworthy as the process, and no more.",
       "evidence_source": "src/gateway/gateway.py + tests/test_gateway_session_scope.py (offline); make demo-live (deployed, over the network)",
       "last_verified_utc": "2026-08-12T16:45:00Z",
       "revision": "hodi-evidence-endpoint-00039-846"

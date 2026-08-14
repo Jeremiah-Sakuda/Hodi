@@ -11,6 +11,7 @@ from src.schema.lattice import (
     is_use_type_contained,
 )
 from src.resolve.resolver import resolve
+from src.schema.iam_policy import AGENT_SA_MAP
 from src.gateway.gateway import AgentGateway, DocumentAlreadyExists
 from pydantic import BaseModel
 
@@ -41,7 +42,11 @@ class CascadeResult(BaseModel):
     # run of this operation — nonzero exactly when this call was a retry.
     replayed_effects: int = 0
 
-PROPAGATOR_SA = "revocation-propagator@hodi-2026.iam.gserviceaccount.com"
+# Read from the policy, never retyped: this was "revocation-propagator@…",
+# which iam_policy.py does not declare (it declares
+# "revocation-propagator-sa@…"), so every revocation write and every denial
+# from this agent recorded a nonexistent identity (HOD-717).
+PROPAGATOR_SA = AGENT_SA_MAP["revocation_propagator"]["sa_email"]
 
 class RevocationPropagatorAgent:
     """
