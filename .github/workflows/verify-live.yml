@@ -150,7 +150,13 @@ jobs:
                           --region ${{ vars.HODI_REGION }} --project ${{ vars.GCP_PROJECT_ID }} \
                           --format='value(status.latestReadyRevisionName)')" \
             --verified evidence_endpoint append_only_runtime_identity \
-                       cross_buyer_boundary_over_network kms_signing
+                       cross_buyer_boundary_over_network kms_signing \
+                       per_domain_databases live_release_verification
+          # The README table is GENERATED from that JSON. Recording a promotion
+          # without regenerating it leaves the README showing the old state and
+          # the old date — so the regeneration is part of the write, and
+          # check_doc_metrics.py fails the job if the two ever disagree.
+          python3 scripts/deployment_status.py --write-readme
           python3 scripts/deployment_status.py --check
           python3 scripts/check_doc_metrics.py
 

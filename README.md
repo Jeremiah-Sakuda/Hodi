@@ -260,17 +260,17 @@ Every "is it deployed" claim below is **generated** from [docs/deployment_status
 
 | Capability | State | Evidence | Last verified (UTC) |
 |---|---|---|---|
-| `evidence_endpoint` | ✓ verified | docs/metrics.json :: daily_crawler_accrual_metrics (live Firestore audit, 1613 accrued records) | 2026-08-13T15:50:15Z |
-| `append_only_runtime_identity` | ✓ verified | scripts/deploy.sh step 3 + tests/test_grant_log_iam.py::TestDeployedRuntimeIdentityCannotRewriteHistory (HODI_E2E, reads roles back from IAM) | 2026-08-12T16:45:00Z |
-| `cross_buyer_boundary_over_network` | ✓ verified | make demo-live (scripts/test_live_cross_counterparty.py) — Parts A, B, C | 2026-08-12T16:45:00Z |
+| `evidence_endpoint` | ✓ verified | docs/metrics.json :: daily_crawler_accrual_metrics (live Firestore audit, 1613 accrued records) | 2026-08-14T17:00:00Z |
+| `append_only_runtime_identity` | ✓ verified | scripts/deploy.sh step 3 + tests/test_grant_log_iam.py::TestDeployedRuntimeIdentityCannotRewriteHistory (HODI_E2E, reads roles back from IAM) | 2026-08-14T17:00:00Z |
+| `cross_buyer_boundary_over_network` | ✓ verified | make demo-live (scripts/test_live_cross_counterparty.py) — Parts A, B, C | 2026-08-14T17:00:00Z |
 | `gemini_scope_interpretation` | ✓ verified | docs/metrics.json :: natural_language_license_path (deployed-over-network timings) | 2026-08-07T18:43:00Z |
-| `conflict_domain_separation` | ▣ in-process only | HODI_E2E=1 tests.test_workload_identity (live IAM denial, 7/7); tests.test_identity_binding + tests.test_caller_identity (offline); make demo-live (deployed, over the network) | 2026-08-14T00:00:00Z |
+| `conflict_domain_separation` | ▣ in-process only | HODI_E2E=1 tests.test_workload_identity (live IAM denial, 7/7); tests.test_identity_binding + tests.test_caller_identity (offline); make demo-live (deployed, over the network) | 2026-08-14T17:00:00Z |
 | `kms_signing` | ✓ verified | scripts/setup_kms_signing.sh (executed 2026-08-14, IAM asserted); scripts/deploy.sh step 3 verifies /verification-key serves the public key | 2026-08-14T00:00:00Z |
 | `per_domain_databases` | ✓ verified | scripts/setup_workload_identity.sh (executed 2026-08-14); HODI_E2E=1 tests.test_workload_identity 7/7 via SA impersonation | 2026-08-14T00:00:00Z |
 | `split_revocation_worker` | ✓ verified | scripts/deploy_revocation_worker.sh (executed 2026-08-14; proves the deployed identity, permissions and invocation before reporting success) | 2026-08-14T00:00:00Z |
 | `durable_trace_backend` | ○ scripted, never run | src/observability/tracing.py + tests/test_tracing_backend.py (offline) | — |
 | `live_release_verification` | ○ scripted, never run | .github/workflows/verify-live.yml (authored; the WIF pool, provider and repository variables are not configured, so it has never run) | — |
-| `scheduled_jobs` | ✓ verified | docs/metrics.json :: daily_crawler_accrual_metrics (audit rows persisted by the scheduled job); Google-Cloud-Scheduler appears in distinct_user_agents | 2026-08-13T15:50:15Z |
+| `scheduled_jobs` | ✓ verified | Cloud Logging: resource.type=cloud_scheduler_job, job_id=hodi-daily-accrual-audit, AttemptFinished 2026-08-14T09:00:58Z 'Original HTTP response code number = 200'; docs/metrics.json :: daily_crawler_accrual_metrics (rows persisted by that job); Google-Cloud-Scheduler appears in distinct_user_agents | 2026-08-14T17:20:00Z |
 
 `○ scripted, never run` means exactly that: the script is in this repository and reproducible, and it has not been executed against the live project. `▣ in-process only` means the boundary is enforced by application code inside one Cloud Run process — real and tested, but not a cloud-infrastructure boundary.
 

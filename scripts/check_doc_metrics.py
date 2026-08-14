@@ -150,6 +150,19 @@ def check_deployment_claims(failures) -> None:
     readme = README.read_text()
     caps = status.get("capabilities", {})
 
+    # The table in README.md is marked GENERATED and says not to hand-edit it.
+    # Nothing regenerated it and nothing compared it, so a promotion recorded in
+    # the JSON could leave the README showing the old state and the old date —
+    # the exact drift this file exists to prevent, in the artifact it generates.
+    from scripts.deployment_status import embedded_table, render
+    embedded = embedded_table(readme)
+    if not embedded:
+        failures.append("README.md no longer contains the generated deployment-status table.")
+    elif embedded != render(status):
+        failures.append(
+            "README.md's deployment-status table does not match docs/deployment_status.json. "
+            "It is generated: run `python3 scripts/deployment_status.py --write-readme`.")
+
     # The signing claim, which is the one that actually drifted.
     kms = caps.get("kms_signing", {})
     kms_live = kms.get("status") == "verified"
