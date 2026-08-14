@@ -28,6 +28,9 @@ This table is lifted verbatim from the PRD (§3.4). Every enforcement mechanism 
 | No agent can claim beyond its epistemic authority | Per-role assertion authority declared as data ([assertion_authority.py](src/schema/assertion_authority.py)), enforced at the gateway; the training-membership claim has no assertion class, so it cannot be submitted as data. |
 | An abandoned worker cannot commit after quarantine | Execution leases: the supervisor revokes the lease at the deadline, and the gateway checks it immediately before every supervised write, so a woken worker can compute but not commit. |
 | A signed artifact can be verified without Hodi | Asymmetric signing (Cloud KMS live, labelled-ephemeral offline); `hodi verify` and `/verification-key` check receipts and incident manifests against a public key Hodi could never mint with. |
+| A caller cannot assert a role it does not hold | The gateway binds service account to role from `iam_policy.py` on every call; the OIDC path derives the role from a Google-signed token's verified email, so it cannot be chosen; `HODI_REQUIRE_VERIFIED_IDENTITY=1` refuses unverified in-process identities outright. |
+| Unreachable storage is an outage, not an empty log | Gateway and event store both raise unless the run declared `HODI_OFFLINE=1` — no path serves process-local data as if it were the append-only log. |
+| A deployment claim cannot outlive its evidence | Deployment state lives in `docs/deployment_status.json`; a `verified` capability must name its evidence *and* its date, and `make check-docs` guards the prose bidirectionally — a disclaimer is required while unverified and forbidden once verified. |
 
 ---
 
@@ -99,7 +102,19 @@ Runs the full offline suite — 426 tests, credential-free, including the cross-
 make compliance
 ```
 
-Extracts every requirement ID from the PRD and diffs §4 against the §2 compliance matrix **and the prose**; fails on any orphan or range notation. Verifies 68 requirements as of this writing. Also runs `check-docs`, which fails if any accrual figure in the README, Diagram B, or the submission text disagrees with `docs/metrics.json`.
+Extracts every requirement ID from the PRD and diffs §4 against the §2 compliance matrix **and the prose**; fails on any orphan or range notation. Verifies 74 requirements as of this writing. Also runs `check-docs`, which fails if any accrual figure in the README, Diagram B, or the submission text disagrees with `docs/metrics.json`.
+
+```bash
+make buyer-client
+```
+
+Runs a **buyer-side** system against Hodi: it reads the published terms, requests a licence, **verifies the receipt with Hodi's public key alone**, gates its own use on that verification, and then — after the artist revokes — **stops**, recording why in its own audit trail. Hodi terminating a grant in its own log is administration; a counterparty halting because the rail told it to is the product.
+
+```bash
+make deployment-status
+```
+
+Renders the generated *What is actually deployed* table, and `--check` validates its rules.
 
 ```bash
 make red-team
@@ -107,7 +122,7 @@ make red-team
 
 Runs the six-attack red-team drill (see *Autonomous consent incident response*): an injected instruction, a compromised negotiator, a compromised evidence agent, a rogue worker committing after quarantine, and a tampered incident package. Every boundary that yields exits nonzero, and the legitimate transaction completes at the end. Credential-free and offline.
 
-**All of the above run in CI** on every push and pull request ([.github/workflows/verify.yml](.github/workflows/verify.yml)) — the offline suite, the demo, the red-team drill, the truth table, compliance, doc-drift, and lint coverage. Nothing in CI needs credentials or the deployed service; the four targets that do (`demo-live`, `verify-manifest`, `metrics`, and the `HODI_E2E` tests) are deliberately excluded and named in the workflow so their absence is a decision, not an oversight.
+**All of the above run in CI** on every push and pull request ([.github/workflows/verify.yml](.github/workflows/verify.yml)) — the offline suite, the demo, the red-team drill, the buyer client, the truth table, compliance, deployment-status validation, doc-drift, and lint coverage. Nothing in CI needs credentials or the deployed service; the four targets that do (`demo-live`, `verify-manifest`, `metrics`, and the `HODI_E2E` tests) are deliberately excluded and named in the workflow so their absence is a decision, not an oversight.
 
 ---
 
