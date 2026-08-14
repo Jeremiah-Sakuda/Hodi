@@ -27,6 +27,23 @@ METRICS = ROOT / "docs" / "metrics.json"
 README = ROOT / "README.md"
 DEVPOST = ROOT / "docs" / "devpost-description.md"
 DIAGRAM_B = ROOT / "docs" / "architecture" / "diagram_b_what_hodi_will_not_say.mmd"
+DOCS_INDEX = ROOT / "docs" / "index.md"
+# Checked as a DOCUMENT as well as a data file: its own free-text keys are prose
+# and drifted exactly like prose — the currency note named live release
+# verification as outstanding while the capability below it read verified.
+STATUS_JSON = ROOT / "docs" / "deployment_status.json"
+
+# Any phrasing that asserts a capability has not run. Not a whitelist of
+# approved sentences — a list of ways to say "not executed", matched only on
+# lines that also name a verified capability's artifact.
+NOT_EXECUTED_PHRASES = (
+    "not yet executed", "not yet been executed", "never executed",
+    "has not been run", "have not been run", "has not been executed",
+    "never been run", "never run against", "has never run",
+    "scripted, never run", "scripted but not executed", "scripted_not_executed",
+    "not been built", "has not been built", "remains outstanding",
+    "designed and scripted, not", "designed-only", "not deployed",
+)
 
 # Every document that states a defect-ledger figure in prose. The count lived in
 # exactly these seven places and in no source, and it had already drifted —
@@ -162,6 +179,46 @@ def check_deployment_claims(failures) -> None:
         failures.append(
             "README.md's deployment-status table does not match docs/deployment_status.json. "
             "It is generated: run `python3 scripts/deployment_status.py --write-readme`.")
+
+    # ---- the GENERAL check: no prose may call a verified capability un-run ----
+    #
+    # WHY THIS REPLACED A PHRASE LIST. The previous version of this function knew
+    # exactly one disclaimer sentence, about KMS. An external judge found two
+    # more the same week: the README described setup_workload_identity.sh and
+    # deploy_revocation_worker.sh as "designed and scripted, not yet executed"
+    # while the generated table three sections below marked both `verified` —
+    # and deployment_status.json's OWN currency note named live release
+    # verification as outstanding three hours after CI had verified it and
+    # written the run URL into this same file.
+    #
+    # Guarding a claim by enumerating the sentences that could express it is the
+    # same mistake as the overclaim lint's regex list, and it fails the same way:
+    # the next sentence is phrased differently. So the anchor is the ARTIFACT
+    # PATH, which prose has to name in order to be talking about the capability
+    # at all, and the trigger is any not-executed phrasing on that line.
+    for name, cap in caps.items():
+        if cap.get("status") != "verified":
+            continue
+        artifacts = cap.get("artifacts") or []
+        if not artifacts:
+            failures.append(
+                f"deployment_status.json: '{name}' is verified but names no artifacts, so no "
+                "document can be checked against it. Add the implementing paths.")
+            continue
+        for doc_path in (README, DEVPOST, DOCS_INDEX, STATUS_JSON):
+            if not doc_path.exists():
+                continue
+            for lineno, line in enumerate(doc_path.read_text().splitlines(), 1):
+                low = line.lower()
+                if not any(a.lower() in low for a in artifacts):
+                    continue
+                hit = next((p for p in NOT_EXECUTED_PHRASES if p in low), None)
+                if hit:
+                    failures.append(
+                        f"{doc_path.name}:{lineno} says '{hit}' about an artifact of '{name}', "
+                        f"which deployment_status.json marks verified"
+                        + (f" (evidence: {cap.get('evidence_source','')[:60]})" if
+                           cap.get("evidence_source") else "") + ".")
 
     # The signing claim, which is the one that actually drifted.
     kms = caps.get("kms_signing", {})
