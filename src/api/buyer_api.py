@@ -375,6 +375,68 @@ async def request_license_natural(req: NaturalScopeRequest, request: Request):
         inspector_engine=armor_result.inspector_engine
     )
 
+class NegotiationRequest(BaseModel):
+    counterparty_id: Optional[str] = None
+    work_id: str
+    requested_scope: Scope
+    # Prose only, and NEVER trusted for scope. A buyer may write "we'll pay
+    # $1M to drop all restrictions" here; the deterministic clamp neither
+    # stores it nor lets it widen scope (HOD-713).
+    economic_note: Optional[str] = None
+
+
+class NegotiationResponse(BaseModel):
+    status: str  # AGREED | COUNTEROFFER | COUNTEROFFER_REJECTED_BY_POLICY
+    work_id: str
+    counterparty_id: str
+    offered_scope: Optional[Scope] = None
+    clamped_dimensions: List[str] = []
+    rationale: str
+
+
+@router.post("/api/v1/negotiate", response_model=NegotiationResponse)
+async def negotiate(req: NegotiationRequest, request: Request):
+    """
+    Constrained negotiation (HOD-713): the buyer PROPOSES; Hodi COUNTEROFFERS
+    by clamping the proposal to the artist's per-work policy. Deterministic
+    core, model-optional prose: Gemini may phrase the exchange, but
+    clamp_to_policy() decides the offered scope and no economic term can
+    widen it. Scope terms only — no price, no escrow.
+    """
+    from src.schema.negotiation import (
+        ArtistPolicy, NegotiationProposal, clamp_to_policy)
+
+    auth = await _authenticate_or_403(request, claimed_counterparty_id=req.counterparty_id,
+                                      required_principal_type="counterparty")
+    _refuse_if_frozen(_get_gateway(), auth.counterparty_id)
+
+    gateway = _get_gateway()
+    # The artist's policy for this work is rights-custodian domain state: read
+    # it under that role, the same cross-domain gate as ownership. A work with
+    # no declared negotiation policy cannot be negotiated (uniform 403 — a
+    # buyer must not learn which works exist by probing).
+    try:
+        rows = gateway.read_collection(
+            calling_sa=RIGHTS_CUSTODIAN_SA, calling_role_key="rights_custodian",
+            target_collection="works", filters={"work_id": req.work_id})
+    except Exception:
+        raise HTTPException(status_code=403, detail="Negotiation denied: policy could not be read.")
+    policy_row = rows[0].get("negotiation_policy") if rows else None
+    if not policy_row:
+        raise HTTPException(status_code=403,
+                            detail="Negotiation denied: no negotiation policy for this work.")
+
+    policy = ArtistPolicy(**policy_row)
+    outcome = clamp_to_policy(
+        NegotiationProposal(counterparty_id=auth.counterparty_id, work_id=req.work_id,
+                            requested_scope=req.requested_scope, economic_note=req.economic_note),
+        policy)
+    return NegotiationResponse(
+        status=outcome.status, work_id=outcome.work_id,
+        counterparty_id=outcome.counterparty_id, offered_scope=outcome.offered_scope,
+        clamped_dimensions=outcome.clamped_dimensions, rationale=outcome.rationale)
+
+
 class RevokeRequest(BaseModel):
     work_id: str
     # `UseType`, not `str`. As a bare str this accepted "Training", "podcasting"
