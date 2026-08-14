@@ -44,6 +44,10 @@ SCOPE = {
     "attribution_required": False, "territory": ["WW"],
     "valid_from": "2026-08-07T00:00:00Z",
 }
+# Every license body carries a work_id (HOD-701): the field is mandatory at
+# the schema, so a body without it is refused as 422 BEFORE authentication —
+# these tests each probe the auth layer, and must get past validation to do so.
+WORK = "work-essay-001"
 DOC_B64 = base64.b64encode(b"a buyer document").decode()
 
 
@@ -71,7 +75,7 @@ class TestCrossBuyerAuthentication(unittest.TestCase):
         """Returns (path, raw_body_bytes, headers) for a correctly signed request."""
         issued_at = issued_at or datetime.now(timezone.utc).isoformat()
         if body is None:
-            body = {"requested_scope": scope or SCOPE, "raw_document_b64": DOC_B64}
+            body = {"work_id": WORK, "requested_scope": scope or SCOPE, "raw_document_b64": DOC_B64}
         if claimed is not None:
             body = dict(body, counterparty_id=claimed)
         raw = json.dumps(body).encode("utf-8")
@@ -91,7 +95,7 @@ class TestCrossBuyerAuthentication(unittest.TestCase):
     def test_unsigned_body_claiming_victim_is_rejected(self):
         """The verbatim live exploit: no credential, bogus signature, victim's id."""
         r = self.client.post("/api/v1/license", json={
-            "counterparty_id": VICTIM, "requested_scope": SCOPE,
+            "counterparty_id": VICTIM, "work_id": WORK, "requested_scope": SCOPE,
             "raw_document_b64": DOC_B64,
         }, headers={HEADER_KEY_ID: "anything",
                     HEADER_TIMESTAMP: datetime.now(timezone.utc).isoformat(),
@@ -101,7 +105,8 @@ class TestCrossBuyerAuthentication(unittest.TestCase):
 
     def test_request_with_no_signature_headers_at_all_is_rejected(self):
         r = self.client.post("/api/v1/license", json={
-            "counterparty_id": VICTIM, "requested_scope": SCOPE, "raw_document_b64": DOC_B64})
+            "counterparty_id": VICTIM, "work_id": WORK, "requested_scope": SCOPE,
+            "raw_document_b64": DOC_B64})
         self.assertEqual(r.status_code, 403)
 
     def test_attacker_credential_claiming_victim_is_rejected(self):
@@ -131,7 +136,7 @@ class TestCrossBuyerAuthentication(unittest.TestCase):
     def test_unknown_key_and_bad_signature_are_indistinguishable(self):
         """Failure text must not let an attacker enumerate valid key_ids."""
         now = datetime.now(timezone.utc).isoformat()
-        body = {"requested_scope": SCOPE, "raw_document_b64": DOC_B64}
+        body = {"work_id": WORK, "requested_scope": SCOPE, "raw_document_b64": DOC_B64}
         unknown = self.client.post("/api/v1/license", json=body, headers={
             HEADER_KEY_ID: "key-does-not-exist", HEADER_TIMESTAMP: now, HEADER_SIGNATURE: "0" * 64})
         bad_sig = self.client.post("/api/v1/license", json=body, headers={
@@ -252,7 +257,7 @@ class TestCrossBuyerAuthentication(unittest.TestCase):
     def test_natural_language_endpoint_enforces_the_same_boundary(self):
         r = self._post(*self._signed(
             ATTACKER_KEY, ATTACKER_SECRET, claimed=VICTIM, path="/api/v1/license/natural",
-            body={"request_text": "we would like to fine-tune on this work"}))
+            body={"work_id": WORK, "request_text": "we would like to fine-tune on this work"}))
         self.assertEqual(r.status_code, 403)
 
 
