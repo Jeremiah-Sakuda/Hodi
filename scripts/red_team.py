@@ -229,6 +229,7 @@ def legitimate_transaction_still_completes():
     from src.gateway.gateway import AgentGateway
     from src.schema.grant_event import GrantEvent
     from src.schema.scope import Scope
+    from src.schema.signing import unsigned_placeholder
     from src.api.auth import (InMemoryCredentialStore, compute_signature,
                               HEADER_KEY_ID, HEADER_TIMESTAMP, HEADER_SIGNATURE)
 
@@ -238,7 +239,8 @@ def legitimate_transaction_still_completes():
         counterparty_id="acme-intelligence-labs",
         scope=Scope(use_type="training", model_class="all_models", commercial=True,
                     territory=["WW"], valid_from=t0),
-        kind="granted", issued_at=t0, signature="s").model_dump(mode="json")
+        kind="granted", issued_at=t0,
+        signature=unsigned_placeholder("grant", "grant-rt")).model_dump(mode="json")
     buyer_api.set_gateway(AgentGateway(offline_reads={"grants": [grant]}))
     buyer_api.set_credential_store(InMemoryCredentialStore({
         "key-legit": {"counterparty_id": "acme-intelligence-labs", "secret": "s", "active": True}}))
