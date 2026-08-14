@@ -45,7 +45,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                         <span>Scope: <strong>training</strong> (WW, Commercial)</span>
                     </div>
                 </div>
-                <button class="revoke-btn" onclick="revokeGrant('${work.work_id}', 'training')">Revoke Scope</button>
+                <button class="revoke-btn" onclick="revokeGrant('${work.work_id}', 'training')"
+                        title="Read-only preview. Real revocation requires an artist credential a static page must not hold; run it from the terminal against /api/v1/revoke.">
+                    Preview revocation (read-only)
+                </button>
+                <p style="font-size: 0.72rem; color: #8A8785; margin-top: 0.35rem;">
+                    Read-only console. This preview sends no request — real revocation runs
+                    from the terminal under an artist credential (see the video script).
+                </p>
             `;
             worksGrid.appendChild(card);
         });
