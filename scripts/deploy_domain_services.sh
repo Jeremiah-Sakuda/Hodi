@@ -136,6 +136,46 @@ done
 
 echo
 echo "=============================================================================="
+echo "NARROWING THE FRONT DOOR — the step that makes the split real"
+echo "=============================================================================="
+# Deploying four domain services changes nothing while the front door still
+# holds unconditioned grants: it could simply read every domain database itself
+# and the delegation would be decoration. So the runtime SA is narrowed to
+# `(default)` — the shared grant log and the collections the policy keeps there.
+#
+# ADD-THEN-REMOVE, in that order. Removing the broad grant first would leave the
+# live service unable to read anything for the width of this script.
+for r in "roles/datastore.viewer" "projects/${PROJECT_ID}/roles/hodiAppendOnlyGrantWriter"; do
+  gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+    --member="serviceAccount:${FRONT_DOOR_SA}" --role="${r}" \
+    --condition="expression=resource.name.endsWith('/databases/(default)'),title=front-door-default-only" \
+    --quiet >/dev/null
+  ok "conditioned to (default): ${r}"
+done
+for r in "roles/datastore.viewer" "projects/${PROJECT_ID}/roles/hodiAppendOnlyGrantWriter"; do
+  gcloud projects remove-iam-policy-binding "${PROJECT_ID}" \
+    --member="serviceAccount:${FRONT_DOOR_SA}" --role="${r}" \
+    --condition=None --quiet >/dev/null 2>&1 || true
+  ok "unconditioned grant removed: ${r}"
+done
+
+# PROOF: the front door now holds NO unconditioned database grant. An
+# unconditioned grant sitting beside a conditioned one narrows nothing — this
+# project failed that exact proof once already.
+UNCONDITIONED="$(gcloud projects get-iam-policy "${PROJECT_ID}" --format=json \
+  | python3 -c "
+import json,sys
+p=json.load(sys.stdin); me='serviceAccount:${FRONT_DOOR_SA}'
+bad=[b['role'] for b in p['bindings']
+     if me in b.get('members',[]) and not b.get('condition')
+     and ('datastore' in b['role'] or 'GrantWriter' in b['role'])]
+print(','.join(bad))
+")"
+[ -z "${UNCONDITIONED}" ] || die "front door still holds unconditioned database grants: ${UNCONDITIONED}"
+ok "front door holds no unconditioned database grant"
+
+echo
+echo "=============================================================================="
 echo "Front-door wiring (scripts/deploy.sh reads this automatically):"
 echo "  HODI_DOMAIN_SERVICE_URLS=${URLS}"
 echo "=============================================================================="

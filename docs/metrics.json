@@ -95,38 +95,36 @@
   },
   "h6_revocation_cascade_real_corpus_scale": {
     "measurement_surface": "deployed-over-network",
-    "idle_forcing_method": "revision-update (gcloud run services update)",
-    "measured_at_utc": "2026-08-14T17:05:00Z",
-    "runtime_identity": "hodi-runtime-sa (append+read only; no datastore update/delete)",
-    "cold_start_ms": 2263.0,
+    "measured_at_utc": "2026-08-14T21:05:00Z",
+    "runtime_identity": "hodi-runtime-sa (append+read only; conditioned to (default) alone)",
+    "cold_start_ms": 3973.0,
+    "cold_start_note": "Both the front door AND the rights-custodian workload cold. The split adds a second cold start to the critical path, so the pre-flight warm-up now has to touch more than one service.",
     "warm_runs_ms": [
-      644.0,
-      659.0,
-      688.0,
-      696.0,
-      733.0,
-      759.0,
-      851.0,
-      863.0
+      1785.0,
+      1796.0,
+      1805.0,
+      1806.0,
+      2064.0,
+      2119.0
     ],
-    "warm_avg_ms": 736.6,
-    "note": "Re-measured 2026-08-14 on revision 00045-dkz, the first deployment carrying both parallel sessions' work. Warm rose from ~519 ms to ~737 ms: the cascade now takes an execution lease and writes an idempotency outbox record alongside the revocation event, so a retry cannot double-issue a notice and an abandoned worker cannot commit late. The added ~220 ms is the cost of exactly-once business effects; it is reported rather than absorbed because the recording script quotes this figure.",
-    "revision": "hodi-evidence-endpoint-00045-dkz"
+    "warm_avg_ms": 1895.8,
+    "revision": "hodi-evidence-endpoint-00054-swn",
+    "note": "Re-measured 2026-08-14 after the conflict-domain split. Warm rose from ~737 ms to ~1896 ms: the revoke path's work-ownership check is a rights-custodian read, and the custodian is now a SEPARATE Cloud Run workload under its own identity and database, so that check is an authenticated HTTPS hop instead of an in-process call. The ~1160 ms is the price of the boundary being infrastructure rather than application code. Reported as a regression rather than absorbed, because the recording script quotes this figure."
   },
   "natural_language_license_path": {
     "measurement_surface": "deployed-over-network",
     "endpoint": "/api/v1/license/natural",
     "interpreter_model": "gemini-3.5-flash",
     "vertex_location": "global",
-    "measured_at_utc": "2026-08-14T17:29:00Z",
+    "measured_at_utc": "2026-08-14T21:02:00Z",
     "warm_runs_ms": [
-      3378.0,
-      3554.0,
-      3623.0
+      3751.0,
+      3885.0,
+      4141.0
     ],
-    "warm_avg_ms": 3518.3,
-    "revision": "hodi-evidence-endpoint-00045-dkz",
-    "note": "Re-measured 2026-08-14 on revision 00045-dkz while verifying that the recording script's beats still run. Each request includes one server-side Vertex AI generateContent call (scope interpretation). Rose from 3175 ms measured 2026-08-07."
+    "warm_avg_ms": 3925.7,
+    "revision": "hodi-evidence-endpoint-00054-swn",
+    "note": "Re-measured after the domain split. ~3518 -> ~3926 ms; the added ~400 ms is the same custodian hop, and it is a smaller share here because one server-side Gemini call already dominates this path."
   },
   "overclaim_lint_coverage": {
     "measured_at_utc": "2026-08-13T15:50:15Z",
@@ -173,18 +171,18 @@
   "defect_ledger": {
     "source": "docs/defect_ledger.json",
     "counting_rule": "one entry per distinct defect with a distinct fix; a recurrence in a new location is a new entry",
-    "total_defects": 41,
+    "total_defects": 44,
     "class_count": 9,
     "recurring_class_count": 4,
     "defects_per_class": {
       "live-boundary-auth": 3,
       "self-instrumentation-contamination": 3,
       "deterministic-wrongness": 1,
-      "tests-that-could-not-fail": 11,
+      "tests-that-could-not-fail": 12,
       "infrastructure-reported-done": 3,
-      "claims-with-no-code": 3,
+      "claims-with-no-code": 4,
       "policy-looser-than-its-text": 3,
-      "semantics-that-disagreed": 9,
+      "semantics-that-disagreed": 10,
       "narrative-number-drift": 5
     },
     "recurring_classes": [
@@ -197,18 +195,18 @@
   "buyer_api_license_path": {
     "measurement_surface": "deployed-over-network",
     "endpoint": "/api/v1/license",
-    "measured_at_utc": "2026-08-14T17:33:00Z",
+    "measured_at_utc": "2026-08-14T21:00:00Z",
     "permitted_warm_runs_ms": [
-      541.0,
-      600.0,
-      605.0,
-      769.0,
-      777.0,
-      980.0
+      1495.0,
+      1548.0,
+      1606.0,
+      1615.0,
+      1751.0,
+      2036.0
     ],
-    "permitted_warm_avg_ms": 712.0,
-    "denied_warm_ms": 455.0,
-    "revision": "hodi-evidence-endpoint-00045-dkz",
-    "note": "The permitted path rose from ~399 ms (2026-08-10) because its receipt is now signed by Cloud KMS \u2014 one asymmetricSign round-trip per issued receipt. The DENIED path is faster than the permitted one for exactly that reason: a denial issues no receipt, so it signs nothing. Supersedes h6_buyer_api_with_model_armor, which was measured before KMS signing existed and whose name refers to a product this project could not use."
+    "permitted_warm_avg_ms": 1675.0,
+    "denied_warm_ms": 1591.0,
+    "revision": "hodi-evidence-endpoint-00054-swn",
+    "note": "Both directions rose (~712 -> ~1675 permitted, ~455 -> ~1591 denied) for the same reason as the cascade: the work-scoping check reads `works`, which now lives in hodi-identity behind the rights-custodian workload. The denial is no longer the fast path \u2014 it pays the same hop before it can refuse, which is the correct order: you cannot decide a request about a work without first establishing the work."
   }
 }

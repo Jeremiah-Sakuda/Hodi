@@ -100,3 +100,68 @@ class TestForeignDomainReadIsDeniedByIAM(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(os.environ.get("HODI_E2E") == "1",
+                     "Live IAM assertion (HOD-733): set HODI_E2E=1 with gcloud credentials.")
+class TestFrontDoorCannotReachDomainDatabases(unittest.TestCase):
+    """
+    The property the four-service split exists to create.
+
+    Deploying a service per domain changes nothing while the front door still
+    holds unconditioned grants — it could read every domain database itself and
+    the delegation would be decoration. So the runtime identity is conditioned
+    to `(default)`, and these two tests are the pair that matters: it must be
+    REFUSED on a domain database, and still WORK on the shared grant log.
+    Asserting only the first would pass on a completely broken service account.
+    """
+
+    def _impersonate(self, sa_email, database):
+        from google.cloud import firestore
+        from google.auth import impersonated_credentials
+        import google.auth
+
+        project = os.environ.get("GCP_PROJECT_ID", "hodi-2026")
+        try:
+            source, _ = google.auth.default(
+                scopes=["https://www.googleapis.com/auth/cloud-platform"])
+        except google.auth.exceptions.DefaultCredentialsError:
+            import subprocess
+            from google.oauth2 import credentials as oauth2_credentials
+            token = subprocess.check_output(
+                ["gcloud", "auth", "print-access-token"],
+                stderr=subprocess.DEVNULL).decode().strip()
+            source = oauth2_credentials.Credentials(token)
+        creds = impersonated_credentials.Credentials(
+            source_credentials=source, target_principal=sa_email,
+            target_scopes=["https://www.googleapis.com/auth/cloud-platform"])
+        return firestore.Client(project=project, credentials=creds, database=database)
+
+    def test_front_door_is_denied_every_domain_database(self):
+        from google.api_core import exceptions as gexc
+        project = os.environ.get("GCP_PROJECT_ID", "hodi-2026")
+        front_door = f"hodi-runtime-sa@{project}.iam.gserviceaccount.com"
+        for role, collection in (("rights_custodian", "works"),
+                                 ("evidence_agent", "crawler_access"),
+                                 ("licensing_negotiator", "buyer_terms"),
+                                 ("consent_arbiter", "incident_assertions")):
+            database = database_for_role(role)
+            if database == "(default)":
+                continue
+            with self.subTest(database=database):
+                client = self._impersonate(front_door, database)
+                with self.assertRaises(
+                        (gexc.PermissionDenied, gexc.Forbidden),
+                        msg=(f"the front door read {database}. The domain services are "
+                             "decoration while it can reach the data itself.")):
+                    list(client.collection(collection).limit(1).stream())
+
+    def test_front_door_can_still_read_the_shared_grant_log(self):
+        """
+        The other half. A narrowing that also broke the grant log would pass the
+        test above and leave the system unable to answer a licensing question.
+        """
+        project = os.environ.get("GCP_PROJECT_ID", "hodi-2026")
+        front_door = f"hodi-runtime-sa@{project}.iam.gserviceaccount.com"
+        client = self._impersonate(front_door, "(default)")
+        list(client.collection("grants").limit(1).stream())  # must not raise

@@ -151,12 +151,23 @@ def main() -> int:
         print(f"  copied {written}")
 
         # 3. Verify the copy is FAITHFUL before removing the original.
+        #
+        # CONTAINMENT, not equality. The first version compared the whole
+        # destination's digest against the source's, which only holds when the
+        # destination started empty — so the incremental sweep of records
+        # written during the cutover window aborted, correctly refusing to
+        # delete what it could not prove it had copied. What must be true is
+        # that every source document is present in the destination byte for
+        # byte; the destination legitimately holds more.
         copied = read_all(dest_db, collection)
-        if digest(copied) != before:
-            print(f"  ABORT: destination digest {digest(copied)[:16]}… != source {before[:16]}… — "
-                  "nothing deleted.", file=sys.stderr)
+        missing = [k for k in src_docs if k not in copied]
+        differing = [k for k in src_docs
+                     if k in copied and digest({k: copied[k]}) != digest({k: src_docs[k]})]
+        if missing or differing:
+            print(f"  ABORT: {len(missing)} missing and {len(differing)} differing in "
+                  f"{dest} — nothing deleted.", file=sys.stderr)
             return 1
-        print(f"  verified: destination digest matches source exactly")
+        print(f"  verified: all {len(src_docs)} source documents present in {dest}, byte for byte")
 
         # 4. Only now remove the originals, in batches.
         batch, n = default_db.batch(), 0
