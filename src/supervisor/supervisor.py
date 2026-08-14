@@ -3,9 +3,24 @@ import threading
 import subprocess
 import signal
 import os
+import uuid
 from typing import Dict, Any, Callable, Optional, List
 from pydantic import BaseModel
 from datetime import datetime, timezone
+
+from src.supervisor.lease import LeaseLedger
+
+def _accepts_lease_kwarg(func: Callable[..., Any]) -> bool:
+    """True if `func` can take a lease_id keyword (explicitly or via **kwargs)."""
+    import inspect
+    try:
+        sig = inspect.signature(func)
+    except (TypeError, ValueError):
+        return False
+    if "lease_id" in sig.parameters:
+        return True
+    return any(p.kind is inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+
 
 class TaskAbandonedEvent(BaseModel):
     event_id: str
@@ -19,19 +34,40 @@ class Supervisor:
     Supervisor — Detection and Bounding (HOD-341).
     Per-agent wall-clock deadline & circuit breaker.
     TaskAbandoned event is written BY THE SUPERVISOR, never by the failing worker process.
+
+    With a LeaseLedger attached (HOD-707), the Supervisor also fences the
+    worker's WRITES: a lease is issued before dispatch and revoked at the
+    moment of abandonment — before quarantine, before reroute — so a worker
+    that wakes up after its deadline can still compute but can no longer
+    commit. Revocation is ordered BEFORE the TimeoutError is raised: the
+    instant the fleet learns the task is abandoned, the ledger already
+    refuses the lease.
     """
 
-    def __init__(self, deadline_seconds: float = 5.0, failure_threshold: int = 3):
+    def __init__(self, deadline_seconds: float = 5.0, failure_threshold: int = 3,
+                 lease_ledger: Optional[LeaseLedger] = None,
+                 lease_grace_seconds: float = 30.0):
         self.deadline_seconds = deadline_seconds
         self.failure_threshold = failure_threshold
         self.failure_counts: Dict[str, int] = {}
         self.circuit_breakers: Dict[str, bool] = {}  # True = tripped
         self.abandoned_events: List[TaskAbandonedEvent] = []
+        self.lease_ledger = lease_ledger
+        # Lease TTL = deadline + grace. The TTL is the backstop for a DEAD
+        # supervisor (its revoke never ran); the live supervisor's explicit
+        # revoke is the primary mechanism and fires at the deadline itself.
+        self.lease_grace_seconds = lease_grace_seconds
 
-    def execute_bounded_task(self, agent_id: str, task_func: Callable[[], Any]) -> Dict[str, Any]:
+    def execute_bounded_task(self, agent_id: str, task_func: Callable[..., Any],
+                             task_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Executes agent task with wall-clock deadline and circuit breaker.
         If deadline is exceeded or circuit breaker is tripped, SUPERVISOR writes TaskAbandoned event.
+
+        With a lease ledger attached, `task_func` is called with a `lease_id`
+        keyword argument when it accepts one; the worker must present that
+        lease on every side-effecting write (the gateway checks it — the
+        worker's cooperation is not part of the guarantee).
         """
         if self.circuit_breakers.get(agent_id, False):
             # Circuit breaker already tripped! Supervisor writes TaskAbandoned event
@@ -45,6 +81,14 @@ class Supervisor:
             self.abandoned_events.append(event)
             raise TimeoutError(f"SUPERVISOR_BOUND: Circuit breaker tripped for agent '{agent_id}'. TaskAbandoned written by supervisor.")
 
+        lease_id: Optional[str] = None
+        if self.lease_ledger is not None:
+            lease_id = self.lease_ledger.issue(
+                agent_id=agent_id,
+                task_id=task_id or f"task-{uuid.uuid4()}",
+                ttl_seconds=self.deadline_seconds + self.lease_grace_seconds,
+            )
+
         # The task runs on a separate thread and the SUPERVISOR waits with a
         # timeout, so the deadline bounds the supervisor's wait rather than
         # being checked after the fact. An earlier version called task_func()
@@ -54,14 +98,19 @@ class Supervisor:
         #
         # A Python thread cannot be forcibly killed; the property being proven
         # is that the supervisor DETECTS and reports within the deadline without
-        # the worker's cooperation. The orphaned worker is a daemon thread and
-        # cannot keep the process alive. For hard termination of an uncooperative
-        # worker, use execute_bounded_subprocess (Path A).
+        # the worker's cooperation — and, with a ledger attached, that the
+        # worker's LEASE dies with the deadline, so late writes are refused at
+        # the gateway. The orphaned worker is a daemon thread and cannot keep
+        # the process alive. For hard termination of an uncooperative worker,
+        # use execute_bounded_subprocess (Path A).
         result_box: Dict[str, Any] = {}
 
         def _runner():
             try:
-                result_box["value"] = task_func()
+                if lease_id is not None and _accepts_lease_kwarg(task_func):
+                    result_box["value"] = task_func(lease_id=lease_id)
+                else:
+                    result_box["value"] = task_func()
             except BaseException as exc:  # noqa: BLE001 — reported on the caller's thread
                 result_box["error"] = exc
 
@@ -71,9 +120,12 @@ class Supervisor:
         worker.join(timeout=self.deadline_seconds)
 
         if worker.is_alive():
-            # DEADLINE PATH: no result arrived in time. The supervisor writes
-            # TaskAbandoned itself — the worker is still running and has
-            # reported nothing.
+            # DEADLINE PATH: no result arrived in time. Revoke the lease FIRST
+            # — from this instant the worker can compute but cannot commit —
+            # then write TaskAbandoned. The supervisor writes it itself; the
+            # worker is still running and has reported nothing.
+            if self.lease_ledger is not None and lease_id is not None:
+                self.lease_ledger.revoke(lease_id, reason=f"deadline_exceeded ({self.deadline_seconds}s) for agent '{agent_id}'")
             self._handle_failure(agent_id, "deadline_exceeded")
             raise TimeoutError(
                 f"SUPERVISOR_BOUND: No result within deadline {self.deadline_seconds}s "
@@ -82,10 +134,15 @@ class Supervisor:
             )
 
         if "error" in result_box:
+            if self.lease_ledger is not None and lease_id is not None:
+                self.lease_ledger.revoke(lease_id, reason=f"worker_error for agent '{agent_id}'")
             self._handle_failure(agent_id, f"error: {result_box['error']}")
             raise result_box["error"]
 
-        # Reset failure count on success
+        # Reset failure count on success; the finished task's lease is released
+        # so it cannot be replayed by anything holding the id.
+        if self.lease_ledger is not None and lease_id is not None:
+            self.lease_ledger.release(lease_id)
         self.failure_counts[agent_id] = 0
         return result_box.get("value")
 
