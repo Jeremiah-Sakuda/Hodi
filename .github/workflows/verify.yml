@@ -45,6 +45,9 @@ jobs:
       - name: Credential-free demo
         run: make demo          # asserts every beat; fails the build if a property is false
 
+      - name: Red-team drill
+        run: make red-team      # five attacks; any boundary that yields exits nonzero
+
       - name: Scope lattice truth table
         run: make verify-scopes
 
