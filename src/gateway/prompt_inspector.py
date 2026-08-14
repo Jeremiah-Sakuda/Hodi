@@ -13,14 +13,27 @@ class InjectionDetectionResult(BaseModel):
 
 class PromptInspector:
     """
-    Prompt Inspector (HOD-313).
-    Inspects untrusted post-extraction bytes of inbound buyer scope documents using local regex.
-    
+    Prompt Inspector (HOD-313) — a DETERMINISTIC FIRST-PASS INJECTION INDICATOR,
+    labelled `local_regex_inspector` everywhere it appears.
+
+    Positioning, stated so no reviewer has to infer it: this is a local regex
+    over an enumerated pattern list, NOT a general prompt-injection defense and
+    NOT the managed Model Armor guardrail (that API was in restricted preview
+    and returned 403 for this project, so the claim was pulled — see BUILD-LOG
+    2026-08-07). A semantically-equivalent paraphrase — "disregard everything
+    that preceded this" — can evade the literal patterns, and that is expected
+    of a first-pass indicator: it flags the obvious payloads and the request
+    PROCEEDS under its original scope regardless. The load-bearing guarantee is
+    NOT that the regex catches everything; it is that detection can never widen
+    the licensable set, because the lattice decides permission and the document
+    text is never an input to it.
+
     CRITICAL PRD REQUIREMENT (Correction 2):
-    Prompt Inspector MUST NOT modify or strip the inbound document!
-    Emits an InjectionDetected event + anomaly item in Firestore & OTel trace,
-    and the request PROCEEDS under its original validated scope.
-    The stored inbound document MUST remain BYTE-IDENTICAL to what was received from the counterparty.
+    The inspector MUST NOT modify or strip the inbound document. It emits an
+    InjectionDetected event + anomaly item and the request proceeds under its
+    original validated scope; the stored inbound document remains BYTE-IDENTICAL
+    to what the counterparty sent, so it can never become an evidentiary dispute
+    over altered contractual input.
     """
     
     INJECTION_PATTERNS = [
