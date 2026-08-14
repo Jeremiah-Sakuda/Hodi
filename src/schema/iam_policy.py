@@ -49,6 +49,22 @@ AGENT_SA_MAP: Dict[str, Dict[str, Any]] = {
         # conflict domain as the notices themselves.
         "permitted_collections": ["grants", "revocation_notices", "revocation_outbox"],
         "denied_collections": ["artists", "buyer_terms", "crawler_access", "canaries"]
+    },
+    "consent_arbiter": {
+        "sa_email": "consent-arbiter-sa@hodi-2026.iam.gserviceaccount.com",
+        "role_name": "Consent Arbiter",
+        "description": ("Adjudicates incidents from TYPED ASSERTIONS ONLY (HOD-704). Holds NONE of the "
+                        "four conflict domains: no identity, no buyer terms, no raw evidence, no "
+                        "revocation authority — and NO write path to grant history. Its collections are "
+                        "the incident record and the containment directives its decisions produce."),
+        "conflict_domain": "adjudication",
+        "permitted_collections": ["incidents", "incident_assertions", "negotiation_freezes"],
+        # Every domain collection is DENIED, explicitly: an adjudicator that
+        # could read raw evidence, terms, identity or grants — or rewrite the
+        # history it rules on — would be an interested one.
+        "denied_collections": ["artists", "works", "control_proofs", "buyer_terms", "grants",
+                               "crawler_access", "canaries", "evidence_records",
+                               "revocation_notices", "revocation_outbox", "receipts"]
     }
 }
 

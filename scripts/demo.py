@@ -316,6 +316,95 @@ def beat_6_honesty_invariants():
         print(f"  PASS: overclaim lint rejected: \"{overclaim}\"")
 
 
+def beat_7_consent_incident():
+    rule("BEAT 7 — AUTONOMOUS CONSENT INCIDENT: OBSERVE, INVESTIGATE, ADJUDICATE, CONTAIN, PROVE (HOD-703/704/705/706)")
+    import copy
+    from src.gateway.gateway import AgentGateway, GatewayPolicyDenial
+    from src.incident.engine import IncidentEngine
+    from src.incident.package import export_package, verify_package
+    from src.schema.assertion import TypedAssertion
+    from src.schema import signing
+    from pydantic import ValidationError
+
+    fixture = json.loads((FIXTURES / "incident_scenario.json").read_text())
+
+    # The demo's signer is EPHEMERAL and says so in every envelope — it
+    # proves the mechanism (sign → verify → tamper detection) offline, never
+    # durable authority. Cleared afterwards so later beats stay unchanged.
+    os.environ["HODI_SIGNING"] = "ephemeral"
+    signing._active_signer = None
+    try:
+        gateway = AgentGateway(offline_reads={
+            "crawler_access": [fixture["access_record"]],
+            "works": [fixture["work"]],
+            "grants": [],
+        })
+
+        # 7a — the epistemic wall, before anything runs: an agent claiming
+        # beyond its authority is refused as a structured denial, and the
+        # training claim cannot even be CONSTRUCTED as data. Demonstrated on
+        # a THROWAWAY gateway so the incident's own gateway can prove the
+        # cleaner thing afterwards: zero denials, because no wall was even
+        # attempted during the real investigation.
+        demo_wall_gateway = AgentGateway()
+        try:
+            demo_wall_gateway.submit_assertion(
+                calling_sa="evidence-agent-sa@hodi-2026.iam.gserviceaccount.com",
+                calling_role_key="evidence_agent",
+                assertion=TypedAssertion(
+                    assertion_id="a-demo", assertion_class="GRANT_EXISTED",
+                    asserted_by_role="evidence_agent",
+                    subject_work_id=fixture["work"]["work_id"],
+                    basis="overreach", recorded_at=datetime.now(timezone.utc)))
+            print("  [FAIL] the evidence agent asserted outside its authority!")
+            sys.exit(1)
+        except GatewayPolicyDenial as e:
+            print(f"  PASS: assertion authority denied — {e.denial.policy_consulted}: "
+                  f"evidence_agent may not claim GRANT_EXISTED")
+        try:
+            TypedAssertion(assertion_id="a", assertion_class="MODEL_TRAINED_ON_WORK",
+                           asserted_by_role="evidence_agent",
+                           subject_work_id="w", basis="b",
+                           recorded_at=datetime.now(timezone.utc))
+            print("  [FAIL] the schema constructed a training-membership assertion!")
+            sys.exit(1)
+        except ValidationError:
+            print("  PASS: MODEL_TRAINED_ON_WORK is not an assertion class — the claim is inexpressible as data.")
+
+        # 7b — the incident itself: a FICTIONAL scraper fetched the work.
+        result = IncidentEngine(gateway=gateway).run(
+            work_id=fixture["work"]["work_id"],
+            declared_principal=fixture["declared_principal"],
+            access_record=fixture["access_record"])
+        statuses = {f.claim: f.status for f in result.manifest.decision.findings}
+        assert statuses["ACCESS_OUTSIDE_DECLARED_POLICY"] == "ESTABLISHED"
+        training = result.manifest.decision.not_determinable["MODEL_TRAINING_OCCURRED"]
+        assert training.startswith("NOT_ESTABLISHED")
+        assert gateway.denial_events == [], "a wall was attempted during the investigation"
+        print(f"  PASS: {[e.status for e in result.lifecycle]} — every transition an appended event")
+        print("  PASS: ACCESS_OUTSIDE_DECLARED_POLICY: ESTABLISHED "
+              f"(basis: {len(result.assertions)} typed assertions, walls intact)")
+        print("  PASS: MODEL_TRAINING_OCCURRED: NOT_ESTABLISHED — carried on the decision itself")
+        assert result.freeze is not None
+        print(f"  PASS: containment = negotiation freeze {result.freeze.freeze_id} "
+              "(the rail, not a weapon: nothing to revoke, nothing revoked)")
+
+        # 7c — the record proves itself: verify, then tamper one byte.
+        package = export_package(result)
+        report = verify_package(package)
+        assert report.all_ok, [l for ok, l in report.checks if not ok]
+        print(f"  PASS: package verifies — {len(report.checks)} checks including "
+              "decision REPRODUCED from the packaged assertions")
+        tampered = copy.deepcopy(package)
+        tampered["manifest"]["subject_principal"] = "an-innocent-party"
+        assert not verify_package(tampered).all_ok
+        print("  PASS: one tampered field and verification fails "
+              f"(signature: {package['manifest']['signature'].split(':', 1)[0]} — labelled ephemeral)")
+    finally:
+        os.environ.pop("HODI_SIGNING", None)
+        signing._active_signer = None
+
+
 def main():
     print("HODI CREDENTIAL-FREE DEMO — fixtures only, no GCP credentials, no network.")
     events = load_fixture_events()
@@ -328,6 +417,7 @@ def main():
     beat_5b_adk_delegation(events)
     beat_5c_quarantine_and_reroute(events)
     beat_6_honesty_invariants()
+    beat_7_consent_incident()
     print("\nALL DEMO BEATS PASSED.")
 
 
