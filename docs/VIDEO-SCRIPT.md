@@ -1,9 +1,24 @@
 # Hodi — recording script
 
+> **⚠️ STALE SINCE THE 2026-08-14 JUDGE-FEEDBACK BUILD — re-measure and re-shape before recording.**
+> That build (HOD-701..714, see BUILD-LOG) changed request shapes and added surfaces this script predates:
+> - **`work_id` is now mandatory** on `/api/v1/license` and `/api/v1/license/natural`. Every license body
+>   below must add `"work_id": "work-essay-001"` (or the work being demonstrated) or it is refused **422**
+>   before timing even starts. The revoke and delegation-drill bodies already carry `work_id`.
+> - **`permits()` now enforces request-window containment** — an open-ended request against a bounded grant
+>   is denied. Use an explicit `valid_until` inside the grant's window, or an unbounded grant, for a permit.
+> - **New surfaces worth a beat:** the consent-incident flow with a signed, self-verifying manifest
+>   (`make demo` Beat 7), the five-attack red-team drill (`make red-team`), constrained negotiation
+>   (`POST /api/v1/negotiate`), and `hodi verify` against `/verification-key`. The review's suggested cut
+>   ("proof, not commercial"; work-A-permit-then-work-B-deny; a live red-team sequence) maps onto these.
+> - **All timings below predate the build and must be re-measured** on the recording revision
+>   (`make metrics`) before any take. Every number in this file is therefore **PREDICTED — NOT OBSERVED**
+>   until re-measured, per the Observation vs. Prediction Rule.
+
 **Target 3:30 · hard cap 4:00 · 30 seconds of insurance**
-Everything except the recording. All durations below are **measured**, not estimated — the source
-for each is named. Re-measured against the deployed service on **2026-08-12**, revision
-`00039-846`. Two correctness changes landed since 2026-08-10 and both are verified live: the
+Everything except the recording. All durations below were **measured** on an earlier revision — see the
+banner above; they are now predicted until re-measured. The source for each is named. Last measured
+against the deployed service on **2026-08-12**, revision `00039-846`. Two correctness changes landed since 2026-08-10 and both are verified live: the
 revocation cascade now terminates exactly the grants that **permit** the revoked use (it previously
 ran backwards — see below), and `/api/v1/revoke` now checks the artist **owns** the work. The
 boundary denial returns **6/6 HTTP 403 including Part C**; the hero cascade appends under create-only
