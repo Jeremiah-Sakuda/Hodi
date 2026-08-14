@@ -89,35 +89,56 @@ jobs:
         env:
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
 
-      - name: KMS sign / verify / tamper against the real key
+      # CI VERIFIES. IT DOES NOT SIGN.
+      #
+      # This step originally had CI sign a receipt with the production key and
+      # then check its own signature. That required roles/cloudkms.signer on the
+      # CI identity — the power to forge any Hodi receipt — to prove a closed
+      # loop that says nothing about the deployed service. The verifier holds
+      # publicKeyViewer only, and proves the two things a recipient actually
+      # depends on:
+      #
+      #   1. the public key the service ADVERTISES is byte-identical to the one
+      #      KMS holds, so the service cannot be substituting a key it controls;
+      #   2. a REAL notice the deployed service issued still verifies under that
+      #      key, and one changed byte does not.
+      #
+      # (2) also catches a key version rotated away from already-published
+      # receipts, which would silently invalidate every provenance claim made.
+      - name: KMS public key and a production signature, verified without signing power
         run: |
           set -euo pipefail
           gcloud kms keys versions get-public-key 1 \
             --key "${{ vars.KMS_KEY }}" --keyring "${{ vars.KMS_KEYRING }}" \
             --location "${{ vars.KMS_LOCATION }}" --project "${{ vars.GCP_PROJECT_ID }}" \
-            --output-file /tmp/hodi-public-key.pem
+            --output-file /tmp/kms-public-key.pem
+          curl -fsS "${{ vars.HODI_SERVICE_URL }}/verification-key" \
+            | python3 -c "import json,sys; sys.stdout.write(json.load(sys.stdin)['public_key_pem'])" \
+            > /tmp/served-public-key.pem
           python3 - <<'PY'
-          import json, os, subprocess, sys
-          sys.path.insert(0, ".")
-          os.environ["HODI_SIGNING"] = "kms"
-          from src.schema.grant_event import Receipt
-          from src.schema.signing import sign_pydantic
-          from datetime import datetime, timezone
-          receipt = sign_pydantic(Receipt(
-              receipt_id="ci-verify", grant_id="ci", work_id="ci", counterparty_id="ci",
-              payload_hash="0"*64, issued_at=datetime.now(timezone.utc), signature=""),
-              kind="receipt", reference="ci")
-          open("/tmp/receipt.json", "w").write(receipt.model_dump_json())
-          # Verifies with the PUBLIC key only — the property a recipient has.
-          assert subprocess.run([sys.executable, "scripts/hodi_verify.py", "/tmp/receipt.json",
-                                 "--key", "/tmp/hodi-public-key.pem"]).returncode == 0, "signed receipt did not verify"
-          # And a tampered byte must fail, or the check proves nothing.
-          doc = json.load(open("/tmp/receipt.json")); doc["counterparty_id"] = "tampered"
-          json.dump(doc, open("/tmp/receipt-bad.json", "w"))
-          assert subprocess.run([sys.executable, "scripts/hodi_verify.py", "/tmp/receipt-bad.json",
-                                 "--key", "/tmp/hodi-public-key.pem"]).returncode != 0, "a tampered receipt verified"
-          print("KMS sign/verify/tamper: PASS")
+          import sys
+          def norm(p):
+              return "".join(open(p).read().split())
+          kms, served = norm("/tmp/kms-public-key.pem"), norm("/tmp/served-public-key.pem")
+          if kms != served:
+              sys.exit("/verification-key does not serve the KMS public key — a recipient "
+                       "verifying against the advertised key would be verifying against "
+                       "something this service chose, not something KMS holds.")
+          print("advertised public key is byte-identical to the KMS key: PASS")
           PY
+          python3 - <<'PY'
+          import json
+          doc = json.load(open("fixtures/production_signed_notice.json"))["notice"]
+          json.dump(doc, open("/tmp/notice.json", "w"))
+          doc["counterparty_id"] = "tampered-labs"
+          json.dump(doc, open("/tmp/notice-bad.json", "w"))
+          PY
+          python3 scripts/hodi_verify.py /tmp/notice.json --key /tmp/kms-public-key.pem
+          if python3 scripts/hodi_verify.py /tmp/notice-bad.json --key /tmp/kms-public-key.pem; then
+            echo "a tampered notice VERIFIED — the signature check is not checking." >&2
+            exit 1
+          fi
+          echo "production notice verifies; tampered copy does not: PASS"
 
       # --- the result becomes the repository's deployment truth ---
 

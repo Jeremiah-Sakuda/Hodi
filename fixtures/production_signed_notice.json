@@ -1,0 +1,11 @@
+{
+  "_comment": "A REAL revocation notice issued by the deployed service (revision hodi-evidence-endpoint-00045-dkz) on 2026-08-14T17:29:42Z, captured verbatim. Nothing here was constructed: this is the artifact the hero beat's cascade emits, signed by Cloud KMS with a private key that has never left KMS. It exists so .github/workflows/verify-live.yml can prove the verification property WITHOUT holding the signing key \u2014 CI verifies a production artifact against the live public key, rather than signing something for itself and checking its own work, which is a closed loop that proves nothing about production.",
+  "_what_a_failure_here_would_mean": "Either the deployed service is serving a public key that is not the KMS key it claims (substitution), or the key version behind already-issued receipts has been rotated away, which would silently invalidate every provenance claim Hodi has published.",
+  "notice": {
+    "revocation_id": "6df914f56cdeee3c132c10959dfc75ccca25ba7a8b8905318338ca17fed54388",
+    "grant_id": "grant-acme-il-001",
+    "counterparty_id": "acme-intelligence-labs",
+    "revoked_at": "2026-08-14T17:29:42.457624Z",
+    "signature": "KMS-ECDSA-P256-SHA256:hodi-provenance/cryptoKeyVersions/1:MEQCIE4O0kIsWecAObFvg4RvFARZ9e8oDUhd+rfo1XSMMI67AiArWhBA/nTPkbXAiFIDwSw+MtDnvx06aZPLjRlQvNOIwg=="
+  }
+}
