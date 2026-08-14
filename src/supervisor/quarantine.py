@@ -31,9 +31,12 @@ class QuarantineEngine:
         Quarantines failing worker, deregisters from registry, reroutes task to standby agent,
         and returns complete response.
         """
-        # 1. Deregister quarantined agent from registry
-        if quarantined_agent_id in self.registry._publications:
-            del self.registry._publications[quarantined_agent_id]
+        # 1. Deregister the quarantined agent from the registry — an appended
+        # EVENT with a reason (HOD-709), never a deletion: the publication
+        # history survives quarantine, and discovery simply stops disclosing
+        # the agent for the remainder of the run.
+        if self.registry.is_registered(quarantined_agent_id):
+            self.registry.deregister(quarantined_agent_id, reason="quarantined_by_supervisor")
 
         # 2. Record QuarantineEvent
         event = QuarantineEvent(

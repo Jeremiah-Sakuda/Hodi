@@ -38,6 +38,7 @@ positive and negative of HOD-330 in a single trace.
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
@@ -367,13 +368,13 @@ class FleetDelegationOrchestrator(HodiADKAgent):
                 ),
             }
 
-        before = set(registry._publications)
+        before = set(registry.publications())
         outcome = engine.quarantine_and_reroute(
             quarantined_agent_id=quarantined_agent_id,
             standby_agent_id=standby_id,
             fallback_func=degraded_reroute,
         )
-        deregistered = quarantined_agent_id in before and quarantined_agent_id not in registry._publications
+        deregistered = quarantined_agent_id in before and not registry.is_registered(quarantined_agent_id)
 
         span = create_agent_decision_span(
             span_name="supervisor.quarantine_and_reroute",
@@ -427,6 +428,15 @@ def build_fleet(counterparty_id: str, work_id: str, revoked_use_type: str,
                 role=role_key,
                 scopes=[c if isinstance(c, str) else c["collection"]
                         for c in info["permitted_collections"]],
+                # Durable-registry fields (HOD-709). endpoint stays None for
+                # in-process agents — stated, never faked with a URL nothing
+                # serves; the split revocation worker publishes its real URL
+                # via HODI_REVOCATION_WORKER_URL when deployed (HOD-711).
+                endpoint=(os.environ.get("HODI_REVOCATION_WORKER_URL")
+                          if role_key == "revocation_propagator" else None),
+                service_account=info["sa_email"],
+                capabilities=[c if isinstance(c, str) else c["collection"]
+                              for c in info["permitted_collections"]],
             ))
 
     supervisor = supervisor or Supervisor(deadline_seconds=10.0)
