@@ -127,10 +127,19 @@ done
 echo
 echo "[4] the binding that lets exactly one repository impersonate it"
 PRINCIPAL="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL}/attribute.repository/${REPO}"
-gcloud iam service-accounts add-iam-policy-binding "$SA" \
-  --project="$PROJECT_ID" --role="roles/iam.workloadIdentityUser" \
-  --member="$PRINCIPAL" --quiet >/dev/null
-ok "workloadIdentityUser bound to attribute.repository/${REPO}"
+# BOTH roles are required, and the second is not redundant. workloadIdentityUser
+# lets the federated principal *be* this service account; token_format:access_token
+# makes google-github-actions/auth call generateAccessToken, whose permission
+# (iam.serviceAccounts.getAccessToken) lives in serviceAccountTokenCreator. The
+# first run failed with exactly that PERMISSION_DENIED — the federation was
+# accepted and the token mint was not. Both are bound to the SAME narrowed
+# principalSet, so this widens who-can-do-what, never who.
+for wif_role in roles/iam.workloadIdentityUser roles/iam.serviceAccountTokenCreator; do
+  gcloud iam service-accounts add-iam-policy-binding "$SA" \
+    --project="$PROJECT_ID" --role="$wif_role" \
+    --member="$PRINCIPAL" --quiet >/dev/null
+  ok "${wif_role#roles/iam.} bound to attribute.repository/${REPO}"
+done
 
 echo
 echo "[5] PROOF — the narrowing is present, read back from IAM"
@@ -147,7 +156,7 @@ esac
 
 MEMBERS="$(gcloud iam service-accounts get-iam-policy "$SA" --project="$PROJECT_ID" \
   --flatten='bindings[].members' \
-  --filter='bindings.role=roles/iam.workloadIdentityUser' \
+  --filter='bindings.role:roles/iam.workloadIdentityUser OR bindings.role:roles/iam.serviceAccountTokenCreator' \
   --format='value(bindings.members)')"
 echo "$MEMBERS" | while read -r m; do
   [ -z "$m" ] && continue
