@@ -70,7 +70,7 @@ class TestSupervisor(unittest.TestCase):
         Failing worker is quarantined, deregistered from Registry, task rerouted to standby,
         and request completes successfully.
         """
-        self.assertIn("worker-agent-failing", self.registry._publications)
+        self.assertTrue(self.registry.is_registered("worker-agent-failing"))
 
         def standby_fallback_func():
             return {"status": "SUCCESS", "terms": "standard_license_terms"}
@@ -81,7 +81,13 @@ class TestSupervisor(unittest.TestCase):
             fallback_func=standby_fallback_func
         )
 
-        self.assertNotIn("worker-agent-failing", self.registry._publications)
+        self.assertFalse(self.registry.is_registered("worker-agent-failing"),
+                         "quarantine must stop discovery of the agent")
+        # Deregistration is an EVENT, not a deletion (HOD-709): the
+        # publication history survives quarantine, with the reason recorded.
+        survived = self.registry.publications(include_deregistered=True)
+        self.assertIn("worker-agent-failing", survived)
+        self.assertEqual(survived["worker-agent-failing"].status, "deregistered")
         self.assertEqual(result["status"], "SUCCESS")
         self.assertEqual(result["terms"], "standard_license_terms")
         self.assertEqual(result["quarantine_notice"]["request_status"], "completed_via_reroute")
