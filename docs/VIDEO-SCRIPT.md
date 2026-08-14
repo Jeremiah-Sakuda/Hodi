@@ -1,29 +1,39 @@
 # Hodi — recording script
 
-> **⚠️ STALE SINCE THE 2026-08-14 JUDGE-FEEDBACK BUILD — re-measure and re-shape before recording.**
-> That build (HOD-701..714, see BUILD-LOG) changed request shapes and added surfaces this script predates:
-> - **`work_id` is now mandatory** on `/api/v1/license` and `/api/v1/license/natural`. Every license body
->   below must add `"work_id": "work-essay-001"` (or the work being demonstrated) or it is refused **422**
->   before timing even starts. The revoke and delegation-drill bodies already carry `work_id`.
-> - **`permits()` now enforces request-window containment** — an open-ended request against a bounded grant
->   is denied. Use an explicit `valid_until` inside the grant's window, or an unbounded grant, for a permit.
-> - **New surfaces worth a beat:** the consent-incident flow with a signed, self-verifying manifest
->   (`make demo` Beat 7), the five-attack red-team drill (`make red-team`), constrained negotiation
->   (`POST /api/v1/negotiate`), and `hodi verify` against `/verification-key`. The review's suggested cut
->   ("proof, not commercial"; work-A-permit-then-work-B-deny; a live red-team sequence) maps onto these.
-> - **All timings below predate the build and must be re-measured** on the recording revision
->   (`make metrics`) before any take. Every number in this file is therefore **PREDICTED — NOT OBSERVED**
->   until re-measured, per the Observation vs. Prediction Rule.
+> **CURRENT AS OF 2026-08-14T17:35Z, revision `hodi-evidence-endpoint-00045-dkz`.** Every command in
+> this file was executed against that deployed revision on that date, and every duration below is the
+> round-trip that run produced. The earlier stale-banner warning is retired because the thing it
+> warned about was fixed rather than restated — see the two paragraphs immediately below, which record
+> what was wrong, because the same defect will recur if only the symptom is remembered.
+>
+> **Two commands in this script would have failed on camera, and did.** Run exactly as previously
+> written, Beat 3 and the hero's Frames A and C returned **HTTP 422 — `work_id` Field required**:
+> `ScopeRequest.work_id` and `NaturalScopeRequest.work_id` are required with no default
+> ([src/api/buyer_api.py:191](../src/api/buyer_api.py:191), [:288](../src/api/buyer_api.py:288)), and
+> the bodies here carried none. A banner had warned about this since the build that introduced it; the
+> banner was written and the bodies were never changed. **A warning is not a fix.**
+>
+> **And a third failure the banner did not predict.** With `work_id` added, the hero's Frame A still
+> returned `permitted: false` — its scope hardcoded `valid_from: 2026-08-09`, while
+> `make recording-prep` seeds the grant with `valid_from = now`. A request window that opens before
+> the grant's is not contained in it, so it is correctly denied. Frame A is the frame that must show
+> the licence **granted**; a false there is not a slow take, it is no hero beat at all. Both bodies
+> below now compute `valid_from` at call time. `tests/test_recording_script_contract.py` parses this
+> file and fails the build if any request body here omits a required field of the route it posts to.
 
 **Target 3:30 · hard cap 4:00 · 30 seconds of insurance**
-Everything except the recording. All durations below were **measured** on an earlier revision — see the
-banner above; they are now predicted until re-measured. The source for each is named. Last measured
-against the deployed service on **2026-08-12**, revision `00039-846`. Two correctness changes landed since 2026-08-10 and both are verified live: the
-revocation cascade now terminates exactly the grants that **permit** the revoked use (it previously
-ran backwards — see below), and `/api/v1/revoke` now checks the artist **owns** the work. The
+Everything except the recording. All durations below were **measured** — the source for each is named,
+and the whole sequence was re-run end to end on **2026-08-14** against revision `00045-dkz`. The
 boundary denial returns **6/6 HTTP 403 including Part C**; the hero cascade appends under create-only
 IAM with the affected set, derived scopes and issued notices all correct; a non-owner revoke is
 refused 403. Warm cascade ~0.7 s. Re-measure with `make metrics` if you record more than a day from now.
+
+> **The signature narration changed, and it changed in your favour.** Earlier versions of this script
+> told you to say the `signature` field reads `UNSIGNED_PLACEHOLDER`. **It no longer does.** The
+> deployed service signs notices and receipts with Cloud KMS, and the field now reads
+> `KMS-ECDSA-P256-SHA256:hodi-provenance/cryptoKeyVersions/1:…`. Saying "unsigned" on camera would
+> narrate something the screen contradicts *and* throw away the strongest provable claim in the
+> submission. The new closing beat verifies a notice with the public key alone — see Beat 4.
 
 Supersedes PRD §6's shot list. Three things changed since it was written and the budget changes
 with them:
@@ -41,15 +51,22 @@ with them:
 **The actions are far faster than the beats.** This is the single thing to internalise before you
 record:
 
-| Action | Measured (2026-08-09 unless noted) | Beat budget |
+| Action | Measured (2026-08-14, rev `00045-dkz`, unless noted) | Beat budget |
 |---|---|---|
-| Revocation cascade, **1 affected grant** | **644 – 863 ms** round-trip, ~737 ms avg (2026-08-14, rev 00045-dkz) | 45 s |
-| Revocation cascade, **2 affected grants** | **5086 / 5275 / 4953 ms** — see the trap below | — |
-| `POST /api/v1/license` (Frames A and C of the hero) | **399 ms** before · **399 ms** after (2026-08-10) | — |
-| Natural-language license | **2.83 s** round-trip, warm (2026-08-10) · 3175 ms avg in `metrics.json` | 30 s |
-| Full boundary test, 6 denials | **8.4 s** cold, ~2.2 s warm | 20 s |
-| `make demo`, all 7 beats | **1.4 – 1.8 s** | — |
-| Quarantine drill | 1114 ms server-side; **7.3 s** cold / 1.5 s warm round-trip | 20 s |
+| Revocation cascade, **1 affected grant** | **644 – 863 ms** round-trip, ~737 ms avg | 45 s |
+| Revocation cascade, **2 affected grants** | **5086 / 5275 / 4953 ms** (2026-08-09) — see the trap below | — |
+| `POST /api/v1/license`, **permitted** (Frame A) | **541 – 980 ms**, ~712 ms avg over 6 warm runs | — |
+| `POST /api/v1/license`, **denied** (Frame C) | **455 ms** — a denial issues no receipt, so it signs nothing | — |
+| Natural-language license | **3378 / 3554 / 3623 ms**, ~3.5 s avg warm | 30 s |
+| Full boundary test, 6 denials | **8.4 s** cold, ~2.2 s warm (2026-08-09) | 20 s |
+| `make demo`, all 7 beats | **1.4 – 1.8 s** (2026-08-09) | — |
+| Quarantine drill | 1114 ms server-side; **7.3 s** cold / 1.5 s warm round-trip (2026-08-09) | 20 s |
+
+**Two figures rose since the last script, and both rose for the same reason: the proof got real.**
+The cascade went ~519 → ~737 ms when it gained an execution lease and an idempotency outbox, and the
+permitted licence went ~399 → ~712 ms because its receipt is now signed by Cloud KMS rather than
+stamped with a placeholder. The denial stayed fast precisely *because* it signs nothing. If you find
+yourself wishing for the old numbers, note what they were the speed of.
 
 So the hero beat is **not** 45 seconds of waiting. It is ~0.7 s of action wrapped in 45 s of
 *before* and *after*: the license granted, the command, the cascade output, the same license refused.
@@ -292,7 +309,8 @@ import json, hmac, hashlib, os, time, urllib.request
 from datetime import datetime, timezone
 BASE = "https://hodi-evidence-endpoint-406699565497.us-central1.run.app"
 KEY, SECRET = os.environ["HODI_CP_KEY"], os.environ["HODI_CP_SECRET"]
-body = {"request_text": "We would like to fine-tune an open-weights model on this work "
+body = {"work_id": "work-repo-001",   # REQUIRED — omitting it is a 422 before timing starts
+        "request_text": "We would like to fine-tune an open-weights model on this work "
                         "for non-commercial research, US and Canada only, with attribution."}
 raw = json.dumps(body).encode(); ts = datetime.now(timezone.utc).isoformat()
 sig = hmac.new(SECRET.encode(), f"{KEY}\n{ts}\n{hashlib.sha256(raw).hexdigest()}".encode(), hashlib.sha256).hexdigest()
@@ -306,11 +324,13 @@ print(json.dumps(r, indent=2))
 EOF
 ```
 
-**Measured: 2.83 s** round-trip, warm (2026-08-10); 3175 ms avg in `metrics.json`. One server-side Gemini call.
-**Burn in the wall clock.**
+**Measured: 3378 / 3554 / 3623 ms**, ~3.5 s warm (2026-08-14, rev `00045-dkz`), `permitted = true`.
+One server-side Gemini call. **Burn in the wall clock.**
 
-**On screen:** the plain-English request, then the returned `interpreted_scope`
-(`fine_tuning` / `open_weights` / `["US","CA"]`), `interpreter_model: gemini-3.5-flash`, and the receipt.
+**On screen:** the plain-English request, then the returned `interpreted_scope` — verified on
+2026-08-14 to come back as `fine_tuning` / `open_weights` / `commercial: false` /
+`attribution_required: true` / `territory: ["US","CA"]`, with `valid_from` stamped at request time —
+plus `interpreter_model: gemini-3.5-flash` and the receipt.
 
 **Say:** the buyer asks in English. Gemini 3.5 Flash structures it into a typed scope — and that is
 *all* it does. The lattice decides permission, deterministically. An interpretation carrying
@@ -320,9 +340,10 @@ anything other than a valid scope is rejected, not coerced. **The model never gr
 
 ### Beat 4 — HERO: the revocation cascade · 45 s *(never cut)*
 
-**Frame A (before, ~10 s).** Do **not** dump the raw event log — it now holds 16 documents for this
-counterparty and its first line is a `SIG_REVOKED` event from an earlier take, which is the worst
-possible opening frame. Show the *answer* instead: ask for the licence and watch it be granted.
+**Frame A (before, ~10 s).** Do **not** dump the raw event log — it is append-only and deep (98 events
+for `work-repo-001` as of 2026-08-14, and it grows two per take), and its first line is a
+`SIG_REVOKED` event from an earlier take, which is the worst possible opening frame. Show the
+*answer* instead: ask for the licence and watch it be granted.
 
 ```bash
 python3 - <<'EOF'
@@ -330,9 +351,14 @@ import json, hmac, hashlib, os, time, urllib.request
 from datetime import datetime, timezone
 BASE = "https://hodi-evidence-endpoint-406699565497.us-central1.run.app"
 KEY, SECRET = os.environ["HODI_CP_KEY"], os.environ["HODI_CP_SECRET"]
+# valid_from is stamped AT CALL TIME, not hardcoded. `make recording-prep` opens the grant's
+# window at seed time, and permits() requires the REQUEST window to be contained in the GRANT
+# window — so a hardcoded past date is correctly denied and there is no hero beat.
 SCOPE = {"use_type": "fine_tuning", "model_class": "open_weights", "commercial": False,
-         "attribution_required": True, "territory": ["US", "CA"], "valid_from": "2026-08-09T00:00:00Z"}
-raw = json.dumps({"counterparty_id": "acme-intelligence-labs", "requested_scope": SCOPE,
+         "attribution_required": True, "territory": ["US", "CA"],
+         "valid_from": datetime.now(timezone.utc).isoformat()}
+raw = json.dumps({"work_id": "work-repo-001",   # REQUIRED — omitting it is a 422
+                  "counterparty_id": "acme-intelligence-labs", "requested_scope": SCOPE,
                   "raw_document_b64": "aGVsbG8="}).encode()
 ts = datetime.now(timezone.utc).isoformat()
 sig = hmac.new(SECRET.encode(), f"{KEY}\n{ts}\n{hashlib.sha256(raw).hexdigest()}".encode(), hashlib.sha256).hexdigest()
@@ -346,7 +372,9 @@ print(json.dumps(r, indent=2))
 EOF
 ```
 
-**Measured: 399 ms, `permitted = True`**, with a receipt (2026-08-10). This frame is immune to log
+**Measured: 541 – 980 ms, ~712 ms over 6 warm runs, `permitted = True`**, `licensable_set =
+["training", "open_weights"]`, with a receipt whose `signature` is a real
+`KMS-ECDSA-P256-SHA256:…` envelope (2026-08-14, rev `00045-dkz`). This frame is immune to log
 churn — it reads the *fold*, not the event dump, so it looks identical on take one and take five.
 
 **Frame B (the action, ~5 s).** Paste and run:
@@ -366,6 +394,8 @@ t0 = time.perf_counter()
 r = json.loads(urllib.request.urlopen(req, timeout=120).read())
 print(f"{(time.perf_counter()-t0)*1000:.0f} ms")
 print(json.dumps(r, indent=2))
+# Frame D verifies this notice with the public key alone. Save it now.
+json.dump(r["issued_notices"][0], open("/tmp/hodi_notice.json", "w"))
 EOF
 ```
 
@@ -375,18 +405,25 @@ cascade gained an execution lease and an idempotency outbox — a retry cannot d
 and an abandoned worker cannot commit late. **Burn in the wall clock — under a second, and it is
 now buying exactly-once effects.**
 
-On screen, in the response:
-- `derived_scopes` — `training`, `fine_tuning`, `rag_retrieval`, `human_reference`, walked from the
+On screen, in the response (all seven top-level keys confirmed present on 2026-08-14):
+- `derived_scopes` — `fine_tuning`, `human_reference`, `rag_retrieval`, `training`, walked from the
   lattice's covering relation, not enumerated in code
 - `structured_derivation` — each step with its `parent` and the reason (`training ⊃ fine_tuning`)
 - `affected_grants` — the grant, its counterparty, its original scope
-- `issued_notices` — the notices and their receipts (the `signature` field reads
-  `UNSIGNED_PLACEHOLDER:…` — say so, it is the honesty thesis in one field)
+- `issued_notices` — each notice carries `revocation_id`, `grant_id`, `counterparty_id`, `revoked_at`
+  and `signature`, and that signature reads
+  **`KMS-ECDSA-P256-SHA256:hodi-provenance/cryptoKeyVersions/1:MEQCIE4O…`** — a real ECDSA P-256
+  signature over the canonical bytes, made by a private key that has never left Cloud KMS
+- `operation_id` and `replayed_effects` — the idempotency outbox, visible. `replayed_effects: 0` on a
+  first call; run the same revoke twice and the second returns the *same* `operation_id` with the
+  effects replayed rather than re-issued. This is the ~220 ms the cascade got slower to buy.
 
-**Frame C (after, ~25 s).** Re-run **the Frame A command, unchanged.** Same request, same
+**Frame C (after, ~20 s).** Re-run **the Frame A command, unchanged.** Same request, same
 counterparty, same scope.
 
-**Measured: 399 ms, `permitted = False`** (2026-08-10).
+**Measured: 455 ms, `permitted = False`**, `licensable_set = []`, `explicit_exclusions =
+["fine_tuning", "open_weights"]` (2026-08-14, rev `00045-dkz`). The denial is *faster* than the
+permit because it issues no receipt, and therefore signs nothing.
 
 > **Accuracy note (read once).** The demo grant is held at **`training`** (the broadest use),
 > so revoking `training` correctly terminates it and the notice withdraws all four downstream
@@ -396,15 +433,38 @@ counterparty, same scope.
 
 **Say:** one call. Containment resolves downstream scopes from the partial order — `training` was
 revoked, and `fine_tuning` fell with it because the lattice says `training ⊃ fine_tuning`, not
-because anyone wrote that rule in code. Notices and receipts are issued — and their `signature` field
-says `UNSIGNED_PLACEHOLDER`, because a signature only a service can verify is not a signature. The original grant is
-**not deleted** — it is a new event that supersedes, and the log still shows what was permitted
-before. And the notice says the grant is terminated. It does **not** say the model forgot anything,
-because a lint refuses to let it.
+because anyone wrote that rule in code. The original grant is **not deleted** — it is a new event
+that supersedes, and the log still shows what was permitted before. And the notice says the grant is
+terminated. It does **not** say the model forgot anything, because a lint refuses to let it.
 
-> The A→C flip is the whole beat: *the identical request, granted and then refused, 400 ms apart.*
-> That is worth more on camera than any amount of JSON, and it cannot be faked by a stub — the same
-> endpoint answered both times.
+> The A→C flip is the whole beat: *the identical request, granted and then refused, under a second
+> apart.* That is worth more on camera than any amount of JSON, and it cannot be faked by a stub —
+> the same endpoint answered both times.
+
+**Frame D (the proof, ~10 s) — paid for out of Frame C, which is generous at 25 s for a
+455 ms command. The hero stays at its 45 s budget: A 10 + B 5 + C 20 + D 10.** Take the
+notice the cascade just issued and verify it **without Hodi**:
+
+```bash
+curl -s https://hodi-evidence-endpoint-406699565497.us-central1.run.app/verification-key | python3 -c "import json,sys; print(json.load(sys.stdin)['public_key_pem'])" > /tmp/hodi_pub.pem
+python3 scripts/hodi_verify.py /tmp/hodi_notice.json --key /tmp/hodi_pub.pem
+```
+
+**Verified 2026-08-14 against rev `00045-dkz`:** `✓ document signature valid
+(KMS-ECDSA-P256-SHA256)` → `VERIFIED`, exit 0. Then change one byte and run it again:
+
+```bash
+python3 -c "import json; d=json.load(open('/tmp/hodi_notice.json')); d['counterparty_id']='tampered-labs'; json.dump(d,open('/tmp/hodi_notice_bad.json','w'))"
+python3 scripts/hodi_verify.py /tmp/hodi_notice_bad.json --key /tmp/hodi_pub.pem
+```
+
+**Verified the same day:** `✗ document signature INVALID` → `VERIFICATION FAILED`, exit 1.
+
+**Say:** the private key has never left Cloud KMS. This check used the public key and the document
+bytes — no Hodi service, no credentials, no database. So the counterparty can prove Hodi issued this
+notice, and Hodi cannot deny it. One changed byte and it fails. *That* is what the signature field is
+worth, and it is why it no longer says `UNSIGNED_PLACEHOLDER` — the placeholder was honest while
+nothing could verify anything, and it was replaced by building the thing rather than by relabelling.
 
 **Reset before the next take:** `make recording-reset`
 
@@ -506,7 +566,7 @@ every push.
 | 1 | Cold open — registered work | 15 s |
 | 2 | Four conflict walls | 20 s |
 | 3 | Model interprets, lattice decides | 30 s |
-| 4 | **HERO — revocation cascade** | 45 s |
+| 4 | **HERO — revocation cascade** (A 10 · B 5 · C 20 · D 10) | 45 s |
 | 5 | Security — live boundary, 6 denials | 20 s |
 | 6 | Quarantine and reroute | 20 s |
 | 7 | **Diagram B — the honesty beat** | 15 s |

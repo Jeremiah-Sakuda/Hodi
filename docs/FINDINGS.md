@@ -425,3 +425,43 @@ The moment storage began failing closed, eight tests errored immediately. The in
 **Both figures stay published.** `metrics.json` records `paraphrases_rejected: 12`, `rejected_by_regex_alone: 4`, and `rejected_by_semantic_backstop: 8`, because the second layer depends on a model that can regress or become unreachable — in which case coverage falls back to 4 and the backstop disables itself rather than guessing. `make check-docs` guards **both** numbers; claiming the fallback is 12 fails the build. Vectors are recorded from live Vertex into `fixtures/embedding_cache.json` by `make embedding-cache`, so `make demo` stays credential-free.
 
 **What has not changed.** The structural guarantee is still the schema: `EvidenceRecord` has no field capable of expressing training-set membership, and that — not the lint — is what stands between Hodi and the claim.
+
+---
+
+## Named finding — the recording script would have failed on camera, and its own banner had said so for days
+
+**Found:** 2026-08-14 (by executing it) · **Requirements:** HOD-730 · **Status:** fixed, verified live, guarded
+
+**What happened.** `docs/VIDEO-SCRIPT.md` carried a banner at the very top warning that `work_id` had become mandatory on `/api/v1/license` and `/api/v1/license/natural`, and that every license body below had to add it *"or it is refused **422** before timing even starts."* Three of the four on-camera command bodies still omitted it. Run against the deployed service (revision `00045-dkz`) on 2026-08-14, Beat 3 and the hero's Frames A and C each returned:
+
+```
+HTTP 422  {"type":"missing","loc":["body","work_id"],"msg":"Field required"}
+```
+
+`ScopeRequest.work_id` and `NaturalScopeRequest.work_id` are required with no default. The banner had been correct since the build that introduced the change. Nothing checked it, so nothing fixed it — **a warning is not a mechanism**, which is the fourth distinct restatement of this project's most-repeated defect class, and the first where the cost would have been a lost take rather than a red test.
+
+**A second failure the banner did not predict.** With `work_id` added, the hero's Frame A *still* returned `permitted: false`. Its scope hardcoded `valid_from: "2026-08-09T00:00:00Z"` while `make recording-prep` seeds the demo grant with `valid_from = now`; `permits()` requires the request window to be contained in the grant window, so a request opening five days before the grant is correctly refused. Frame A is the frame whose entire job is to show the licence **granted** — a false there is not a slow beat, it is no hero beat at all. This one was invisible to the banner because it is not a schema error: the request was well-formed and the answer was right.
+
+**A third, in the opposite direction.** The script instructed the presenter to say, on camera, that the `signature` field reads `UNSIGNED_PLACEHOLDER`. It no longer does. Cloud KMS signing shipped, and the deployed service returns `KMS-ECDSA-P256-SHA256:hodi-provenance/cryptoKeyVersions/1:…`. Narrating the placeholder would have stated something the screen contradicted **and** discarded the strongest provable claim in the submission. The placeholder was honest while nothing could verify anything; it was retired by building the thing, and the narration had not followed. Verified the same day: the notice the cascade issues verifies with the public key alone (`VERIFIED`, exit 0), and one changed byte fails it (`VERIFICATION FAILED`, exit 1).
+
+**And the drift had reached the README, from this session's own work.** The README's deployed-path sentence read *"revocation cascade 3049 ms cold / 534 ms warm average"* while `docs/metrics.json` — named as its source one clause earlier — said 2263 / 736.6. The metrics file had been regenerated hours before after a real regression; the prose citing it had not been. Every other published figure in the README was guarded. Latency figures were not, so that is where the drift went: nothing breaks when a latency number is wrong, and a wrong one is always plausible.
+
+**What is now structural.**
+- `tests/test_recording_script_contract.py` parses `docs/VIDEO-SCRIPT.md`, derives the route→model table **from `src/api/buyer_api.py`** rather than transcribing it, and fails if any scripted request body omits a required field of the route it posts to. It also fails on a hardcoded `valid_from` in a request body, and on any instruction to narrate `UNSIGNED_PLACEHOLDER` as current. Mutation-verified against all three real defects: each reintroduction fails the suite.
+- `check_deployed_timings()` in `scripts/check_doc_metrics.py` binds every latency figure in the README to `docs/metrics.json`, and additionally requires the sentence to name the revision the measurement came from — a latency number without a revision is a memory, not an observation. Mutation-verified by restoring the stale 3049/534 pair.
+
+**What is not guarded, and is stated instead.** Whether a scripted request is *permitted* depends on live grant state, which no static check can know; that remains the job of `make recording-prep`, which reports both grant statuses from the fold, the affected-set size, and the predicted cascade cost before a take.
+
+---
+
+## Named finding — a reviewer concluded the autonomous audit was not scheduled, and the repository had earned that reading
+
+**Found:** 2026-08-14 · **Requirements:** HOD-320 · **Status:** no code defect; documentation trail added
+
+**What happened.** An external reviewer, checking whether Hodi's incident pipeline actually runs unattended, grepped `scripts/daily_accrual_check.py`, found no scheduled trigger referencing it, and reported that the project's headline autonomous loop "is **not** wired to any scheduled trigger."
+
+**The claim was false, and the reading was fair.** Cloud Scheduler job `hodi-daily-accrual-audit` had fired that same morning — `AttemptFinished 2026-08-14T09:00:58Z`, *"Original HTTP response code number = 200"* — against `GET /internal/accrual_audit` on the deployed service, which runs the Gemma triage and appends one immutable row to `accrual_audits`. But the scheduled work lives in `src/evidence_service/main.py`, and the file that carries the *name* of the daily audit is the manual metrics path, deliberately unscheduled. Two surfaces shared a name and shared no reference to each other. A reviewer who greps the obviously-named file and believes the result is doing exactly the right thing.
+
+**Fix.** `scripts/daily_accrual_check.py` now opens by naming the scheduled endpoint, its job, its schedule, its identity requirement and where its rows land — and says plainly that it is not the scheduled path. The `scheduled_jobs` entry in `docs/deployment_status.json` now cites the Cloud Logging execution record directly rather than only the metrics rows it produces, so the claim is checkable by a reader who has not read this document.
+
+**The lesson, which is not about scheduling.** Every other finding here concerns a claim stronger than its mechanism. This is the inverse: a mechanism stronger than its trail. It cost nothing to fix and would have cost a category of credit that had actually been earned.

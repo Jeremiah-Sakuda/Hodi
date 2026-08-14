@@ -96,7 +96,7 @@ Fetches the **live** `/works` manifest and verifies the corpus-integrity propert
 make test
 ```
 
-Runs the full offline suite — 445 tests, credential-free, including the cross-buyer attack suite, the work-scoped authorization adversarial suite, the route-authentication coverage guard, the 56-case containment truth table, the ADK delegation, and the quarantine drill. Twelve tests that genuinely require live Firestore or live IAM (byte-identity at rest, and reading the deployed runtime identity back from IAM, cannot be proven against an in-memory buffer) are skipped unless you set `HODI_E2E=1`, because they write to real collections.
+Runs the full offline suite — 450 tests, credential-free, including the cross-buyer attack suite, the work-scoped authorization adversarial suite, the route-authentication coverage guard, the recording-script contract guard, the 56-case containment truth table, the ADK delegation, and the quarantine drill. Twelve tests that genuinely require live Firestore or live IAM (byte-identity at rest, and reading the deployed runtime identity back from IAM, cannot be proven against an in-memory buffer) are skipped unless you set `HODI_E2E=1`, because they write to real collections.
 
 ```bash
 make compliance
@@ -196,7 +196,7 @@ Build history, findings, and the write-up are first-class artifacts here — inc
 
 - **[docs/BUILD-LOG.md](docs/BUILD-LOG.md)** — every session's verbatim prompt, outcome, and forked decisions, including five dated correction notes where earlier entries overclaimed or reported unbuilt infrastructure as done, and were struck.
 - **[docs/FINDINGS.md](docs/FINDINGS.md)** — daily observations plus two long-form named findings: the live cross-buyer confidentiality breach (dates, exact exposure, why the existing boundary test could not catch it), and the day this project's own Cloud Scheduler job was counted as a third-party crawler, inverting its signature honesty claim.
-- **[Seven ways to lie to yourself in code](https://jeremiah-sakuda.github.io/Hodi/blog/seven-ways-to-lie-to-yourself-in-code.html)** *(published)* — the defect ledger as a write-up: twenty-seven defects, nine classes, the four that recurred, the meta-pattern behind all of them, and the four structural guards that answer it. Source: [docs/blog/](docs/blog/seven-ways-to-lie-to-yourself-in-code.md).
+- **[Seven ways to lie to yourself in code](https://jeremiah-sakuda.github.io/Hodi/blog/seven-ways-to-lie-to-yourself-in-code.html)** *(published)* — the defect ledger as a write-up: thirty-one defects, nine classes, the four that recurred, the meta-pattern behind all of them, and the four structural guards that answer it. Source: [docs/blog/](docs/blog/seven-ways-to-lie-to-yourself-in-code.md).
 - **[docs/social-posts.md](docs/social-posts.md)** — the launch posts.
 - **[docs/architecture/conflict_matrix.md](docs/architecture/conflict_matrix.md)** — generated from the policy module the Gateway reads.
 
@@ -243,7 +243,7 @@ This is a finding about the SDK's current headless surface, published rather tha
 
 ## Published writing
 
-- **Blog — [Seven ways to lie to yourself in code](https://jeremiah-sakuda.github.io/Hodi/blog/seven-ways-to-lie-to-yourself-in-code.html)**. The defect ledger: twenty-seven defects across nine classes, the four that recurred, the Antigravity SDK assertion that was verified before it was made, and the four structural guards. Created for the All Things Agentic Hackathon.
+- **Blog — [Seven ways to lie to yourself in code](https://jeremiah-sakuda.github.io/Hodi/blog/seven-ways-to-lie-to-yourself-in-code.html)**. The defect ledger: thirty-one defects across nine classes, the four that recurred, the Antigravity SDK assertion that was verified before it was made, and the four structural guards. Created for the All Things Agentic Hackathon.
 - **Project site — [https://jeremiah-sakuda.github.io/Hodi/](https://jeremiah-sakuda.github.io/Hodi/)**, serving the build log, findings, the Antigravity decision, and the generated IAM matrix.
 - **Social posts** — tagged `#AllThingsAgenticHackathon`. Text in [docs/social-posts.md](docs/social-posts.md).
   - LinkedIn: <!-- POSTED-URL-1 --> *(not yet posted)*
@@ -289,7 +289,9 @@ The validator refuses the file itself if a capability is marked `verified` witho
 
 Authenticated routes (`/api/v1/license`, `/api/v1/license/natural`, `/api/v1/revoke`) require signed-request headers; `/internal/accrual_audit` requires the Cloud Scheduler service account's OIDC token. Revocation additionally requires an **artist** credential — a buyer credential is refused.
 
-Deployed-path timings (measurement surface: `deployed-over-network`, from [docs/metrics.json](docs/metrics.json)): buyer API 896 ms cold / 560 ms warm average; revocation cascade 3049 ms cold / 534 ms warm average (re-measured 2026-08-10 after the service moved onto a create-only runtime identity — see below); natural-language license path 3175 ms warm average (each request includes one server-side Gemini call); failure-tolerance drill — a looping worker detected, quarantined and rerouted — 1114 ms server-side average against a 1.0 s supervisor deadline, i.e. detection plus recovery costs about 110 ms on top of the deadline it is waiting on; supervisor deadline in production 5.0 s, derived from an observed p95 of 2939 ms with 1.7× headroom.
+Deployed-path timings (measurement surface: `deployed-over-network`, from [docs/metrics.json](docs/metrics.json), re-measured 2026-08-14 on revision `hodi-evidence-endpoint-00045-dkz`): buyer API license path 712 ms warm average when permitted and 455 ms when denied; revocation cascade 2263 ms cold / 737 ms warm average; natural-language license path 3518 ms warm average (each request includes one server-side Gemini call); failure-tolerance drill — a looping worker detected, quarantined and rerouted — 1114 ms server-side average against a 1.0 s supervisor deadline, i.e. detection plus recovery costs about 110 ms on top of the deadline it is waiting on; supervisor deadline in production 5.0 s, derived from an observed p95 of 2939 ms with 1.7× headroom.
+
+**Two of those figures got slower, and the reason is the point.** The cascade went from ~534 ms to ~737 ms when it gained an execution lease and an idempotency outbox, so a retry cannot double-issue a revocation notice and an abandoned worker cannot commit late. The permitted license path went from ~399 ms to ~712 ms because its receipt is now signed by Cloud KMS instead of stamped with a placeholder. The denied path is *faster* than the permitted one for the same reason inverted: a denial issues no receipt, so it signs nothing. These are published as regressions rather than absorbed, because a latency number that only ever improves is a number someone is managing.
 
 ### Failure tolerance (HOD-341, HOD-342)
 
