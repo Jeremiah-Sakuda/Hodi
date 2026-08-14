@@ -104,6 +104,42 @@ async def _authenticate_or_403(request: Request,
     return auth
 
 
+def _refuse_if_frozen(gateway: "AgentGateway", counterparty_id: str) -> None:
+    """
+    Incident containment (HOD-705): a principal whose negotiation is frozen
+    by a standing consent incident is refused BEFORE the negotiator engages.
+
+    The freeze is adjudication-domain state (written by the consent arbiter
+    on an established ACCESS_OUTSIDE_DECLARED_POLICY finding), so the check
+    reads it under the arbiter's role at the API layer — the same
+    cross-domain-gate pattern as the revocation ownership check, and for the
+    same reason: the negotiator must not be able to see, or unsee, the
+    freeze imposed on its own counterparty. Refusal is a structured denial,
+    never silent; a read failure fails closed.
+    """
+    from src.schema.iam_policy import AGENT_SA_MAP
+    try:
+        freezes = gateway.read_collection(
+            calling_sa=AGENT_SA_MAP["consent_arbiter"]["sa_email"],
+            calling_role_key="consent_arbiter",
+            target_collection="negotiation_freezes",
+            filters={"counterparty_id": counterparty_id},
+        )
+    except Exception:
+        raise HTTPException(status_code=403,
+                            detail="Licensing denied: containment state could not be verified.")
+    if freezes:
+        newest = sorted(freezes, key=lambda f: f.get("frozen_at", ""))[-1]
+        gateway.log_containment_denial(counterparty_id=counterparty_id,
+                                       freeze_id=newest.get("freeze_id", "unknown"),
+                                       incident_id=newest.get("incident_id", "unknown"))
+        raise HTTPException(
+            status_code=403,
+            detail=(f"Licensing denied: negotiation for this counterparty is frozen by "
+                    f"consent incident {newest.get('incident_id', 'unknown')} "
+                    f"(freeze {newest.get('freeze_id', 'unknown')})."))
+
+
 def _verify_work_ownership_or_403(gateway: "AgentGateway", work_id: str,
                                   authenticated_artist_id: str) -> None:
     """
@@ -164,6 +200,10 @@ async def request_license(req: ScopeRequest, request: Request):
     #    from the VERIFIED CREDENTIAL — never from the request body.
     auth = await _authenticate_or_403(request, claimed_counterparty_id=req.counterparty_id,
                                       required_principal_type="counterparty")
+
+    # 1b. Incident containment gate (HOD-705): a frozen principal is refused
+    #     before anything else happens.
+    _refuse_if_frozen(_get_gateway(), auth.counterparty_id)
 
     # 2. Route raw post-extraction bytes through the Prompt Inspector
     try:
@@ -270,6 +310,9 @@ async def request_license_natural(req: NaturalScopeRequest, request: Request):
     # model never sees a request that has not been attributed to a real caller.
     auth = await _authenticate_or_403(request, claimed_counterparty_id=req.counterparty_id,
                                       required_principal_type="counterparty")
+
+    # Incident containment gate (HOD-705) — before the model sees anything.
+    _refuse_if_frozen(_get_gateway(), auth.counterparty_id)
 
     # Untrusted inbound buyer document: inspect post-extraction bytes (HOD-313).
     # Detection is logged and the request PROCEEDS under its original scope.

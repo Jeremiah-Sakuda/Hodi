@@ -91,7 +91,11 @@ class TestAppendOnlyRoleDefinition(unittest.TestCase):
         text = DEPLOY_SCRIPT.read_text()
         self.assertIn("from src.schema.iam_policy import AGENT_SA_MAP", text)
         self.assertIn(ROLE_ID, text)
-        self.assertEqual(len(AGENT_SA_MAP), 4)
+        # Five since 2026-08-14: the consent arbiter (HOD-704) joined the four
+        # domain agents. The script iterates AGENT_SA_MAP, so it provisions the
+        # arbiter's SA the same way; this count pins the declared fleet size so
+        # an accidental sixth (or a lost fifth) is caught in review.
+        self.assertEqual(len(AGENT_SA_MAP), 5)
 
 
 class TestRuntimeIdentityProvisioning(unittest.TestCase):
