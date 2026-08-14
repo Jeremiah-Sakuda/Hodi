@@ -32,6 +32,7 @@ from src.api.auth import (
 )
 import json
 from src.schema.iam_policy import get_action_permission
+from tests.offline_env import force_offline
 
 VICTIM = "buyer-acme-2"
 ATTACKER = "rival-labs"
@@ -53,8 +54,7 @@ DOC_B64 = base64.b64encode(b"a buyer document").decode()
 
 class TestCrossBuyerAuthentication(unittest.TestCase):
     def setUp(self):
-        os.environ["HODI_OFFLINE"] = "1"
-        self.addCleanup(lambda: os.environ.pop("HODI_OFFLINE", None))
+        force_offline(self)
 
         store = InMemoryCredentialStore({
             VICTIM_KEY: {"counterparty_id": VICTIM, "secret": VICTIM_SECRET, "active": True},

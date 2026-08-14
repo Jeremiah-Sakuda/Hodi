@@ -29,6 +29,7 @@ from src.evidence.revocation_lint import RevocationLint
 from src.schema.scope import Scope
 from src.schema.grant_event import GrantEvent
 from src.resolve.evaluator import permits
+from tests.offline_env import force_offline
 
 T0 = datetime(2026, 8, 7, tzinfo=timezone.utc)
 CLEAN_TEXT = json.load(open("fixtures/buyer_request_clean.json"))["document_text"]
@@ -59,8 +60,7 @@ def client_with_injected_response(prompt: str, response_text: str) -> VertexGemi
 
 class TestGeminiClientDiscipline(unittest.TestCase):
     def setUp(self):
-        os.environ["HODI_OFFLINE"] = "1"
-        self.addCleanup(lambda: os.environ.pop("HODI_OFFLINE", None))
+        force_offline(self)
 
     def test_unpinned_model_id_raises(self):
         with self.assertRaises(ValueError):
@@ -78,8 +78,7 @@ class TestGeminiClientDiscipline(unittest.TestCase):
 
 class TestScopeInterpreterStructuralProperty(unittest.TestCase):
     def setUp(self):
-        os.environ["HODI_OFFLINE"] = "1"
-        self.addCleanup(lambda: os.environ.pop("HODI_OFFLINE", None))
+        force_offline(self)
         self.interp = ScopeInterpreter()
 
     def test_recorded_clean_interpretation_is_valid_scope(self):
@@ -158,8 +157,7 @@ class TestScopeInterpreterStructuralProperty(unittest.TestCase):
 
 class TestNoticeDrafterLintGate(unittest.TestCase):
     def setUp(self):
-        os.environ["HODI_OFFLINE"] = "1"
-        self.addCleanup(lambda: os.environ.pop("HODI_OFFLINE", None))
+        force_offline(self)
 
     def test_recorded_draft_passes_lint_and_is_gemini_drafted(self):
         text, source = NoticeDrafter().draft("grant-acme-il-001", "work-repo-001", "acme-intelligence-labs")

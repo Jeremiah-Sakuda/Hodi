@@ -1,0 +1,81 @@
+{
+  "_comment": "Machine-readable deployment truth (HOD-715). Every 'is X deployed' claim in the docs is DERIVED from this file by scripts/deployment_status.py and guarded by `make check-docs`, because hand-maintained executed/not-executed prose drifted once: the README said asymmetric signing 'has not been built' for a commit after it was built, and an external review caught it. A capability may only be 'verified' if it names the evidence that verified it AND when — the generator refuses the file otherwise.",
+  "status_vocabulary": {
+    "verified": "Checked against the live deployment; evidence_source and last_verified_utc are both required and are what makes the claim admissible.",
+    "provisioned_unverified": "Provisioned on the project, but no verification run has confirmed the property since. Reported as unverified, never as working.",
+    "scripted_not_executed": "A reproducible script exists in this repo and has never been run against the live project. This is a designed capability, not a deployed one.",
+    "in_process_only": "Enforced inside the single application process. Real, testable, and NOT a cloud-infrastructure boundary — stated so the difference cannot be blurred."
+  },
+  "capabilities": {
+    "evidence_endpoint": {
+      "status": "verified",
+      "detail": "Cloud Run service serving /works, /.well-known/hodi.json, /canaries, /evidence-counts, and logging every access to Firestore since 2026-08-06.",
+      "evidence_source": "docs/metrics.json :: daily_crawler_accrual_metrics (live Firestore audit, 1613 accrued records)",
+      "last_verified_utc": "2026-08-13T15:50:15Z",
+      "revision": "hodi-evidence-endpoint-00039-846"
+    },
+    "append_only_runtime_identity": {
+      "status": "verified",
+      "detail": "The deployed process runs as hodi-runtime-sa, whose effective permissions exclude datastore.entities.update and .delete, so grant history cannot be rewritten at runtime.",
+      "evidence_source": "scripts/deploy.sh step 3 + tests/test_grant_log_iam.py::TestDeployedRuntimeIdentityCannotRewriteHistory (HODI_E2E, reads roles back from IAM)",
+      "last_verified_utc": "2026-08-12T16:45:00Z",
+      "revision": "hodi-evidence-endpoint-00039-846"
+    },
+    "cross_buyer_boundary_over_network": {
+      "status": "verified",
+      "detail": "The 2026-08-07 unauthenticated cross-buyer exploit and its variants are refused by the deployed service; 6/6 HTTP 403 including the mutating and internal routes.",
+      "evidence_source": "make demo-live (scripts/test_live_cross_counterparty.py) — Parts A, B, C",
+      "last_verified_utc": "2026-08-12T16:45:00Z",
+      "revision": "hodi-evidence-endpoint-00039-846"
+    },
+    "gemini_scope_interpretation": {
+      "status": "verified",
+      "detail": "POST /api/v1/license/natural performs one server-side Vertex AI generateContent call against the pinned gemini-3.5-flash on the global endpoint.",
+      "evidence_source": "docs/metrics.json :: natural_language_license_path (deployed-over-network timings)",
+      "last_verified_utc": "2026-08-07T18:43:00Z",
+      "revision": null
+    },
+    "conflict_domain_separation": {
+      "status": "in_process_only",
+      "detail": "Which agent may read whose data is enforced by the policy gateway inside ONE Cloud Run process, using the same iam_policy.py data the generated matrix renders. This is an application-layer boundary, not a GCP IAM boundary. Caller identity on that boundary is trusted-by-construction in-process (see src/gateway/caller_identity.py) — the OIDC-verified path exists and applies only to split services, which are not deployed.",
+      "evidence_source": "src/gateway/gateway.py + tests/test_gateway_session_scope.py (offline); make demo-live (deployed, over the network)",
+      "last_verified_utc": "2026-08-12T16:45:00Z",
+      "revision": "hodi-evidence-endpoint-00039-846"
+    },
+    "kms_signing": {
+      "status": "scripted_not_executed",
+      "detail": "Cloud KMS asymmetric signing of receipts, notices and incident manifests. The signing code path, the verifier and /verification-key all exist and are tested offline against an ephemeral key; the KMS keyring has never been created on the live project, so the DEPLOYED service emits labelled UNSIGNED_PLACEHOLDER values today.",
+      "evidence_source": "scripts/setup_kms_signing.sh (never run); tests/test_signing.py covers the code path offline",
+      "last_verified_utc": null,
+      "revision": null
+    },
+    "per_domain_databases": {
+      "status": "scripted_not_executed",
+      "detail": "Named Firestore databases per conflict domain with per-SA IAM conditions, so a foreign-domain read fails at Google IAM rather than at the application layer.",
+      "evidence_source": "scripts/setup_workload_identity.sh (never run); tests/test_workload_identity.py::TestForeignDomainReadIsDeniedByIAM is written and HODI_E2E-gated",
+      "last_verified_utc": null,
+      "revision": null
+    },
+    "split_revocation_worker": {
+      "status": "scripted_not_executed",
+      "detail": "The revocation worker as its own Cloud Run service under the revocation-propagator SA — real workload identity, and the killable isolation an in-process daemon thread cannot provide.",
+      "evidence_source": "scripts/deploy_revocation_worker.sh (never run)",
+      "last_verified_utc": null,
+      "revision": null
+    },
+    "durable_trace_backend": {
+      "status": "scripted_not_executed",
+      "detail": "Cloud Trace export of the delegation spans (HODI_TRACE_EXPORT=cloud). The exporter selection is tested offline; no deployment has run with it enabled, so no waterfall has been captured from a backend.",
+      "evidence_source": "src/observability/tracing.py + tests/test_tracing_backend.py (offline)",
+      "last_verified_utc": null,
+      "revision": null
+    },
+    "scheduled_jobs": {
+      "status": "verified",
+      "detail": "Cloud Scheduler runs hodi-daily-accrual-audit (09:00 UTC) and hodi-nightly-teardown-trigger (23:00 UTC), with visible execution history.",
+      "evidence_source": "docs/metrics.json :: daily_crawler_accrual_metrics (audit rows persisted by the scheduled job); Google-Cloud-Scheduler appears in distinct_user_agents",
+      "last_verified_utc": "2026-08-13T15:50:15Z",
+      "revision": null
+    }
+  }
+}

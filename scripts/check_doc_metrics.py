@@ -119,6 +119,65 @@ def check_defect_ledger(metrics, failures) -> None:
                     f"the ledger derives {recurring}.")
 
 
+def check_deployment_claims(failures) -> None:
+    """
+    Deployment prose must agree with docs/deployment_status.json (HOD-715).
+
+    This guard exists because the README told readers that asymmetric signing
+    "has not been built" for a commit AFTER it was built, and an external
+    review found it. A deployment claim is a claim: it has to be derived from
+    its evidence, not remembered.
+
+    The check is BIDIRECTIONAL on purpose. A one-way check ("if unverified,
+    say so") rots the other way round: once the capability really is
+    deployed, the disclaimer stays behind and understates the system. So an
+    unverified capability REQUIRES its disclaimer, and a verified one
+    REQUIRES the disclaimer to be gone.
+    """
+    import sys as _sys
+    _sys.path.insert(0, str(ROOT))
+    from scripts.deployment_status import load as load_status, validate as validate_status
+
+    try:
+        status = load_status()
+    except Exception as e:  # noqa: BLE001 — a missing/broken file is a doc failure
+        failures.append(f"docs/deployment_status.json could not be read: {e}")
+        return
+
+    for problem in validate_status(status):
+        failures.append(f"deployment_status.json: {problem}")
+
+    readme = README.read_text()
+    caps = status.get("capabilities", {})
+
+    # The signing claim, which is the one that actually drifted.
+    kms = caps.get("kms_signing", {})
+    kms_live = kms.get("status") == "verified"
+    disclaimer = "has NOT yet been run against the live project"
+    if kms_live and disclaimer in readme:
+        failures.append(
+            "README says setup_kms_signing.sh has NOT been run, but deployment_status.json "
+            "marks kms_signing 'verified'. The disclaimer has outlived the deployment.")
+    if not kms_live and disclaimer not in readme:
+        failures.append(
+            "deployment_status.json says kms_signing is not verified, but README does not carry "
+            f"the disclaimer '{disclaimer}'. Readers would take the deployed service to be "
+            "emitting real signatures when it emits labelled placeholders.")
+
+    # No document may describe a never-executed capability as deployed.
+    for name, cap in caps.items():
+        if cap.get("status") != "scripted_not_executed":
+            continue
+        for doc_path in (README, DEVPOST):
+            text = doc_path.read_text().lower()
+            for phrase in (f"{name.replace('_', ' ')} is deployed",
+                           f"{name.replace('_', ' ')} is live"):
+                if phrase in text:
+                    failures.append(
+                        f"{doc_path.name} describes '{name}' as deployed, but "
+                        "deployment_status.json marks it scripted_not_executed.")
+
+
 def check_derived_counts(failures) -> None:
     """
     The other narrative numbers repeated across documents. Each is derived HERE,
@@ -305,6 +364,7 @@ def main() -> int:
     check_defect_ledger(metrics, failures)
     check_derived_counts(failures)
     check_arithmetic_claims(metrics, failures)
+    check_deployment_claims(failures)
 
     diagram = DIAGRAM_B.read_text()
     dm = re.search(r"(\d+)\s+records accrued", diagram)

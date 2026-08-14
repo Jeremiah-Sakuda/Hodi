@@ -60,23 +60,52 @@ def _emit_denial_log(denial: PolicyDenialEvent) -> None:
     entry.update(json.loads(denial.model_dump_json()))
     print(json.dumps(entry), flush=True)
 
+class DurableStorageUnavailable(RuntimeError):
+    """
+    Raised when the gateway cannot reach Firestore and has NOT been told this
+    is an offline run. It exists because the alternative was worse: returning
+    None here made the gateway silently serve and accept PROCESS-LOCAL data
+    in production. Reads would answer from an empty in-memory dict — an
+    unfiltered "no grants exist" — and writes would land in a buffer that dies
+    with the instance, both with HTTP 200. A licensing decision computed
+    against phantom state is the most dangerous answer this system can give,
+    and it looked exactly like a healthy one.
+
+    Fail closed: an unreachable log is an outage, not an empty log.
+    """
+
+
 def _build_firestore_client(project_id: str):
-    """ADC first; falls back to the gcloud CLI token for local dev shells without ADC.
-    HODI_OFFLINE=1 forces no client — used by `make demo` so the credential-free
-    path is genuinely credential-free even on a machine that has credentials."""
+    """
+    ADC first; falls back to the gcloud CLI token for local dev shells without
+    ADC. Returns None ONLY when the caller has explicitly declared an offline
+    run (HODI_OFFLINE=1) — used by `make demo` and the offline suite so the
+    credential-free path is genuinely credential-free even on a machine that
+    has credentials.
+
+    Anything else — no credentials, a broken client, a network failure —
+    RAISES. The in-memory path is a stated testing/demo mode, never a
+    production fallback.
+    """
     if os.environ.get("HODI_OFFLINE") == "1":
         return None
     try:
         return firestore.Client(project=project_id)
-    except Exception:
+    except Exception as adc_error:
         try:
             token = subprocess.check_output(
                 ["gcloud", "auth", "print-access-token"], stderr=subprocess.DEVNULL
             ).decode("utf-8").strip()
             from google.oauth2 import credentials as oauth2_credentials
             return firestore.Client(project=project_id, credentials=oauth2_credentials.Credentials(token))
-        except Exception:
-            return None  # Allow fallback for unittests without any credentials
+        except Exception as cli_error:
+            raise DurableStorageUnavailable(
+                f"No Firestore client for project '{project_id}' and HODI_OFFLINE is not set. "
+                f"ADC failed ({type(adc_error).__name__}: {adc_error}); the gcloud-token fallback "
+                f"failed ({type(cli_error).__name__}: {cli_error}). Refusing to serve process-local "
+                "data as if it were the append-only log — set HODI_OFFLINE=1 for a deliberate "
+                "credential-free run, or fix credentials."
+            ) from cli_error
 
 class AgentGateway:
     """

@@ -21,6 +21,7 @@ from datetime import datetime, timedelta, timezone
 from src.supervisor.lease import LeaseLedger
 from src.supervisor.supervisor import Supervisor
 from src.gateway.gateway import AgentGateway, GatewayPolicyDenial
+from tests.offline_env import force_offline
 
 PROPAGATOR_SA = "revocation-propagator-sa@hodi-2026.iam.gserviceaccount.com"
 
@@ -76,8 +77,7 @@ class TestLeaseLedgerFold(unittest.TestCase):
 
 class TestGatewayLeaseEnforcement(unittest.TestCase):
     def setUp(self):
-        os.environ["HODI_OFFLINE"] = "1"
-        self.addCleanup(lambda: os.environ.pop("HODI_OFFLINE", None))
+        force_offline(self)
         self.ledger = LeaseLedger()
         self.gateway = AgentGateway(lease_ledger=self.ledger)
 
@@ -125,8 +125,7 @@ class TestAbandonedWorkerCannotCommit(unittest.TestCase):
     """The acceptance criterion, with a REAL hung worker (HOD-707)."""
 
     def setUp(self):
-        os.environ["HODI_OFFLINE"] = "1"
-        self.addCleanup(lambda: os.environ.pop("HODI_OFFLINE", None))
+        force_offline(self)
 
     def test_woken_worker_write_is_refused_and_standby_result_stands(self):
         ledger = LeaseLedger()
