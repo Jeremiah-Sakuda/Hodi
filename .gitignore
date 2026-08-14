@@ -1,7 +1,22 @@
 # Service Account Keys and Secrets
-*sa*.json
+#
+# `*sa*.json` used to head this list and matched ANY filename containing the
+# letters "sa" — it silently swallowed fixtures/work_passages.json ("pas-SA-ges"),
+# which passed locally and failed only in CI, where the file had never been
+# committed. A secret filter that quietly excludes ordinary files trains people
+# to use `git add -f`, which is how a real key eventually gets committed. These
+# patterns target credential filenames specifically; `scripts/deploy_gcp.sh`
+# never writes key files, and the runtime uses ambient identity, not key JSON.
+*-sa.json
+*_sa.json
+sa-*.json
+sa_*.json
 *service-account*.json
-*key*.json
+*serviceaccount*.json
+*-credentials.json
+*_credentials.json
+*private-key*.json
+*privatekey*.json
 *.pem
 *.crt
 *.p12
