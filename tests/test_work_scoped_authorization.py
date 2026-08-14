@@ -35,6 +35,7 @@ from src.api.auth import (
     InMemoryCredentialStore, compute_signature,
     HEADER_KEY_ID, HEADER_TIMESTAMP, HEADER_SIGNATURE,
 )
+from tests.offline_env import force_offline
 
 BUYER = "acme-intelligence-labs"
 KEY, SECRET = "key-work-scope", "work-scope-secret-not-production"
@@ -63,8 +64,7 @@ def _grant(grant_id, work_id, use_type, valid_until=None) -> dict:
 
 class TestWorkScopedAuthorization(unittest.TestCase):
     def setUp(self):
-        os.environ["HODI_OFFLINE"] = "1"
-        self.addCleanup(lambda: os.environ.pop("HODI_OFFLINE", None))
+        force_offline(self)
 
         original_store = buyer_api._credential_store
         buyer_api.set_credential_store(InMemoryCredentialStore({

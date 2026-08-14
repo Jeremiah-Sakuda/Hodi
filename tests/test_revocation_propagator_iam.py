@@ -16,6 +16,7 @@ from src.gateway.gateway import AgentGateway, GatewayPolicyDenial
 from src.agents.revocation_propagator import RevocationPropagatorAgent
 from src.schema.revocation import RevocationNotice
 from datetime import datetime, timezone
+from tests.offline_env import force_offline
 from src.schema.iam_policy import AGENT_SA_MAP
 
 
@@ -24,8 +25,7 @@ class TestRevocationPropagatorIAM(unittest.TestCase):
         # Unit test: force the offline gateway — the paired-positive case writes
         # a notice, and with real credentials that write would land in live Firestore.
         import os
-        os.environ["HODI_OFFLINE"] = "1"
-        self.addCleanup(lambda: os.environ.pop("HODI_OFFLINE", None))
+        force_offline(self)
         self.gateway = AgentGateway()
         self.agent = RevocationPropagatorAgent(gateway=self.gateway, memory_bank_events=[])
 

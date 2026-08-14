@@ -21,6 +21,7 @@ from typing import Dict, Any, List
 from datetime import datetime, timezone
 
 from src.gateway.gateway import AgentGateway
+from src.schema.iam_policy import AGENT_SA_MAP
 from src.schema.assertion import (
     TypedAssertion, IncidentDecision, ClaimFinding, NOT_DETERMINABLE_TRAINING,
 )

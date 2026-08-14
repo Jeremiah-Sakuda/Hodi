@@ -46,13 +46,16 @@ jobs:
         run: make demo          # asserts every beat; fails the build if a property is false
 
       - name: Red-team drill
-        run: make red-team      # five attacks; any boundary that yields exits nonzero
+        run: make red-team      # six attacks; any boundary that yields exits nonzero
+
+      - name: Buyer client honours revocation
+        run: make buyer-client  # a second system verifies a receipt, then stops
 
       - name: Scope lattice truth table
         run: make verify-scopes
 
-      - name: Requirement compliance and doc-metric drift
-        run: make compliance    # also runs check-docs
+      - name: Requirement compliance, deployment status, and doc drift
+        run: make compliance    # also validates deployment_status.json and runs check-docs
 
       - name: Overclaim lint coverage
         run: make lint-coverage

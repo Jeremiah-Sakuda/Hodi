@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from pydantic import BaseModel
 
 from src.schema.iam_policy import is_action_permitted, AGENT_SA_MAP
-from src.memory.event_store import InMemoryEventStore
+from src.memory.event_store import InMemoryEventStore, default_event_store
 
 
 class AgentPublication(BaseModel):
@@ -62,7 +62,18 @@ class AgentRegistry:
     COLLECTION = "agent_registry_events"
 
     def __init__(self, store=None):
-        self._store = store if store is not None else InMemoryEventStore()
+        # DEFAULTS TO THE DURABLE STORE (HOD-709). This constructor used to
+        # default to InMemoryEventStore(), and every production call site —
+        # build_fleet(), IncidentEngine — constructed it bare. So the durable
+        # registry existed, was tested, and was never actually used: the
+        # deployed fleet's publications, heartbeats and quarantine
+        # deregistrations all lived in a dict that died with the process,
+        # while the docs described a durable enterprise registry.
+        #
+        # A mechanism that is built but not wired is indistinguishable from
+        # one that was never built. default_event_store() is the in-memory
+        # twin only under a DECLARED HODI_OFFLINE=1 run, and raises otherwise.
+        self._store = store if store is not None else default_event_store()
         # Matrix of authorized inter-agent invocations: {requesting_role: [roles it may invoke]}.
         #
         # rights_custodian -> revocation_propagator is the artist's revocation

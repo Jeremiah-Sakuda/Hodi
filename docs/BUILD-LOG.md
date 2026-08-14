@@ -706,6 +706,35 @@ The Aug 14 checkpoint gate (HOD-006) was due today and passed 8/8 — recorded a
 4. Publish the failed first proof rather than fold it silently into the fix — "conditions narrow nothing while a broad grant stands beside them" is the transferable lesson, and the guard in `deploy_gcp.sh` is its mechanism.
 
 **Requirements touched:** HOD-102, HOD-311, HOD-706, HOD-707, HOD-711, HOD-510, HOD-620
+### 2026-08-14 (session 2) — A Second Review, Verified Before It Was Implemented (HOD-715 … HOD-720)
+
+**Prompt (verbatim, abridged):** a hackathon judge's evaluation of the v1.2 build — an external review of the v1.2 build — with a risk register and six recommended changes. The instruction: *"Verify claims and implement any changes worth implementing on main."*
+
+**Outcome:** Every claim was checked against the code **before** any of it was acted on, which mattered: two findings were worse than the review stated, and one of its assumptions was too generous. All six recommendations implemented on `main`. Suite 376 → 426; requirements 68 → 74; the red-team drill 5 → 6 attacks; `make buyer-client`, `make deployment-status` and a live-verification workflow added. Full gate green.
+
+**Verification of the review's claims, one by one:**
+
+| Claim | Verdict |
+|---|---|
+| Role/SA "checked for consistency but not non-forgeable" | **Worse.** No consistency check existed at all; `calling_sa` was used only for logging. Any in-process caller could present any role. |
+| Gateway may downgrade to process memory | **Worse.** Not a risk — a silent fail-open. `_build_firestore_client` returned `None` on any exception, so reads answered "no documents exist" and writes went to a dying buffer, both HTTP 200. |
+| Default fleet registry is in-memory | **Confirmed.** `AgentRegistry()` defaulted to `InMemoryEventStore` and both `build_fleet()` and `IncidentEngine` constructed it bare — HOD-709's durable registry was built, tested, and never used. |
+| README contradicts itself on signing | **Confirmed.** It said asymmetric signing "has not been built" in the same file that documents it. |
+| Registered works hard-coded, console read-only | **Confirmed** (console read-only is a deliberate security decision and stands). |
+| Live checks outside CI | **Confirmed**, and it was a documented decision; now answered rather than merely restated. |
+
+**What the fixes uncovered, which is the part worth reading:**
+
+1. **Enforcing the role/SA binding immediately surfaced a latent defect nobody had looked for.** Two production paths used service accounts that `iam_policy.py` does not declare — `licensing-negotiator@…` and `revocation-propagator@…`, both missing the `-sa`. So *every denial event ever logged from the licensing path, and every revocation write*, recorded an identity that does not exist. A guard now forbids a hand-typed agent SA anywhere outside the policy module.
+2. **Making storage fail closed exposed a suite-wide pollution the fail-open had been hiding.** Twenty-five `setUp` blocks popped `HODI_OFFLINE` in cleanup rather than restoring it, silently un-declaring offline mode for every test that ran afterwards. It had been invisible because a polluted test still got the in-memory path — by accident, for the wrong reason. Eight tests errored the moment the fallback went away. `tests/offline_env.py` saves and restores; a hygiene guard forbids the pop.
+3. **The deployed revision predates nearly all of this work**, and saying so is now a field in `deployment_status.json` rather than something a reader has to infer from dates.
+
+**Key decisions:**
+1. **Answer "the docs drifted" with a mechanism, not a correction.** Fixing the sentence would have left the next sentence free to rot. Deployment state moved into `docs/deployment_status.json` with a validator (a `verified` capability must name its evidence *and* its date; a never-run one must not carry a date) and a **bidirectional** doc guard — the KMS disclaimer is required while unverified and forbidden once verified. The alternative, a one-way "if unverified, say so" check, rots in the other direction the moment the capability ships.
+2. **Bind identity now; label the limit rather than overstate the fix.** The binding check is real and enforced everywhere, and the OIDC path derives the role from a verified email. But checking a binding does not make an in-process string non-forgeable, so identities carry their origin as a category — `oidc_verified` or `in_process_trusted` — and `HODI_REQUIRE_VERIFIED_IDENTITY=1` refuses the unverified category outright. That makes "when the services split, this becomes real" executable today instead of aspirational. Claiming the boundary was now non-forgeable would have been the same defect class as the signing prose.
+3. **Prove the counterparty stops, rather than asserting the rail works.** `scripts/buyer_client.py` is deliberately an outsider: it holds only its credential and Hodi's public key, verifies the receipt itself, gates its own use, and halts after revocation with its own audit line. Building it as a Hodi module would have proved nothing — the value is that a second program, using only what a real counterparty would have, chooses to stop.
+
+**Requirements touched:** HOD-715, HOD-716, HOD-717, HOD-718, HOD-719, HOD-720
 
 ---
 

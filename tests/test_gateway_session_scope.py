@@ -37,6 +37,7 @@ from src.api.auth import (
 from src.gateway.gateway import AgentGateway, GatewayPolicyDenial
 from src.schema.grant_event import GrantEvent
 from src.schema.scope import Scope
+from tests.offline_env import force_offline
 from src.schema.iam_policy import AGENT_SA_MAP
 
 NEGOTIATOR_SA = AGENT_SA_MAP["licensing_negotiator"]["sa_email"]
@@ -48,8 +49,7 @@ class TestGatewaySessionScopeEnforcement(unittest.TestCase):
     """Directly against `gateway.py::_enforce` — the copy the deployed API uses."""
 
     def setUp(self):
-        os.environ["HODI_OFFLINE"] = "1"
-        self.addCleanup(lambda: os.environ.pop("HODI_OFFLINE", None))
+        force_offline(self)
         self.gateway = AgentGateway()
 
     def read(self, filters, session_context):
@@ -144,8 +144,7 @@ class TestLicenseHandlerFoldsBeforeContainment(unittest.TestCase):
     KEY, SECRET = "key-fold-test", "fold-test-secret-not-production"
 
     def setUp(self):
-        os.environ["HODI_OFFLINE"] = "1"
-        self.addCleanup(lambda: os.environ.pop("HODI_OFFLINE", None))
+        force_offline(self)
 
         original = buyer_api._credential_store
         buyer_api.set_credential_store(InMemoryCredentialStore({

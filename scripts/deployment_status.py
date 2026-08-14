@@ -1,211 +1,118 @@
 #!/usr/bin/env python3
 """
-scripts/deployment_status.py — the capability truth table, GENERATED from the
-live project rather than typed (HOD-510, HOD-620).
+scripts/deployment_status.py — deployment claims, derived (HOD-715).
 
-    make deployment-status        # probe live, write docs/deployment_status.json
-    make deployment-status-check  # fail if the committed file is stale
+`make deployment-status`          renders the table
+`make deployment-status --check`  validates the file's own rules
 
-WHY. A reviewer reading this repository could not tell which claims described
-code, which described a deployed revision, and which described neither — the
-architecture diagram said the per-domain databases were "scripted, not yet
-executed" on the same day the deployment had executed them. Every number in this
-project is read from its source; deployment state was the last thing still
-asserted by hand.
+WHY THIS EXISTS. The README told a reader that asymmetric signing "has not
+been built" for a commit after it was built, and that a capability was
+executed in one paragraph while another paragraph called it designed-only.
+An external review found both. Prose that says whether infrastructure is
+deployed is a claim like any other, and this project's rule is that a claim
+must be derived from its evidence rather than remembered — so the
+executed/not-executed state now lives in docs/deployment_status.json, this
+script renders and validates it, and `make check-docs` fails the build when
+the documents disagree with it.
 
-Each row answers three separate questions, because conflating them is exactly
-how the drift happened:
-
-  implemented        — the code exists in this commit
-  deployed           — it is present in the serving revision / live project
-  demonstrated_live  — it has been OBSERVED working against the live service,
-                       by a command anyone can re-run (named in `proof`)
-
-`deployed` and `demonstrated_live` are probed here, live. `implemented` is read
-from the filesystem. Nothing in this file is a literal a person maintains.
+The validation rules are the honest part:
+  * "verified" REQUIRES both an evidence_source and a last_verified_utc.
+    A capability nobody checked cannot be described as working.
+  * "scripted_not_executed" REQUIRES last_verified_utc to be null. If it was
+    verified, it was executed, and the status is wrong.
+  * every status must come from the file's own vocabulary.
 """
 
+import argparse
 import json
-import subprocess
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-OUT = ROOT / "docs" / "deployment_status.json"
+STATUS_PATH = ROOT / "docs" / "deployment_status.json"
 
-PROJECT = "hodi-2026"
-REGION = "us-central1"
-SERVICE = "hodi-evidence-endpoint"
-WORKER = "hodi-revocation-worker"
-
-
-def sh(args, timeout=120):
-    try:
-        out = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
-        return out.stdout.strip() if out.returncode == 0 else ""
-    except Exception:
-        return ""
+SYMBOL = {
+    "verified": "✓ verified",
+    "provisioned_unverified": "~ provisioned, unverified",
+    "scripted_not_executed": "○ scripted, never run",
+    "in_process_only": "▣ in-process only",
+}
 
 
-def head_commit():
-    return sh(["git", "-C", str(ROOT), "rev-parse", "--short", "HEAD"])
+def load() -> dict:
+    return json.loads(STATUS_PATH.read_text())
 
 
-def serving_revision(service):
-    return sh(["gcloud", "run", "services", "describe", service, f"--region={REGION}",
-               f"--project={PROJECT}", "--format=value(status.latestReadyRevisionName)"])
+def validate(doc: dict) -> list:
+    """Returns a list of failures; empty means the file is internally honest."""
+    failures = []
+    vocabulary = set(doc.get("status_vocabulary", {}))
+    if not vocabulary:
+        failures.append("status_vocabulary is missing — statuses would be undefined terms.")
+    for name, cap in doc.get("capabilities", {}).items():
+        status = cap.get("status")
+        if status not in vocabulary:
+            failures.append(f"{name}: status {status!r} is not in status_vocabulary")
+            continue
+        if status == "verified":
+            if not cap.get("evidence_source"):
+                failures.append(f"{name}: 'verified' without an evidence_source — "
+                                "a capability nobody checked cannot be reported as working")
+            if not cap.get("last_verified_utc"):
+                failures.append(f"{name}: 'verified' without a last_verified_utc — "
+                                "verification with no date is not verification")
+        if status == "scripted_not_executed" and cap.get("last_verified_utc"):
+            failures.append(f"{name}: 'scripted_not_executed' but carries "
+                            f"last_verified_utc={cap['last_verified_utc']!r} — if it was "
+                            "verified it was executed, so the status is wrong")
+        if not cap.get("detail"):
+            failures.append(f"{name}: no detail — a status with no explanation is not a claim")
+    return failures
 
 
-def service_env(service):
-    raw = sh(["gcloud", "run", "services", "describe", service, f"--region={REGION}",
-              f"--project={PROJECT}",
-              "--format=value(spec.template.spec.containers[0].env)"])
-    return raw
-
-
-def runtime_sa(service):
-    return sh(["gcloud", "run", "services", "describe", service, f"--region={REGION}",
-               f"--project={PROJECT}",
-               "--format=value(spec.template.spec.serviceAccountName)"])
-
-
-def firestore_databases():
-    raw = sh(["gcloud", "firestore", "databases", "list", f"--project={PROJECT}",
-              "--format=value(name)"])
-    return [d.rsplit("/", 1)[-1] for d in raw.splitlines() if d]
-
-
-def kms_key_present():
-    return bool(sh(["gcloud", "kms", "keys", "describe", "hodi-provenance",
-                    "--keyring=hodi-signing", f"--location={REGION}",
-                    f"--project={PROJECT}", "--format=value(name)"]))
-
-
-def http_code(url, timeout=90):
-    return sh(["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
-               "--max-time", str(timeout), url], timeout=timeout + 20)
-
-
-def build_rows():
-    env = service_env(SERVICE)
-    dbs = firestore_databases()
-    named = [d for d in ("hodi-identity", "hodi-commercial", "hodi-evidence",
-                         "hodi-adjudication") if d in dbs]
-    base = sh(["gcloud", "run", "services", "describe", SERVICE, f"--region={REGION}",
-               f"--project={PROJECT}", "--format=value(status.url)"])
-    vk = http_code(f"{base}/verification-key") if base else ""
-    worker_rev = serving_revision(WORKER)
-
-    return [
-        {
-            "capability": "Gemini 3.5 Flash scope interpretation",
-            "implemented": (ROOT / "src/llm/scope_interpreter.py").exists(),
-            "deployed": bool(serving_revision(SERVICE)),
-            "demonstrated_live": bool(base),
-            "proof": "POST /api/v1/license/natural on the deployed service; docs/metrics.json::natural_language_license_path",
-        },
-        {
-            "capability": "Append-only enforced by runtime IAM (no update/delete)",
-            "implemented": (ROOT / "scripts/deploy_gcp.sh").exists(),
-            "deployed": "hodi-runtime-sa" in runtime_sa(SERVICE),
-            "demonstrated_live": "hodi-runtime-sa" in runtime_sa(SERVICE),
-            "proof": "HODI_E2E=1 python3 -m unittest tests.test_grant_log_iam.TestDeployedRuntimeIdentityCannotRewriteHistory",
-        },
-        {
-            "capability": "Cloud KMS asymmetric signing (ECDSA P-256)",
-            "implemented": (ROOT / "src/schema/signing.py").exists(),
-            "deployed": kms_key_present() and "HODI_SIGNING" in env and "kms" in env,
-            "demonstrated_live": vk == "200",
-            "proof": "GET /verification-key returns the public key; scripts/hodi_verify.py accepts a live receipt and rejects a one-byte edit",
-        },
-        {
-            "capability": "Per-domain named databases + IAM-conditioned agent SAs",
-            "implemented": (ROOT / "scripts/setup_workload_identity.sh").exists(),
-            "deployed": len(named) == 4,
-            "demonstrated_live": len(named) == 4,
-            "proof": "HODI_E2E=1 python3 -m unittest tests.test_workload_identity — impersonates the evidence SA and asserts PermissionDenied reading the identity database",
-            "note": ("Live DATA still resides in (default); this hardens the DOMAIN boundary. "
-                     "Row-level separation inside the grant log remains gateway-enforced."),
-        },
-        {
-            "capability": "Revocation worker as its own workload identity",
-            "implemented": (ROOT / "scripts/deploy_revocation_worker.sh").exists(),
-            "deployed": bool(worker_rev),
-            "demonstrated_live": bool(worker_rev),
-            "proof": "scripts/deploy_revocation_worker.sh step 3 — identity readback, effective-permission expansion, authenticated 200 / anonymous 403",
-            "note": ("Deployed and separately credentialed, but /api/v1/revoke still runs the "
-                     "cascade IN-PROCESS; the worker is not yet on the primary action path."),
-        },
-        {
-            "capability": "Cross-buyer confidentiality boundary",
-            "implemented": (ROOT / "src/gateway/gateway.py").exists(),
-            "deployed": bool(base),
-            "demonstrated_live": bool(base),
-            "proof": "make demo-live — 6/6 HTTP 403 including Part C, replaying the 2026-08-07 exploit",
-        },
-        {
-            "capability": "verbatim_match / redistribution content checks",
-            "implemented": (ROOT / "src/evidence/verbatim_probe.py").exists(),
-            "deployed": bool(serving_revision(SERVICE)),
-            "demonstrated_live": False,
-            "proof": "tests/test_evidence_engine.py — a paraphrase and a bare mirror URI both produce NO record",
-            "note": ("Offline only. No third party has been observed reproducing a registered "
-                     "passage, and EvidenceEngine has no production caller."),
-        },
-        {
-            "capability": "Overclaim lint semantic backstop (gemini-embedding-001)",
-            "implemented": (ROOT / "src/evidence/semantic_backstop.py").exists(),
-            "deployed": bool(serving_revision(SERVICE)),
-            "demonstrated_live": (ROOT / "fixtures/embedding_cache.json").exists(),
-            "proof": "make lint-coverage — 12/12 probes rejected, 4 by regex alone; vectors recorded from live Vertex into fixtures/embedding_cache.json",
-        },
+def render(doc: dict) -> str:
+    """The markdown table the docs embed. Generated, never hand-edited."""
+    lines = [
+        "<!-- GENERATED by scripts/deployment_status.py from docs/deployment_status.json.",
+        "     Do not hand-edit: `make check-docs` compares the docs against that file. -->",
+        "",
+        "| Capability | State | Evidence | Last verified (UTC) |",
+        "|---|---|---|---|",
     ]
+    for name, cap in doc["capabilities"].items():
+        verified = cap.get("last_verified_utc") or "—"
+        evidence = cap.get("evidence_source") or "—"
+        lines.append(f"| `{name}` | {SYMBOL.get(cap['status'], cap['status'])} | {evidence} | {verified} |")
+    lines.append("")
+    lines.append("`○ scripted, never run` means exactly that: the script is in this repository and "
+                 "reproducible, and it has not been executed against the live project. "
+                 "`▣ in-process only` means the boundary is enforced by application code inside one "
+                 "Cloud Run process — real and tested, but not a cloud-infrastructure boundary.")
+    return "\n".join(lines)
 
 
 def main() -> int:
-    check = "--check" in sys.argv
-    rows = build_rows()
-    doc = {
-        "_comment": ("GENERATED by scripts/deployment_status.py — do not hand-edit. Separates "
-                     "implemented / deployed / demonstrated_live so a reader never has to guess "
-                     "which a claim refers to."),
-        "generated_at_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "head_commit": head_commit(),
-        "serving_revision": serving_revision(SERVICE),
-        "revocation_worker_revision": serving_revision(WORKER),
-        "runtime_service_account": runtime_sa(SERVICE),
-        "capabilities": rows,
-    }
+    ap = argparse.ArgumentParser(description="Render or validate the deployment status table.")
+    ap.add_argument("--check", action="store_true", help="validate only; exit 1 on any failure")
+    args = ap.parse_args()
 
-    if check:
-        if not OUT.exists():
-            print("docs/deployment_status.json missing — run `make deployment-status`.")
-            return 1
-        committed = json.loads(OUT.read_text())
-        drift = []
-        if committed.get("serving_revision") != doc["serving_revision"]:
-            drift.append(f"serving revision: file says {committed.get('serving_revision')}, "
-                         f"live is {doc['serving_revision']}")
-        for a, b in zip(committed.get("capabilities", []), rows):
-            for field in ("implemented", "deployed", "demonstrated_live"):
-                if a.get(field) != b.get(field):
-                    drift.append(f"{b['capability']}: {field} {a.get(field)} -> {b.get(field)}")
-        if drift:
-            print("DEPLOYMENT STATUS STALE:")
-            for d in drift:
-                print(f"  - {d}")
-            print("\nFix: run `make deployment-status` and commit the result.")
-            return 1
-        print(f"deployment_status.json is current (revision {doc['serving_revision']}).")
+    doc = load()
+    failures = validate(doc)
+    if failures:
+        print("DEPLOYMENT STATUS INVALID:", file=sys.stderr)
+        for f in failures:
+            print(f"  - {f}", file=sys.stderr)
+        return 1
+
+    if args.check:
+        counts = {}
+        for cap in doc["capabilities"].values():
+            counts[cap["status"]] = counts.get(cap["status"], 0) + 1
+        print("Deployment status VALID: " + ", ".join(
+            f"{n} {s}" for s, n in sorted(counts.items())))
         return 0
 
-    OUT.write_text(json.dumps(doc, indent=2) + "\n")
-    print(f"Wrote {OUT.relative_to(ROOT)}")
-    for r in rows:
-        flags = "".join("Y" if r[f] else "n" for f in ("implemented", "deployed", "demonstrated_live"))
-        print(f"  [{flags}] {r['capability']}")
-    print("\n  legend: implemented / deployed / demonstrated_live")
+    print(render(doc))
     return 0
 
 

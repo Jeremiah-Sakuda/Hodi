@@ -89,13 +89,16 @@ class FirestoreEventStore:
 class DurableStoreUnavailable(RuntimeError):
     """Raised when durable storage is required but cannot be constructed.
 
-    Deliberately NOT caught here. The previous version returned an
+    Deliberately NOT caught. The previous version returned an
     InMemoryEventStore on ANY exception, which meant a credential, config or
     network fault on the deployed path produced a service that accepted
     mutations, answered 200, and held the resulting state in one Cloud Run
     instance's heap until it scaled to zero. A grant that a buyer was told
     exists, and that no longer does, is the worst failure this system can
     have — worse than refusing the request, because the refusal is visible.
+    The same fault silently turned the durable registry and Memory Bank back
+    into process-local dicts: publications vanishing on restart, cold-start
+    re-hydration returning an empty fold, nothing failing.
 
     Falling back to memory is legitimate ONLY where it is chosen explicitly:
     HODI_OFFLINE=1 (the credential-free demo and the test suite) or by passing

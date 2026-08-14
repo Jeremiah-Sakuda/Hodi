@@ -16,6 +16,7 @@ from datetime import datetime, timezone, timedelta
 from src.schema.negotiation import (
     ArtistPolicy, NegotiationProposal, clamp_to_policy)
 from src.schema.scope import Scope
+from tests.offline_env import force_offline
 
 T0 = datetime(2026, 8, 14, tzinfo=timezone.utc)
 
@@ -126,8 +127,7 @@ class TestEconomicTermsCannotWidenScope(unittest.TestCase):
 
 class TestNegotiationRoute(unittest.TestCase):
     def setUp(self):
-        os.environ["HODI_OFFLINE"] = "1"
-        self.addCleanup(lambda: os.environ.pop("HODI_OFFLINE", None))
+        force_offline(self)
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
         from src.api import buyer_api

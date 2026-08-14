@@ -22,6 +22,7 @@ from src.gateway.gateway import AgentGateway
 from src.incident.engine import IncidentEngine
 from src.incident.package import export_package, verify_package
 from src.schema import signing
+from tests.offline_env import force_offline
 
 FIXTURE = json.loads((Path(__file__).resolve().parent.parent
                       / "fixtures" / "incident_scenario.json").read_text())
@@ -38,11 +39,12 @@ def _gateway(with_grant: bool) -> AgentGateway:
 
 class IncidentScenarioBase(unittest.TestCase):
     def setUp(self):
-        os.environ["HODI_OFFLINE"] = "1"
+        # force_offline RESTORES rather than pops — see tests/offline_env.py.
+        # HODI_SIGNING is ours to remove: nothing outside these tests sets it.
+        force_offline(self)
         os.environ["HODI_SIGNING"] = "ephemeral"
         signing._active_signer = None
-        self.addCleanup(lambda: (os.environ.pop("HODI_OFFLINE", None),
-                                 os.environ.pop("HODI_SIGNING", None),
+        self.addCleanup(lambda: (os.environ.pop("HODI_SIGNING", None),
                                  setattr(signing, "_active_signer", None)))
 
     def _run(self, with_grant: bool):

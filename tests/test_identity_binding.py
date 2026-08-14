@@ -33,6 +33,7 @@ from pathlib import Path
 
 from src.gateway.gateway import AgentGateway, GatewayPolicyDenial
 from src.schema.iam_policy import AGENT_SA_MAP
+from tests.offline_env import force_offline
 
 ROOT = Path(__file__).resolve().parent.parent
 # PRODUCTION code only. A stale literal in `src/` or `scripts/` mislabels a real
@@ -50,9 +51,9 @@ SA_LITERAL = re.compile(
 class GatewayBindsSaToRoleTest(unittest.TestCase):
 
     def setUp(self):
-        import os
-        os.environ["HODI_OFFLINE"] = "1"
-        self.addCleanup(lambda: os.environ.pop("HODI_OFFLINE", None))
+        # force_offline RESTORES rather than pops; popping un-declares offline
+        # mode for every test that runs afterwards (see tests/offline_env.py).
+        force_offline(self)
         self.gateway = AgentGateway()
 
     def test_declared_pair_is_permitted(self):
