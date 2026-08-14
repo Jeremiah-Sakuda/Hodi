@@ -87,29 +87,35 @@ class FirestoreEventStore:
 
 
 class DurableStoreUnavailable(RuntimeError):
-    """The store could not be reached and this is not a declared offline run."""
+    """Raised when durable storage is required but cannot be constructed.
+
+    Deliberately NOT caught. The previous version returned an
+    InMemoryEventStore on ANY exception, which meant a credential, config or
+    network fault on the deployed path produced a service that accepted
+    mutations, answered 200, and held the resulting state in one Cloud Run
+    instance's heap until it scaled to zero. A grant that a buyer was told
+    exists, and that no longer does, is the worst failure this system can
+    have — worse than refusing the request, because the refusal is visible.
+    The same fault silently turned the durable registry and Memory Bank back
+    into process-local dicts: publications vanishing on restart, cold-start
+    re-hydration returning an empty fold, nothing failing.
+
+    Falling back to memory is legitimate ONLY where it is chosen explicitly:
+    HODI_OFFLINE=1 (the credential-free demo and the test suite) or by passing
+    a store instance directly. Everywhere else, unavailable durability is an
+    outage and must present as one.
+    """
 
 
 def default_event_store():
-    """
-    InMemory under HODI_OFFLINE=1; Firestore otherwise — and a failure to
-    build the Firestore client RAISES rather than degrading.
-
-    This used to `except Exception: return InMemoryEventStore()`, which meant
-    a credential problem in production silently turned the durable registry
-    and Memory Bank into process-local dicts: agent publications would vanish
-    on restart and cold-start re-hydration would return an empty fold, with
-    nothing failing. That is the same shape as the gateway's fail-open, and
-    it is the exact defect the durable store was built to remove. The offline
-    twin is a declared mode, not a fallback.
-    """
+    """InMemory ONLY under an explicit offline flag; otherwise Firestore or fail."""
     if os.environ.get("HODI_OFFLINE") == "1":
         return InMemoryEventStore()
     try:
         return FirestoreEventStore()
-    except Exception as e:
+    except Exception as exc:
         raise DurableStoreUnavailable(
-            f"No durable event store and HODI_OFFLINE is not set ({type(e).__name__}: {e}). "
-            "Refusing to fall back to process memory — registry publications and memory-bank "
-            "state would silently stop surviving restarts."
-        ) from e
+            "durable event store unavailable and HODI_OFFLINE is not set — "
+            "refusing to serve mutations into process memory: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc

@@ -72,8 +72,19 @@ class TestForeignDomainReadIsDeniedByIAM(unittest.TestCase):
         import google.auth
 
         project = os.environ.get("GCP_PROJECT_ID", "hodi-2026")
-        source, _ = google.auth.default(
-            scopes=["https://www.googleapis.com/auth/cloud-platform"])
+        # ADC first; fall back to the gcloud CLI token — this machine has user
+        # auth but no ADC file, the same quirk every script in this repo
+        # handles (see gateway._build_firestore_client).
+        try:
+            source, _ = google.auth.default(
+                scopes=["https://www.googleapis.com/auth/cloud-platform"])
+        except google.auth.exceptions.DefaultCredentialsError:
+            import subprocess
+            from google.oauth2 import credentials as oauth2_credentials
+            token = subprocess.check_output(
+                ["gcloud", "auth", "print-access-token"],
+                stderr=subprocess.DEVNULL).decode().strip()
+            source = oauth2_credentials.Credentials(token)
         # Impersonate the EVIDENCE SA and try to read the IDENTITY database.
         evidence_sa = AGENT_SA_MAP["evidence_agent"]["sa_email"]
         identity_db = database_for_role("rights_custodian")

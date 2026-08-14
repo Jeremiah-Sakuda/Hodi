@@ -20,6 +20,7 @@ from src.api.auth import (
     AuthenticatedCounterparty, CredentialStore, RequestAuthenticationError, authenticate,
     HEADER_KEY_ID, HEADER_TIMESTAMP, HEADER_SIGNATURE
 )
+from src.schema.iam_policy import AGENT_SA_MAP
 
 router = APIRouter()
 armor = PromptInspector()
@@ -123,7 +124,6 @@ def _refuse_if_frozen(gateway: "AgentGateway", counterparty_id: str) -> None:
     freeze imposed on its own counterparty. Refusal is a structured denial,
     never silent; a read failure fails closed.
     """
-    from src.schema.iam_policy import AGENT_SA_MAP
     try:
         freezes = gateway.read_collection(
             calling_sa=AGENT_SA_MAP["consent_arbiter"]["sa_email"],
