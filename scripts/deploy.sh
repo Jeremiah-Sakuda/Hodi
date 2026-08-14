@@ -124,8 +124,13 @@ WORKER_REV_CREATED="$(gcloud run revisions describe \
   --format='value(metadata.creationTimestamp)' 2>/dev/null || true)"
 if [ -n "${WORKER_REV_CREATED}" ]; then
   HEAD_EPOCH="$(git -C "$(dirname "$0")/.." log -1 --format=%ct)"
-  WORKER_EPOCH="$(date -j -f '%Y-%m-%dT%H:%M:%S' "${WORKER_REV_CREATED%%.*}" +%s 2>/dev/null \
-                  || date -d "${WORKER_REV_CREATED}" +%s 2>/dev/null || echo 0)"
+  # -u is load-bearing: Cloud Run stamps UTC, and `date -j -f` without it parses
+  # the string as LOCAL time. On a UTC-5 machine that shifted the worker's build
+  # 5 hours into the future and reported a genuinely stale worker as "coherent"
+  # — a freshness guard that lied in the safe-sounding direction, which is worse
+  # than no guard. Verified against a worker known to predate HEAD.
+  WORKER_EPOCH="$(date -j -u -f '%Y-%m-%dT%H:%M:%S' "${WORKER_REV_CREATED%%.*}" +%s 2>/dev/null \
+                  || date -u -d "${WORKER_REV_CREATED}" +%s 2>/dev/null || echo 0)"
   if [ "${WORKER_EPOCH}" -lt "${HEAD_EPOCH}" ] 2>/dev/null; then
     echo
     echo "WARNING: ${WORKER_SERVICE} was built BEFORE the current HEAD commit."

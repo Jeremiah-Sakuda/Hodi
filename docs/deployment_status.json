@@ -1,5 +1,5 @@
 {
-  "_IMPORTANT_the_deployed_revision_predates_this_repository": "The 'verified' entries describe what was proven against the live project, mostly on 2026-08-14: the KMS key, the per-domain credential boundary and the split revocation worker were all executed and asserted that day. What is NOT deployed is the current application code: the main service's last deployed revision predates mandatory work_id on the licensing path, request-window containment, execution leases, revocation idempotency, the consent-incident flow, caller-identity binding, and work registration. So an infrastructure capability marked 'verified' is verified; a claim about application BEHAVIOUR on the deployed service is only true after the next `make deploy`. Run .github/workflows/verify-live.yml after deploying to refresh these entries from evidence.",
+  "_deployment_currency": "As of 2026-08-14T17:00Z the deployed revisions CARRY the current repository code: hodi-evidence-endpoint-00045-dkz and hodi-revocation-worker-00004-m7t were both built from commit 17d83a2 and both postdate it. This key previously warned that the deployed revision predated the repository \u2014 true when written, and resolved by deploying rather than by rewording. Re-verified live after that deploy: boundary 6/6 HTTP 403; a revocation cascade carrying a real KMS-ECDSA-P256-SHA256 signature that scripts/hodi_verify.py accepts against /verification-key and rejects after a one-byte edit; the create-only runtime identity asserted from IAM. What remains not deployed-and-proven is listed per capability below \u2014 chiefly the durable trace backend and the live-release verification workflow.",
   "_comment": "Machine-readable deployment truth (HOD-715). Every 'is X deployed' claim in the docs is DERIVED from this file by scripts/deployment_status.py and guarded by `make check-docs`, because hand-maintained executed/not-executed prose drifted once: the README said asymmetric signing 'has not been built' for a commit after it was built, and an external review caught it. A capability may only be 'verified' if it names the evidence that verified it AND when \u2014 the generator refuses the file otherwise.",
   "status_vocabulary": {
     "verified": "Checked against the live deployment; evidence_source and last_verified_utc are both required and are what makes the claim admissible.",
@@ -12,22 +12,22 @@
       "status": "verified",
       "detail": "Cloud Run service serving /works, /.well-known/hodi.json, /canaries, /evidence-counts, and logging every access to Firestore since 2026-08-06.",
       "evidence_source": "docs/metrics.json :: daily_crawler_accrual_metrics (live Firestore audit, 1613 accrued records)",
-      "last_verified_utc": "2026-08-13T15:50:15Z",
-      "revision": "hodi-evidence-endpoint-00039-846"
+      "last_verified_utc": "2026-08-14T17:00:00Z",
+      "revision": "hodi-evidence-endpoint-00045-dkz"
     },
     "append_only_runtime_identity": {
       "status": "verified",
       "detail": "The deployed process runs as hodi-runtime-sa, whose effective permissions exclude datastore.entities.update and .delete, so grant history cannot be rewritten at runtime.",
       "evidence_source": "scripts/deploy.sh step 3 + tests/test_grant_log_iam.py::TestDeployedRuntimeIdentityCannotRewriteHistory (HODI_E2E, reads roles back from IAM)",
-      "last_verified_utc": "2026-08-12T16:45:00Z",
-      "revision": "hodi-evidence-endpoint-00039-846"
+      "last_verified_utc": "2026-08-14T17:00:00Z",
+      "revision": "hodi-evidence-endpoint-00045-dkz"
     },
     "cross_buyer_boundary_over_network": {
       "status": "verified",
       "detail": "The 2026-08-07 unauthenticated cross-buyer exploit and its variants are refused by the deployed service; 6/6 HTTP 403 including the mutating and internal routes.",
       "evidence_source": "make demo-live (scripts/test_live_cross_counterparty.py) \u2014 Parts A, B, C",
-      "last_verified_utc": "2026-08-12T16:45:00Z",
-      "revision": "hodi-evidence-endpoint-00039-846"
+      "last_verified_utc": "2026-08-14T17:00:00Z",
+      "revision": "hodi-evidence-endpoint-00045-dkz"
     },
     "gemini_scope_interpretation": {
       "status": "verified",
@@ -40,8 +40,8 @@
       "status": "in_process_only",
       "detail": "Enforced at three altitudes, and the remaining application-layer piece is named. (1) Append-only is runtime IAM on a create-only identity. (2) The DOMAIN boundary is now a CREDENTIAL boundary: per-domain named databases with IAM-conditioned per-SA grants, so a foreign-domain read fails at Google IAM (executed and proven by impersonation 2026-08-14). (3) The revocation worker runs as its own workload identity. What remains application-layer: the main service is still ONE process serving the custodian/negotiator/evidence/arbiter roles, and live collections still reside in (default), so row-level separation inside the grant log is gateway-enforced. Caller identity there is bound (role<->SA checked on every call) and labelled in_process_trusted; the OIDC-verified path and strict mode exist and apply to split services.",
       "evidence_source": "HODI_E2E=1 tests.test_workload_identity (live IAM denial, 7/7); tests.test_identity_binding + tests.test_caller_identity (offline); make demo-live (deployed, over the network)",
-      "last_verified_utc": "2026-08-14T00:00:00Z",
-      "revision": "hodi-evidence-endpoint-00039-846"
+      "last_verified_utc": "2026-08-14T17:00:00Z",
+      "revision": "hodi-evidence-endpoint-00045-dkz"
     },
     "kms_signing": {
       "status": "verified",

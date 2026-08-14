@@ -23,7 +23,7 @@ revocation cascade now terminates exactly the grants that **permit** the revoked
 ran backwards — see below), and `/api/v1/revoke` now checks the artist **owns** the work. The
 boundary denial returns **6/6 HTTP 403 including Part C**; the hero cascade appends under create-only
 IAM with the affected set, derived scopes and issued notices all correct; a non-owner revoke is
-refused 403. Warm cascade ~0.5 s. Re-measure with `make metrics` if you record more than a day from now.
+refused 403. Warm cascade ~0.7 s. Re-measure with `make metrics` if you record more than a day from now.
 
 Supersedes PRD §6's shot list. Three things changed since it was written and the budget changes
 with them:
@@ -43,7 +43,7 @@ record:
 
 | Action | Measured (2026-08-09 unless noted) | Beat budget |
 |---|---|---|
-| Revocation cascade, **1 affected grant** | **461 / 496 / 506 / 644 ms** round-trip, ~519 ms avg (2026-08-12) | 45 s |
+| Revocation cascade, **1 affected grant** | **644 – 863 ms** round-trip, ~737 ms avg (2026-08-14, rev 00045-dkz) | 45 s |
 | Revocation cascade, **2 affected grants** | **5086 / 5275 / 4953 ms** — see the trap below | — |
 | `POST /api/v1/license` (Frames A and C of the hero) | **399 ms** before · **399 ms** after (2026-08-10) | — |
 | Natural-language license | **2.83 s** round-trip, warm (2026-08-10) · 3175 ms avg in `metrics.json` | 30 s |
@@ -51,15 +51,15 @@ record:
 | `make demo`, all 7 beats | **1.4 – 1.8 s** | — |
 | Quarantine drill | 1114 ms server-side; **7.3 s** cold / 1.5 s warm round-trip | 20 s |
 
-So the hero beat is **not** 45 seconds of waiting. It is ~0.5 s of action wrapped in 45 s of
+So the hero beat is **not** 45 seconds of waiting. It is ~0.7 s of action wrapped in 45 s of
 *before* and *after*: the license granted, the command, the cascade output, the same license refused.
 Plan the shot as three static frames with one instant transition, not as a progress bar.
 
 ### The 5-second trap in the hero beat — read this before the first take
 
 The cascade's cost is **one Gemini notice-drafting call per affected grant that is not in the
-committed response cache.** With one affected grant it is ~0.5 s. With two it is ~5.3 s, and it is
-reproducibly ~5.3 s — not a cold start you can warm away.
+committed response cache.** With one affected grant it is ~0.7 s. With two it is ~5.4 s, and it is
+reproducibly so — not a cold start you can warm away.
 
 `work-repo-001` carries two grants: `grant-acme-il-001` (the demo grant, cached, fast) and
 `grant-seed-2` to `buyer-acme-2` (**not** cached — every revocation touching it pays a live model
@@ -133,7 +133,7 @@ cd "path/to/Hodi"
    ```bash
    make recording-prep
    ```
-   Expect: `RECORDING STATE READY — cascade on the ~0.5 s path.` If it says `~5.3 s`, the affected
+   Expect: `RECORDING STATE READY — cascade on the ~0.7 s path.` If it says `~5.4 s`, the affected
    set is 2 — read its report, it names the grant responsible.
 
 5. **Confirm the boundary holds on the deployed service.**
@@ -216,7 +216,7 @@ drill is structurally write-free.
 
 **Never** point the hero at a work id you care about. `work-repo-001` is the seeded demo target.
 
-**If you want the two-counterparty cascade instead** (and the ~5.3 s it costs), re-grant
+**If you want the two-counterparty cascade instead** (and the ~5.4 s it costs), re-grant
 `grant-seed-2` before each take. There is no seeder script for it — `scripts/seed_firestore.py`
 would also rewrite the works collection and drop the proof URIs `make verify-manifest` checks, so use
 this targeted re-grant, which is the documented re-grant mechanism (a new `granted` event that
@@ -369,9 +369,11 @@ print(json.dumps(r, indent=2))
 EOF
 ```
 
-**Measured: 461 / 496 / 506 / 644 ms** round-trip warm, ~519 ms average (2026-08-12), with one
-affected grant. `metrics.json` records 3049 ms cold / 519 ms warm for the cascade itself. **Burn in
-the wall clock — about half a second is the point.**
+**Measured: 644 – 863 ms** round-trip warm, ~737 ms average (2026-08-14, revision 00045-dkz), with
+one affected grant. `metrics.json` records 2263 ms cold / 737 ms warm. It rose from ~519 ms when the
+cascade gained an execution lease and an idempotency outbox — a retry cannot double-issue a notice,
+and an abandoned worker cannot commit late. **Burn in the wall clock — under a second, and it is
+now buying exactly-once effects.**
 
 On screen, in the response:
 - `derived_scopes` — `training`, `fine_tuning`, `rag_retrieval`, `human_reference`, walked from the
@@ -535,7 +537,7 @@ That is 33 s of reserve without touching the hero, the security beat, Diagram B,
 
 - **Cold start.** `min-instances=0`. Any beat hitting the deployed service after ~15 minutes idle
   pays up to 7 s. Warm before every take.
-- **Two affected grants costs ~5.3 s, not ~0.5 s.** One uncached Gemini notice-drafting call per
+- **Two affected grants costs ~5.4 s, not ~0.7 s.** One uncached Gemini notice-drafting call per
   affected grant. Verify the affected set is 1 in pre-flight step 5. This is the single most likely
   way the hero beat goes wrong.
 - **Both secrets.** Frames A/C need the counterparty key, Frame B needs the artist key, and neither
