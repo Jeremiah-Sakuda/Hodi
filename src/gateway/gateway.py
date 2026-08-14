@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Dict, Any, List, Optional
 from pydantic import BaseModel
 from datetime import datetime, timezone
 from google.cloud import firestore
+from google.api_core import exceptions as gcloud_exceptions
 from src.schema.iam_policy import is_action_permitted, get_action_permission
 from src.schema.signing import unsigned_placeholder
 
@@ -34,6 +35,20 @@ class GatewayPolicyDenial(PermissionError):
     def __init__(self, denial: PolicyDenialEvent):
         self.denial = denial
         super().__init__(f"GATEWAY_POLICY_DENIAL: {denial.reason}")
+
+
+class DocumentAlreadyExists(Exception):
+    """
+    A `create()` collided with an existing document id — the SAME answer on
+    the live path (Firestore AlreadyExists) and offline (the in-memory write
+    sink), so idempotent-replay handling can be written once and mean the
+    same thing in both. For deterministic, operation-derived ids a collision
+    is the IDEMPOTENCY signal: this effect has already been committed.
+    """
+    def __init__(self, collection: str, doc_id: str):
+        self.collection = collection
+        self.doc_id = doc_id
+        super().__init__(f"Document '{doc_id}' already exists in '{collection}'.")
 
 def _emit_denial_log(denial: PolicyDenialEvent) -> None:
     """
@@ -89,6 +104,12 @@ class AgentGateway:
         # a violation, not a legacy path — a missing lease and a revoked lease
         # are the same answer, exactly as a missing session context is on reads.
         self._lease_ledger = lease_ledger
+        # Offline write sink. Mirrors the LIVE `.create()` semantics — a
+        # duplicate id RAISES (DocumentAlreadyExists) instead of silently
+        # no-opping — because the idempotency machinery (HOD-708) leans on
+        # exactly that collision, and an offline path that cannot collide
+        # would make every idempotency test a test of nothing.
+        self._offline_writes: Dict[str, Dict[str, Dict[str, Any]]] = {}
 
     def _enforce(self, calling_sa: str, calling_role_key: str, target_collection: str, filters: Dict[str, Any] = None, session_context: Dict[str, Any] = None):
         permitted, required_filter_key = get_action_permission(calling_role_key, target_collection)
@@ -190,9 +211,12 @@ class AgentGateway:
     def read_collection(self, calling_sa: str, calling_role_key: str, target_collection: str, filters: Dict[str, Any] = None, session_context: Dict[str, Any] = None) -> List[Dict[str, Any]]:
         self._enforce(calling_sa, calling_role_key, target_collection, filters=filters, session_context=session_context)
         if not self.db:
-            # Offline: serve injected documents (empty by default), applying the
-            # same equality filters a live query would.
+            # Offline: serve injected documents plus anything written through
+            # this gateway instance (a read after a write must see the write,
+            # exactly as it would live), applying the same equality filters a
+            # live query would.
             docs = list(self._offline_reads.get(target_collection, []))
+            docs += list(self._offline_writes.get(target_collection, {}).values())
             if filters:
                 docs = [d for d in docs if all(d.get(k) == v for k, v in filters.items())]
             return docs
@@ -256,8 +280,52 @@ class AgentGateway:
             # `datastore.entities.create`, and it RAISES on a duplicate id
             # rather than overwriting. For an append-only event log with unique
             # event ids that is the correct and stronger semantics — a colliding
-            # id is a bug that should fail loudly, never a silent replace.
-            self.db.collection(target_collection).document(doc_id).create(data)
+            # id is a bug that should fail loudly, never a silent replace. For
+            # OPERATION-DERIVED deterministic ids (HOD-708) the collision is
+            # the idempotency signal, surfaced as DocumentAlreadyExists.
+            try:
+                self.db.collection(target_collection).document(doc_id).create(data)
+            except gcloud_exceptions.AlreadyExists:
+                raise DocumentAlreadyExists(target_collection, doc_id)
+        else:
+            bucket = self._offline_writes.setdefault(target_collection, {})
+            if doc_id in bucket:
+                raise DocumentAlreadyExists(target_collection, doc_id)
+            bucket[doc_id] = dict(data)
+
+    def write_documents_atomic(self, calling_sa: str, calling_role_key: str,
+                               writes: List[tuple], lease_id: Optional[str] = None):
+        """
+        Creates several documents ATOMICALLY — all or none (HOD-708).
+
+        `writes` is a list of (collection, doc_id, data). The revocation
+        cascade commits the revoked GrantEvent and its notice-outbox record
+        through here, so 'the grant is terminated' and 'a notice is owed' are
+        one fact, never two facts that a crash can split. Live this is a
+        Firestore WriteBatch of `.create()`s (atomic, and AlreadyExists fails
+        the whole batch); offline every id is checked free before anything is
+        written. Policy and lease are enforced per target collection BEFORE
+        any write — a denial on any one write denies the batch.
+        """
+        for collection, _doc_id, _data in writes:
+            self._enforce(calling_sa, calling_role_key, collection)
+            self._enforce_lease(calling_sa, calling_role_key, collection, lease_id)
+
+        if self.db:
+            batch = self.db.batch()
+            for collection, doc_id, data in writes:
+                batch.create(self.db.collection(collection).document(doc_id), data)
+            try:
+                batch.commit()
+            except gcloud_exceptions.AlreadyExists:
+                first = writes[0]
+                raise DocumentAlreadyExists(first[0], first[1])
+        else:
+            for collection, doc_id, _data in writes:
+                if doc_id in self._offline_writes.get(collection, {}):
+                    raise DocumentAlreadyExists(collection, doc_id)
+            for collection, doc_id, data in writes:
+                self._offline_writes.setdefault(collection, {})[doc_id] = dict(data)
 
     def deliver_revocation_notice(self, sender: str, counterparty_id: str, notice: Any,
                                   lease_id: Optional[str] = None) -> Any:
