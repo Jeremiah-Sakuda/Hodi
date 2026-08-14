@@ -97,6 +97,16 @@
           "id": "demo-asserts-evaporate-under-O",
           "summary": "make demo used bare assert, so python3 -O printed 'ALL DEMO BEATS PASSED' beside contradictory output with the revocation invariant broken.",
           "source": "docs/BUILD-LOG.md 2026-08-08 review feedback, outcome 4"
+        },
+        {
+          "id": "e2e-license-bodies-missing-work-id",
+          "summary": "tests/test_buyer_api_e2e.py posted license bodies with no work_id and no counterparty_id, so both signed-request tests received HTTP 422 and asserted nothing about scope resolution or receipts. HODI_E2E-gated, skipped offline, and the workflow that runs them had never executed.",
+          "source": "docs/FINDINGS.md — a capability recorded as scripted, never run"
+        },
+        {
+          "id": "registry-test-assumed-an-empty-durable-store",
+          "summary": "test_discovery_does_not_disclose_deregistered_agents asserted len(found)==1 against AgentRegistry(), which defaults to the durable append-only store. It holds only against an empty registry, so it failed on a system behaving correctly. Rewritten to assert the actual property against a per-run agent id.",
+          "source": "docs/FINDINGS.md — a capability recorded as scripted, never run"
         }
       ]
     },
@@ -109,6 +119,11 @@
           "id": "budget-alerts-fence-scheduler-unbuilt",
           "summary": "Budget alerts, a cost-fenced project and a scheduler were all written up as complete in the build log. None existed. Reporting infrastructure as verified without an observed execution is itself the finding.",
           "source": "docs/BUILD-LOG.md correction note #3"
+        },
+        {
+          "id": "ci-verifier-required-signing-power",
+          "summary": "The live-verification workflow's KMS step required roles/cloudkms.signer on the CI identity — the power to forge any Hodi receipt — to sign a receipt and then verify the signature it had just made. A closed loop proving CI can use a key, not that the service is honest. It also set HODI_SIGNING=kms without HODI_KMS_KEY_VERSION, so it could never have run.",
+          "source": "docs/FINDINGS.md — a capability recorded as scripted, never run"
         }
       ]
     },
@@ -190,6 +205,11 @@
           "id": "recording-script-narrated-retired-placeholder",
           "summary": "The recording script instructed the presenter to say on camera that the signature field reads UNSIGNED_PLACEHOLDER. Cloud KMS signing had shipped and the deployed service returns KMS-ECDSA-P256-SHA256:..., so the narration would have contradicted the screen and discarded the strongest provable claim in the submission. The inverse of this project's usual defect: the prose understated a mechanism that had become real.",
           "source": "docs/FINDINGS.md — the recording script would have failed on camera"
+        },
+        {
+          "id": "manifest-row-replacement-erased-seed-fields",
+          "summary": "GET /works unioned the committed seed with persisted rows at ROW level, so every persisted row silently deleted the eight fields it did not carry: no canary on any work, no control_proof on the one verified_control work, and /works/{id}/proof answering HTTP 500. Overriding what a row asserts is correct; erasing what it is silent about is not.",
+          "source": "docs/FINDINGS.md — the public manifest was serving no canaries"
         }
       ]
     },
@@ -217,6 +237,11 @@
           "id": "readme-latency-drift",
           "summary": "The README's deployed-path sentence stated 'revocation cascade 3049 ms cold / 534 ms warm average' while docs/metrics.json — named as its source one clause earlier — said 2263 / 736.6. The metrics file had been regenerated hours before after a real regression; the prose citing it had not. Every other published figure in the README was guarded by check_doc_metrics.py; latency figures were not, so that is where the drift went. Fixed by check_deployed_timings(), which also requires the sentence to name the revision the measurement came from.",
           "source": "docs/FINDINGS.md — the recording script would have failed on camera"
+        },
+        {
+          "id": "generated-deployment-table-not-generated",
+          "summary": "The deployment-status table in README.md is marked GENERATED and says not to hand-edit it. Nothing regenerated it and nothing compared it, so a promotion recorded in deployment_status.json would leave the README showing the old state and the old date. It was already stale by four rows.",
+          "source": "docs/FINDINGS.md — a capability recorded as scripted, never run"
         }
       ]
     }
