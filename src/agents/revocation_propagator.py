@@ -5,7 +5,7 @@ from src.schema.grant_event import GrantEvent, Receipt
 from src.schema.revocation import (
     RevocationNotice, RevocationReceipt, NoticeOutboxRecord, revocation_effect_id,
 )
-from src.schema.signing import unsigned_placeholder
+from src.schema.signing import unsigned_placeholder, sign_pydantic
 from src.schema.lattice import (
     USE_TYPE_CONTAINMENT, MODEL_CLASS_CONTAINMENT, use_type_derivation_chain,
     is_use_type_contained,
@@ -170,7 +170,7 @@ class RevocationPropagatorAgent:
                     now = datetime.now(timezone.utc)
                     revoked_event_id = revocation_effect_id(operation_id, gid, "revoked_event")
                     outbox_id = revocation_effect_id(operation_id, gid, "outbox")
-                    revoked_event = GrantEvent(
+                    revoked_event = sign_pydantic(GrantEvent(
                         event_id=revoked_event_id,
                         grant_id=gid,
                         work_id=work_id,
@@ -178,8 +178,8 @@ class RevocationPropagatorAgent:
                         scope=state.active_scope,
                         kind="revoked",
                         issued_at=now,
-                        signature=unsigned_placeholder("revoked", gid)
-                    )
+                        signature=""
+                    ), kind="revoked", reference=gid)
                     outbox_record = NoticeOutboxRecord(
                         outbox_id=outbox_id,
                         operation_id=operation_id,
@@ -267,11 +267,11 @@ class RevocationPropagatorAgent:
                 )
             except DocumentAlreadyExists:
                 pass  # already delivered by a prior attempt — the obligation is discharged
-            receipts.append(RevocationReceipt(
+            receipts.append(sign_pydantic(RevocationReceipt(
                 revocation_id=revocation_effect_id(operation_id, record.grant_id, "receipt"),
                 grant_id=record.grant_id,
                 counterparty_id=record.counterparty_id,
                 revoked_at=record.revoked_at,
-                signature=unsigned_placeholder("revocation_receipt", record.grant_id),
-            ))
+                signature="",
+            ), kind="revocation_receipt", reference=record.grant_id))
         return receipts

@@ -503,3 +503,53 @@ async def get_evidence_counts(request: Request):
         "claim_limit": ("Counts are per evidence class and are never summed. There is no "
                         "cross-class total, and no class asserts training-set membership."),
     }
+
+
+@app.get("/verification-key", response_class=JSONResponse)
+async def get_verification_key(request: Request):
+    """
+    The PUBLIC verification key for signed receipts, notices, and incident
+    manifests (HOD-706). Serving it is what makes a signature worth anything:
+    the recipient verifies with a key that could never mint. Three honest
+    states, never conflated:
+      * KMS configured   → the production key, fetched from Cloud KMS.
+      * ephemeral signer → the process key, LABELLED ephemeral: it dies with
+        this instance and proves mechanism, not durable authority.
+      * no signer        → said plainly; documents carry labelled placeholders.
+    """
+    from src.schema.signing import get_active_signer, EphemeralEd25519Signer, KmsSigner
+    try:
+        signer = get_active_signer()
+    except Exception as e:
+        return JSONResponse(status_code=503, content={
+            "signing": "misconfigured", "error": str(e)})
+    if signer is None:
+        return {
+            "signing": "not_configured",
+            "public_key_pem": None,
+            "claim_limit": ("No signing key is configured on this deployment. Signature "
+                            "fields carry the labelled UNSIGNED_PLACEHOLDER value and "
+                            "prove nothing — run scripts/setup_kms_signing.sh and set "
+                            "HODI_SIGNING=kms to change that."),
+        }
+    if isinstance(signer, EphemeralEd25519Signer):
+        return {
+            "signing": "ephemeral",
+            "algorithm": signer.ALG,
+            "key_id": signer.key_id,
+            "public_key_pem": signer.public_key_pem,
+            "claim_limit": ("EPHEMERAL key: generated at process start, dies with this "
+                            "instance. Signatures verify against this key for the life of "
+                            "the process only — mechanism demonstration, not durable "
+                            "authority."),
+        }
+    return {
+        "signing": "kms",
+        "algorithm": KmsSigner.ALG,
+        "key_id": signer.key_id,
+        "key_version": signer.key_version_name,
+        "public_key_pem": signer.public_key_pem(),
+        "claim_limit": ("Verify: canonical JSON of the document without its `signature` "
+                        "field, SHA-256, ECDSA-P256 against this public key. The private "
+                        "key never leaves Cloud KMS."),
+    }
