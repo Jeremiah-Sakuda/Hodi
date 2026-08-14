@@ -91,13 +91,14 @@
       ]
     },
     "durable_trace_backend": {
-      "status": "scripted_not_executed",
-      "detail": "Cloud Trace export of the delegation spans (HODI_TRACE_EXPORT=cloud). The exporter selection is tested offline; no deployment has run with it enabled, so no waterfall has been captured from a backend.",
-      "evidence_source": "src/observability/tracing.py + tests/test_tracing_backend.py (offline)",
-      "last_verified_utc": null,
-      "revision": null,
+      "status": "verified",
+      "detail": "OpenTelemetry spans from the deployed service are exported to Cloud Trace (HODI_TRACE_EXPORT=cloud, set by scripts/deploy.sh only when the API is enabled AND the runtime identity holds roles/cloudtrace.agent). A whole ADK delegation arrives as ONE correlated trace: invocation -> invoke_agent <role> -> the per-hop decision spans, each carrying agent.identity, policy.consulted and outcome. POST /api/v1/fleet/delegation_drill returns the trace_id it wrote and the exporter that wrote it, so the waterfall is retrievable by id rather than asserted.",
+      "evidence_source": "Cloud Trace traceId 35f6bc26c177a22e99d7d491ead3b6b1 — 11 spans, retrieved via cloudtrace.googleapis.com/v1/projects/hodi-2026/traces/{id}: invocation > invoke_agent fleet_orchestrator > {licensing_negotiator PERMITTED, registry.discover NOT_DISCLOSED, rights_custodian INITIATED, registry.discover DISCOVERED, revocation_propagator ABANDONED, supervisor QUARANTINED_AND_REROUTED}",
+      "last_verified_utc": "2026-08-14T19:20:00Z",
+      "revision": "hodi-evidence-endpoint-00050-q92",
       "artifacts": [
-        "src/observability/tracing.py"
+        "src/observability/tracing.py",
+        "src/fleet/adk_fleet.py"
       ]
     },
     "live_release_verification": {

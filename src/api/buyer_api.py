@@ -612,8 +612,10 @@ async def fleet_delegation_drill(req: DelegationDrillRequest, request: Request):
     (tests/test_route_auth_coverage.py).
     """
     import json as _json
+    import os as _os
     import time as _time
     from pathlib import Path as _Path
+    from src.observability.tracing import active_exporter_kind as _active_exporter_kind
     from src.supervisor.supervisor import Supervisor
     from src.fleet.adk_fleet import run_revocation_delegation
 
@@ -624,6 +626,19 @@ async def fleet_delegation_drill(req: DelegationDrillRequest, request: Request):
     with open(fixture) as f:
         events = [GrantEvent(**e) for e in _json.load(f)["events"]]
 
+    # The delegation's OWN trace id is returned, read from inside the run.
+    #
+    # An earlier version wrapped this call in an outer span and returned that
+    # span's trace id. It was wrong, and measurably so: the ADK runner starts
+    # its own root `invocation` span in its own execution context, so the whole
+    # delegation — invocation -> invoke_agent <role> -> the per-hop decision
+    # spans — is ONE coherent trace that the wrapper does not adopt. Measured
+    # against the deployed service: 12 spans, 11 correlated under ADK's root,
+    # and the wrapper sitting alone in a second trace. Cloud Trace confirmed
+    # exactly that: the returned id resolved to a single useless span.
+    #
+    # The id now comes from the agents themselves, so it names the trace the
+    # waterfall is actually in.
     started = _time.perf_counter()
     result = run_revocation_delegation(
         counterparty_id="acme-intelligence-labs",
@@ -635,6 +650,9 @@ async def fleet_delegation_drill(req: DelegationDrillRequest, request: Request):
     )
     elapsed_ms = (_time.perf_counter() - started) * 1000
 
+    trace_id = result.get("delegation_trace_id")
+    project = _os.environ.get("GCP_PROJECT_ID", "hodi-2026")
+    exporter = _active_exporter_kind()
     return {
         "measurement_surface": "deployed-over-network",
         "supervisor_deadline_seconds": req.deadline_seconds,
@@ -644,6 +662,13 @@ async def fleet_delegation_drill(req: DelegationDrillRequest, request: Request):
         "quarantine": result["quarantine"],
         "post_quarantine_discovery": result["post_quarantine_discovery"],
         "request_completed": result["quarantine"] is not None,
+        # Stated exactly: which backend these spans went to, and where to read
+        # them. `console` means they were printed, not persisted — the response
+        # never implies a durable trace exists when it does not.
+        "trace_id": trace_id,
+        "trace_exporter": exporter,
+        "trace_uri": (f"https://console.cloud.google.com/traces/list?project={project}"
+                      f"&tid={trace_id}" if exporter == "cloud_trace" else None),
     }
 
 
