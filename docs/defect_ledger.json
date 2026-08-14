@@ -112,6 +112,11 @@
           "id": "trace-list-oracle-could-not-see-a-true-positive",
           "summary": "The check used to conclude 'no traces are landing' was itself broken: the Cloud Trace v1 LIST endpoint returned 0 results for a window in which a span demonstrably existed — proven by writing one via v2 batchWrite and fetching it back by id, which found it. Every zero reading was an artifact of the query, producing confident evidence for a wrong conclusion.",
           "source": "docs/FINDINGS.md — the durable trace backend could never have worked"
+        },
+        {
+          "id": "test-asserted-the-broken-fallback-as-correct",
+          "summary": "tests/test_tracing_backend.py asserted that requesting cloud export yields a CONSOLE exporter, with a docstring stating 'the Cloud Trace exporter is not a pinned dependency'. That was true, and it was the bug: the test encoded the defect as the expected behaviour and stayed green for exactly as long as the durable backend was a no-op. Pinning the dependency turned it red in CI on the run that proved the backend works. Rewritten to force the ImportError so the fallback is tested as a property, plus the missing converse assertion that an installed AND authenticated exporter selects cloud.",
+          "source": "docs/FINDINGS.md — the durable trace backend could never have worked"
         }
       ]
     },

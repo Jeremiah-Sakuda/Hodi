@@ -96,7 +96,7 @@ Fetches the **live** `/works` manifest and verifies the corpus-integrity propert
 make test
 ```
 
-Runs the full offline suite — 469 tests, credential-free, including the cross-buyer attack suite, the work-scoped authorization adversarial suite, the route-authentication coverage guard, the recording-script contract guard, the 56-case containment truth table, the ADK delegation, and the quarantine drill. Twelve tests that genuinely require live Firestore or live IAM (byte-identity at rest, and reading the deployed runtime identity back from IAM, cannot be proven against an in-memory buffer) are skipped unless you set `HODI_E2E=1`, because they write to real collections.
+Runs the full offline suite — 471 tests, credential-free, including the cross-buyer attack suite, the work-scoped authorization adversarial suite, the route-authentication coverage guard, the recording-script contract guard, the 56-case containment truth table, the ADK delegation, and the quarantine drill. Twelve tests that genuinely require live Firestore or live IAM (byte-identity at rest, and reading the deployed runtime identity back from IAM, cannot be proven against an in-memory buffer) are skipped unless you set `HODI_E2E=1`, because they write to real collections.
 
 ```bash
 make compliance
@@ -196,7 +196,7 @@ Build history, findings, and the write-up are first-class artifacts here — inc
 
 - **[docs/BUILD-LOG.md](docs/BUILD-LOG.md)** — every session's verbatim prompt, outcome, and forked decisions, including five dated correction notes where earlier entries overclaimed or reported unbuilt infrastructure as done, and were struck.
 - **[docs/FINDINGS.md](docs/FINDINGS.md)** — daily observations plus two long-form named findings: the live cross-buyer confidentiality breach (dates, exact exposure, why the existing boundary test could not catch it), and the day this project's own Cloud Scheduler job was counted as a third-party crawler, inverting its signature honesty claim.
-- **[Seven ways to lie to yourself in code](https://jeremiah-sakuda.github.io/Hodi/blog/seven-ways-to-lie-to-yourself-in-code.html)** *(published)* — the defect ledger as a write-up: forty defects, nine classes, the four that recurred, the meta-pattern behind all of them, and the four structural guards that answer it. Source: [docs/blog/](docs/blog/seven-ways-to-lie-to-yourself-in-code.md).
+- **[Seven ways to lie to yourself in code](https://jeremiah-sakuda.github.io/Hodi/blog/seven-ways-to-lie-to-yourself-in-code.html)** *(published)* — the defect ledger as a write-up: forty-one defects, nine classes, the four that recurred, the meta-pattern behind all of them, and the four structural guards that answer it. Source: [docs/blog/](docs/blog/seven-ways-to-lie-to-yourself-in-code.md).
 - **[docs/social-posts.md](docs/social-posts.md)** — the launch posts.
 - **[docs/architecture/conflict_matrix.md](docs/architecture/conflict_matrix.md)** — generated from the policy module the Gateway reads.
 
@@ -243,7 +243,7 @@ This is a finding about the SDK's current headless surface, published rather tha
 
 ## Published writing
 
-- **Blog — [Seven ways to lie to yourself in code](https://jeremiah-sakuda.github.io/Hodi/blog/seven-ways-to-lie-to-yourself-in-code.html)**. The defect ledger: forty defects across nine classes, the four that recurred, the Antigravity SDK assertion that was verified before it was made, and the four structural guards. Created for the All Things Agentic Hackathon.
+- **Blog — [Seven ways to lie to yourself in code](https://jeremiah-sakuda.github.io/Hodi/blog/seven-ways-to-lie-to-yourself-in-code.html)**. The defect ledger: forty-one defects across nine classes, the four that recurred, the Antigravity SDK assertion that was verified before it was made, and the four structural guards. Created for the All Things Agentic Hackathon.
 - **Project site — [https://jeremiah-sakuda.github.io/Hodi/](https://jeremiah-sakuda.github.io/Hodi/)**, serving the build log, findings, the Antigravity decision, and the generated IAM matrix.
 - **Social posts** — tagged `#AllThingsAgenticHackathon`. Text in [docs/social-posts.md](docs/social-posts.md).
   - LinkedIn: <!-- POSTED-URL-1 --> *(not yet posted)*
