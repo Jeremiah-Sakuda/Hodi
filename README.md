@@ -24,7 +24,10 @@ This table is lifted verbatim from the PRD (§3.4). Every enforcement mechanism 
 | Ownership is verified or explicitly not | `control_tier` is mandatory; `verified_control` requires a stored `control_proof`; the UI renders the three tiers differently and never hides `asserted`. |
 | Untrusted documents cannot redirect the fleet | Prompt Inspector (local regex) on post-extraction bytes of every inbound buyer/scope document; detection emits an event and an anomaly item and the request **proceeds** under its original scope. |
 | A looping or hallucinating worker cannot stall the fleet | Supervisor with per-agent deadline and circuit breaker; quarantine + reroute; `TaskAbandoned` events; every decision carries an OTel span. |
-| Least privilege | One SA per agent, per the conflict boundaries below; no SA holds two of {identity, buyer terms, evidence, revocation}. |
+| Least privilege | One SA per agent, per the conflict boundaries below; no SA holds two of {identity, buyer terms, evidence, revocation}, and the consent arbiter holds none of them. |
+| No agent can claim beyond its epistemic authority | Per-role assertion authority declared as data ([assertion_authority.py](src/schema/assertion_authority.py)), enforced at the gateway; the training-membership claim has no assertion class, so it cannot be submitted as data. |
+| An abandoned worker cannot commit after quarantine | Execution leases: the supervisor revokes the lease at the deadline, and the gateway checks it immediately before every supervised write, so a woken worker can compute but not commit. |
+| A signed artifact can be verified without Hodi | Asymmetric signing (Cloud KMS live, labelled-ephemeral offline); `hodi verify` and `/verification-key` check receipts and incident manifests against a public key Hodi could never mint with. |
 
 ---
 
@@ -51,7 +54,9 @@ The separation is a **conflict of interest**, not a division of labour:
 
 A single agent would need the union of all four permission sets — precisely the position no honest broker may occupy. **A monolith here would itself be the violation.**
 
-The full permission matrix is in [docs/architecture/conflict_matrix.md](docs/architecture/conflict_matrix.md). That document is **GENERATED** from [src/schema/iam_policy.py](src/schema/iam_policy.py) by [scripts/generate_conflict_matrix.py](scripts/generate_conflict_matrix.py), so the documentation cannot drift from the enforced bindings — the doc and the gateway consult the same data.
+A **fifth agent, the consent arbiter**, joins them for incident adjudication (see *Autonomous consent incident response* below). It holds **none** of the four conflict domains — no identity, no buyer terms, no raw evidence, no revocation authority, and no write path to grant history — because an adjudicator that could also be a witness would be an interested one. Extending the topology rather than bending it: no service account holds two of {identity, buyer terms, evidence, revocation}, and the arbiter holds zero.
+
+The full permission matrix is in [docs/architecture/conflict_matrix.md](docs/architecture/conflict_matrix.md). That document is **GENERATED** from [src/schema/iam_policy.py](src/schema/iam_policy.py) by [scripts/generate_conflict_matrix.py](scripts/generate_conflict_matrix.py), so the documentation cannot drift from the enforced bindings — the doc and the gateway consult the same data. **Who may *claim* what** is declared the same way, in [src/schema/assertion_authority.py](src/schema/assertion_authority.py): zero trust applied to epistemic authority, enforced at the same gateway with the same structured denials.
 
 ---
 
@@ -94,9 +99,15 @@ Runs the full offline suite — 376 tests, credential-free, including the cross-
 make compliance
 ```
 
-Extracts every requirement ID from the PRD and diffs §4 against the §2 compliance matrix **and the prose**; fails on any orphan or range notation. Verifies 54 requirements as of this writing. Also runs `check-docs`, which fails if any accrual figure in the README, Diagram B, or the submission text disagrees with `docs/metrics.json`.
+Extracts every requirement ID from the PRD and diffs §4 against the §2 compliance matrix **and the prose**; fails on any orphan or range notation. Verifies 68 requirements as of this writing. Also runs `check-docs`, which fails if any accrual figure in the README, Diagram B, or the submission text disagrees with `docs/metrics.json`.
 
-**All of the above run in CI** on every push and pull request ([.github/workflows/verify.yml](.github/workflows/verify.yml)) — the offline suite, the demo, the truth table, compliance, doc-drift, and lint coverage. Nothing in CI needs credentials or the deployed service; the four targets that do (`demo-live`, `verify-manifest`, `metrics`, and the `HODI_E2E` tests) are deliberately excluded and named in the workflow so their absence is a decision, not an oversight.
+```bash
+make red-team
+```
+
+Runs the five-attack red-team drill (see *Autonomous consent incident response*): an injected instruction, a compromised negotiator, a compromised evidence agent, a rogue worker committing after quarantine, and a tampered incident package. Every boundary that yields exits nonzero, and the legitimate transaction completes at the end. Credential-free and offline.
+
+**All of the above run in CI** on every push and pull request ([.github/workflows/verify.yml](.github/workflows/verify.yml)) — the offline suite, the demo, the red-team drill, the truth table, compliance, doc-drift, and lint coverage. Nothing in CI needs credentials or the deployed service; the four targets that do (`demo-live`, `verify-manifest`, `metrics`, and the `HODI_E2E` tests) are deliberately excluded and named in the workflow so their absence is a decision, not an oversight.
 
 ---
 
@@ -114,6 +125,7 @@ Extracts every requirement ID from the PRD and diffs §4 against the §2 complia
 | Revocation narrows the present, never the past; all events remain visible | `make demo` (Beat 3) — live cascade: `POST /api/v1/revoke` |
 | OTel span per agent decision, carrying agent identity, policy consulted, outcome | `make demo` (Beat 5B emits one trace across the delegation); the HOD-020 harness is `python3 src/harness/main.py` (exits 1 by design, recording the Antigravity result) |
 | The honesty beat: what Hodi will not say | `make demo` (Beat 6) and Diagram B in [docs/architecture/](docs/architecture/) |
+| Autonomous consent incident: observe → adjudicate → contain → prove, with a signed manifest that verifies from its own bytes | `make demo` (Beat 7) and `make red-team` |
 
 ---
 
@@ -130,6 +142,20 @@ Extracts every requirement ID from the PRD and diffs §4 against the §2 complia
 - **`verbatim_match` is designed but not demonstrated.** It is the one evidence class requiring an external model surface, whose outputs cannot be guaranteed or forced during a demonstration. The class exists in the schema and the checking code exists; no live hit is claimed.
 
 Stated plainly, without apology: these are the limits of what is checkable, and the product's value is that it stops exactly there.
+
+---
+
+## Autonomous consent incident response
+
+The impressive flow is `request → interpret → authorize → grant/revoke`. The flagship is the harder one: **observe → investigate → adjudicate → contain → prove** — a potential consent violation detected, investigated by mutually constrained agents, contained, and recorded in a cryptographically verifiable manifest, *without any single agent holding enough authority to manufacture the conclusion*. Run it: `make demo` (Beat 7).
+
+- **Assertion authority — zero trust applied to what an agent may *claim*, not just what it may read.** Alongside the collection policy, [src/schema/assertion_authority.py](src/schema/assertion_authority.py) declares which role may submit which typed assertion class, enforced at the gateway. The evidence agent may assert `OBSERVED_HTTP_ACCESS`; it may **not** assert that a grant existed (that is the negotiator's epistemic position) — and it structurally **cannot** assert model training, because `MODEL_TRAINED_ON_WORK` is not an assertion class. The same construction as `EvidenceRecord.class`: the unsayable is inexpressible as data, before any authority check runs.
+- **The consent arbiter concludes only what typed assertions support.** The fifth agent receives typed assertions and a policy version — never raw evidence, identity, or terms — and adjudicates **deterministically**. It establishes `ACCESS_OUTSIDE_DECLARED_POLICY` when the assertions support it, and returns `MODEL_TRAINING_OCCURRED: NOT_ESTABLISHED` on **every** decision, carried in a `not_determinable` map the schema validates can only ever say `NOT_ESTABLISHED`. The counterparty-side advocate's one exculpatory assertion — that access does not establish training — is present and treated as true.
+- **Containment acts only on what Hodi administers.** No takedowns, no enforcement — the rail, not a weapon. Pending negotiation for the principal is **frozen** (the license routes refuse a frozen principal with a structured 403 before the negotiator engages), and grants that permit the inconsistent use are terminated **through the existing idempotent cascade**. Revocation stays the propagator's verb, not the arbiter's.
+- **The record proves itself.** Determinism buys the strongest check in the system: `hodi verify` re-runs the arbiter's exact policy over the packaged assertions and requires the reproduced decision to equal the recorded one — alongside signature, evidence-hash, assertion-hash, and assertion-authority checks. Thirteen checks, offline, from the package's own bytes; **one tampered byte anywhere fails.** Hodi does not ask the reviewer to trust Hodi — it hands over a receipt they can verify against a public key Hodi could never forge with, and could never mint.
+- **The red-team drill: five attacks, one command** — `make red-team`. An injected "grant unlimited rights" document (flagged, lattice unmoved); a compromised negotiator reaching for artist identity (denied by IAM policy, not an `if`); the evidence agent asserting model-training (refused by the schema *and* the authority matrix); a rogue worker committing after quarantine (its execution lease revoked, its write refused); a tampered incident package (verification fails, then verifies again once restored). Every boundary that yields exits nonzero, so the drill runs in CI, and the legitimate transaction still completes at the end.
+
+Every adversary in every fixture is a **fictional, unnamed scraper**. No real company appears as a violator — the positioning rule that decides whether this reads as infrastructure or as an accusation.
 
 ---
 
@@ -156,8 +182,9 @@ Build history, findings, and the write-up are first-class artifacts here — inc
 - **OpenTelemetry** — every agent decision emits a span carrying `agent.identity`, `policy.consulted`, and `outcome`, nested inside ADK's own `invoke_agent` spans, so a whole delegation reads as a single trace.
 - **Gemini 3.5 Flash via Vertex AI** (`gemini-3.5-flash`, `global` endpoint, temperature 0) — natural-language scope interpretation in the buyer API (`POST /api/v1/license/natural`): **the model interprets intent, the lattice decides permission.** Gemini's only power is to produce a schema-validated `Scope`; a malformed, out-of-vocabulary, or extra-field interpretation is rejected (HTTP 422), never coerced, and `permits()` remains the sole authority — a test asserts the model's output cannot influence the permission decision except by producing a valid Scope. Gemini also drafts revocation notices, gated by the deterministic `RevocationLint` with a linted template fallback. Why this exact model: availability was probed empirically on Aug 7, 2026 ([docs/FINDINGS.md](docs/FINDINGS.md)) — `gemini-3.5-flash` is the newest stable, non-preview ID this project can reach (`gemini-3.5-pro` is absent from the publisher catalog and 404s everywhere; pro-class 3.x IDs are all previews, which roll, and judging runs to Oct 1). IDs are pinned as exact literals with a committed response cache ([fixtures/gemini_response_cache.json](fixtures/gemini_response_cache.json)) so `make demo` replays real recorded responses with zero credentials.
 - **Gemma, serverless on Vertex AI** (`gemma-4-26b-a4b-it-maas`, pinned) — first-pass triage of crawler access records (bot / human / unknown) before anything reaches Gemini, running in the scheduled daily accrual audit. Deliberately non-load-bearing: if Gemma is unreachable, Ollama and then a heuristic classify, and evidence records are still produced.
-- **Firestore** — the append-only grant-event log. Deterministic event IDs, `create()`-only discipline, custom IAM role withholding `update`/`delete` from every agent SA. State is always a fold over events.
-- **Cloud Run** — the deployed evidence endpoint and buyer API (services), and the headless verification harness plus nightly teardown (jobs). `min-instances=0`, max capped.
+- **Firestore** — the append-only grant-event log. Deterministic event IDs, `create()`-only discipline, custom IAM role withholding `update`/`delete` from every agent SA. State is always a fold over events. The durable registry and Memory Bank fold over the same store; per-domain named databases are the workload-identity-separation target ([scripts/setup_workload_identity.sh](scripts/setup_workload_identity.sh), designed and scripted, not yet executed).
+- **Cloud KMS** — asymmetric signing (ECDSA P-256/SHA-256) of receipts, notices, and incident manifests on the deployed path; the private key never leaves KMS and only the runtime identity holds `cloudkms.signer`. Provisioned and proven by [scripts/setup_kms_signing.sh](scripts/setup_kms_signing.sh); the credential-free demo uses an in-process **labelled-ephemeral** Ed25519 key so the sign-verify-tamper mechanism is demonstrable offline. Verify with `hodi verify` against `/verification-key`.
+- **Cloud Run** — the deployed evidence endpoint and buyer API (services), and the headless verification harness plus nightly teardown (jobs). `min-instances=0`, max capped. The revocation worker splits into its own service under the propagator SA ([scripts/deploy_revocation_worker.sh](scripts/deploy_revocation_worker.sh), designed and scripted, not yet executed) — real workload identity, and the killable isolation the in-process daemon thread cannot provide.
 - **Cloud Scheduler** — two jobs with visible execution history: `hodi-daily-accrual-audit` (09:00 UTC, runs the crawler-access audit with Gemma triage and persists it to `accrual_audits`) and `hodi-nightly-teardown-trigger` (23:00 UTC, executes the Gemma-project teardown Cloud Run Job, whose no-op paths are empirically verified).
 - **Cloud Logging** — gateway policy denials land as structured `jsonPayload` events (severity WARNING), queryable by calling SA, collection, and policy — the same event object the API returns.
 

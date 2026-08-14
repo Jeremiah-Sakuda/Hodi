@@ -1,11 +1,11 @@
 ---
-title: "Hodi — The Fleet: four agents, four conflict walls (every number on this diagram is read from /docs/metrics.json)"
+title: "Hodi — The Fleet: four conflict-domain agents + the consent arbiter, five conflict walls (every number on this diagram is read from /docs/metrics.json)"
 ---
 flowchart TB
 
-    REG["AGENT REGISTRY<br/>publish · version · discover · scope<br/>role-scoped discovery returns [ ] when unauthorized"]
+    REG["AGENT REGISTRY<br/>publish · version · discover · scope<br/>role-scoped discovery returns [ ] when unauthorized<br/>durable: publications fold over an append-only store"]
 
-    GW["AGENT GATEWAY<br/>routing + policy enforcement<br/>every denial = structured PolicyDenialEvent, never silent"]
+    GW["AGENT GATEWAY<br/>routing + policy enforcement<br/>every denial = structured PolicyDenialEvent, never silent<br/>enforces data access AND assertion authority (who may CLAIM what)"]
 
     REG --> GW
 
@@ -28,15 +28,19 @@ flowchart TB
     GW --> EV
     GW --> RP
 
+    ARB["CONSENT ARBITER<br/>adjudicates incidents from TYPED ASSERTIONS ONLY<br/>holds NONE of the four domains · NO write to grant history<br/>deterministic → decision reproducible by hodi verify<br/>SA: consent-arbiter-sa@"]
+
     W1["🧱 WALL<br/>other buyers' terms"]
     W2["🧱 WALL<br/>commercial terms"]
     W3["🧱 WALL<br/>artist identity"]
     W4["🧱 WALL<br/>buyer terms"]
+    W5["🧱 WALL<br/>identity · terms · evidence · grant history<br/>(the arbiter reads none of them)"]
 
     LN --x W1
     EV --x W2
     RP --x W3
     RC --x W4
+    ARB --x W5
 
     LOG[("APPEND-ONLY GRANT-EVENT LOG (Firestore)<br/>grants · scopes · revocations · receipts<br/>create()-only custom IAM role — no update, no delete<br/>state = fold: resolve(grant_id, at=t)")]
 
@@ -66,17 +70,19 @@ flowchart TB
     EV --> GMA
     SCH -.triggers.-> PUB
 
-    NOTE["No SA holds two of {identity, buyer terms, evidence, revocation}.<br/>A monolith here would itself be the violation.<br/>Numbers trace to /docs/metrics.json (2026-08-08 audit).<br/>SA labels are POLICY identities: one Cloud Run process, so the<br/>conflict-of-interest separation is enforced in-process by the Gateway.<br/>Append-only IS runtime IAM: the process runs as a create-only<br/>runtime SA (no datastore update/delete) — history cannot be rewritten."]
+    NOTE["No SA holds two of {identity, buyer terms, evidence, revocation}; the consent arbiter holds none.<br/>A monolith here would itself be the violation.<br/>Numbers trace to /docs/metrics.json.<br/>SA labels are POLICY identities: one Cloud Run process, so the<br/>conflict-of-interest separation is enforced in-process by the Gateway<br/>(per-domain named databases are the workload-identity target — scripted, not yet executed).<br/>Append-only IS runtime IAM: the process runs as a create-only<br/>runtime SA (no datastore update/delete) — history cannot be rewritten.<br/>Signing: Cloud KMS live / labelled-ephemeral Ed25519 offline; hodi verify checks with the public key only."]
 
     classDef wall fill:#1a1a1a,color:#ffffff,stroke:#d33,stroke-width:4px
     classDef agent fill:#eef6ff,stroke:#3367d6,stroke-width:1.5px,color:#111
+    classDef arbiter fill:#f3ecff,stroke:#7b3ff2,stroke-width:2px,color:#111
     classDef infra fill:#fff8e6,stroke:#b8860b,color:#111
     classDef note fill:#f3f3f3,stroke:#999,stroke-dasharray:4 3,color:#111
     classDef model fill:#eafaf1,stroke:#0b8043,stroke-width:2px,color:#111
     classDef deployed fill:#f0f4ff,stroke:#3367d6,stroke-width:2px,color:#111
 
-    class W1,W2,W3,W4 wall
+    class W1,W2,W3,W4,W5 wall
     class RC,LN,EV,RP agent
+    class ARB arbiter
     class REG,GW,LOG,SUP,OTEL,SCH infra
     class GEM,GMA model
     class API,PUB,CON deployed
