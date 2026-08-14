@@ -1,6 +1,6 @@
 .PHONY: demo demo-live test verify-scopes verify-manifest metrics lint-coverage check-docs compliance \
-        recording-prep recording-reset ledger-count deployment-status \
-        deployment-status-check embedding-cache red-team
+        recording-prep recording-reset ledger-count red-team buyer-client \
+        deployment-status deployment-status-check embedding-cache
 
 demo:
 	HODI_OFFLINE=1 python3 scripts/demo.py
@@ -10,6 +10,12 @@ demo:
 # just as a demo.
 red-team:
 	HODI_OFFLINE=1 python3 scripts/red_team.py
+
+# A buyer-side system that verifies receipts with Hodi's PUBLIC key and stops
+# when the artist revokes (HOD-719). The evidence that a counterparty honours
+# the rail, not just that Hodi records it.
+buyer-client:
+	HODI_OFFLINE=1 python3 scripts/buyer_client.py
 
 test:
 	HODI_OFFLINE=1 python3 -m unittest discover -s tests
@@ -32,21 +38,23 @@ lint-coverage:
 check-docs:
 	python3 scripts/check_doc_metrics.py
 
-compliance:
-	python3 scripts/compliance.py
-	python3 scripts/count_defect_ledger.py --check
-	python3 scripts/check_doc_metrics.py
-
-ledger-count:
-	python3 scripts/count_defect_ledger.py --write-metrics
-
-# The capability truth table — implemented / deployed / demonstrated_live,
-# probed from the live project so it cannot drift from reality by hand.
+# Deployment truth, derived (HOD-715). No argument renders the table the docs
+# embed; --check validates the file's own rules (a 'verified' capability must
+# name its evidence AND its date; a 'never run' one must not carry a date).
 deployment-status:
 	python3 scripts/deployment_status.py
 
 deployment-status-check:
 	python3 scripts/deployment_status.py --check
+
+compliance:
+	python3 scripts/compliance.py
+	python3 scripts/count_defect_ledger.py --check
+	python3 scripts/deployment_status.py --check
+	python3 scripts/check_doc_metrics.py
+
+ledger-count:
+	python3 scripts/count_defect_ledger.py --write-metrics
 
 # Records real embedding vectors into the durable cache so the offline suite and
 # `make demo` stay credential-free.

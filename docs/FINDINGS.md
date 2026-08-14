@@ -364,6 +364,30 @@ The judge-feedback build touched three Google surfaces materially. Recording wha
 
 ---
 
+## Named finding — The fallback that hid the pollution that hid the fallback
+
+**2026-08-14.** Two defects propped each other up for a week, and neither was visible while the other stood.
+
+**The first.** `_build_firestore_client()` ended `except Exception: return None`, and the gateway treats a missing client as its offline path. So in a deployment without working credentials, the gateway did not fail — it served an empty in-memory dict as though it were the append-only grant log. A licensing request would be answered from zero grants ("you hold no licence here") and a revocation would write into a buffer that dies with the instance. Both return HTTP 200. **A decision computed against phantom state is the most dangerous output this system has, and it is indistinguishable from a healthy one.** An external review flagged it as a risk; it was not a risk, it was the behaviour.
+
+**The second.** Twenty-five test `setUp` blocks ended with `addCleanup(lambda: os.environ.pop("HODI_OFFLINE", None))`. `make test` sets `HODI_OFFLINE=1` for the whole run, so that cleanup did not restore the previous state — it *deleted a variable the rest of the suite depended on*. From the first such test onward, every later test ran with offline mode un-declared.
+
+**Why neither was visible.** A test that had lost the flag still got the in-memory path — because the gateway failed open. It reached the right behaviour for the wrong reason. And the fail-open never looked wrong in CI, because the polluted suite exercised it constantly and passed. Each defect supplied the other's alibi.
+
+The moment storage began failing closed, eight tests errored immediately. The instinct in that situation is to assume the new change is wrong; it was not. The change had removed the alibi.
+
+**What is now structural.** Offline is a **declared** mode, never an inferred one: `HODI_OFFLINE=1` returns the in-memory path, and anything else raises with the escape hatch named in the error text (a fail-closed error that does not say how to run offline gets "fixed" by re-adding the fallback). `tests/offline_env.py` saves and restores, and `tests/test_offline_env_hygiene.py` fails the build on any cleanup that pops the flag.
+
+**The lesson, and it generalises past this repository.** A fallback does not only weaken the property it bypasses — it *suppresses the signal* that would have revealed everything else depending on that property. Ask of any `except: return <benign default>`: if the thing I am defaulting past were broken, what would tell me? If the answer is "nothing, because this default is indistinguishable from success", the default is not resilience. It is a permanently disabled alarm. This project has now found the same shape four times — `|| true` on infrastructure commands, the session-context check that only ran when the caller cooperated, the crawler detector that had never fired, and this.
+
+### 2026-08-14 (session 2) — Google-Toolchain Findings: Workload Identity Federation and OIDC Role Derivation (HOD-717, HOD-720)
+
+**Cloud Run service-to-service OIDC is the cleanest available answer to "which agent is calling", and the mapping direction is what makes it safe.** A caller presents a Google-signed ID token; the receiver checks issuer, audience (its own URL — this is what stops a token minted for another service being replayed), expiry and `email_verified`, and then looks the role up **from the verified email**. The direction matters more than the checks: the caller never states its role, so there is no field to lie in. Implementation note worth passing on: `google.oauth2.id_token.verify_oauth2_token` handles signature and audience, but the issuer allow-list, the `email_verified` requirement and the email→role mapping are all yours, and all three are load-bearing — a token with a valid signature and an unverified email establishes nothing. Making the verifier injectable meant every one of those rules could be unit-tested offline while the signature check stays delegated; the offline suite therefore proves the rules and honestly does not prove the cryptography.
+
+**Workload Identity Federation removes the credential a release workflow would otherwise have to hold.** `google-github-actions/auth@v2` exchanges GitHub's OIDC token for short-lived Google credentials, so the live-verification workflow needs no service-account JSON key in a repository secret. That matters for this project specifically: a long-lived key sitting in CI is the same defect class as everything else in this ledger — a credential that outlives its purpose, where nothing fails if it leaks. Stated limit: the pool and provider are not configured, so the workflow is authored and has never run, and `deployment_status.json` records exactly that.
+
+**The pattern the two share, and the one I would hand to another team.** Both are cases where the platform will give you a *verified fact* (this token belongs to that service account; this workflow belongs to that repository) and your job is to derive authority from the fact rather than accept an assertion alongside it. Every remaining weakness in this system's identity story is a place where something is still asserted in-process instead of derived from a verified fact — which is why in-process callers now carry that as an explicit category rather than a caveat in prose.
+
 ## Named finding — `verbatim_match` was a rubber stamp, and the README said the checking code existed
 
 **Found:** 2026-08-14, by an ideation panel asked where one more model could go — it answered "nowhere; fix this instead"

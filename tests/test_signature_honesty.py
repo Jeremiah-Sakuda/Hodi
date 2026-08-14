@@ -28,6 +28,7 @@ from src.schema.signing import (
     PLACEHOLDER_PREFIX, SIGNATURE_CLAIM_LIMIT,
     is_unsigned_placeholder, unsigned_placeholder,
 )
+from tests.offline_env import force_offline
 
 ROOT = Path(__file__).resolve().parent.parent
 RUNTIME_DIRS = [ROOT / "src", ROOT / "scripts"]
@@ -102,8 +103,7 @@ class EmittedDocumentsAreLabelledTest(unittest.TestCase):
 
     def setUp(self):
         import os
-        os.environ["HODI_OFFLINE"] = "1"
-        self.addCleanup(lambda: os.environ.pop("HODI_OFFLINE", None))
+        force_offline(self)
 
     def test_revocation_receipt_signature_is_labelled(self):
         from src.gateway.gateway import AgentGateway
@@ -142,11 +142,48 @@ class DisclosureIsPublishedTest(unittest.TestCase):
     """The limit is only honest if a reader is told. If the README bullet is
     removed, this fails rather than letting the claim quietly revert."""
 
-    def test_readme_discloses_that_signatures_are_placeholders(self):
+    def test_readme_discloses_every_signature_state_it_can_emit(self):
+        """
+        The disclosure requirement, restated for the post-HOD-706 world.
+
+        This test used to require the literal phrase "not a cryptographic
+        signature", which was correct while placeholders were the ONLY state.
+        Once real signing landed, that phrasing became the overclaim in
+        reverse — the README understated the system — and the bare phrase
+        check could not tell the difference. So the requirement is now the
+        stronger one: a reader must be told about EVERY state a `signature`
+        field can carry, including the labelled non-signature, so they can
+        tell which one they are holding.
+        """
         readme = (ROOT / "README.md").read_text()
-        self.assertRegex(
-            readme, r"(?i)not a cryptographic signature|signature fields are (labelled )?placeholders",
-            "README must disclose that `signature` fields are placeholders")
+        for state, why in (
+            (PLACEHOLDER_PREFIX, "the labelled non-signature must still be disclosed"),
+            ("KMS", "the real signing path must be named"),
+            ("EPHEMERAL", "the demo key's limited authority must be named"),
+        ):
+            self.assertIn(state, readme,
+                          f"README must disclose the {state!r} signature state — {why}")
+
+    def test_readme_does_not_claim_signing_is_unbuilt(self):
+        """
+        The exact regression an external review caught: the README said
+        asymmetric signing "has not been built" for a commit AFTER it was
+        built, because the disclaimer outlived the code. Guarded from both
+        sides — see also check_deployment_claims() in check_doc_metrics.py,
+        which requires the deployment-state disclaimer to disappear once
+        docs/deployment_status.json marks KMS signing verified.
+        """
+        # QUOTED spans are stripped before checking. This project retracts its
+        # own claims in place and quotes the retracted wording verbatim — that
+        # is the practice, not the defect — so the guard must read what the
+        # document ASSERTS, not what it quotes itself as having said.
+        readme = re.sub(r'"[^"]*"', "", (ROOT / "README.md").read_text()).lower()
+        for stale in ("it has not been built",
+                      "nothing in the codebase verifies one"):
+            self.assertNotIn(
+                stale, readme,
+                f"README still asserts the pre-HOD-706 claim {stale!r}; signing exists "
+                "(src/schema/signing.py, scripts/hodi_verify.py, /verification-key)")
 
     def test_the_claim_limit_names_the_missing_property(self):
         self.assertIn("asymmetric", SIGNATURE_CLAIM_LIMIT.lower())

@@ -12,6 +12,7 @@ from src.schema.lattice import (
     is_use_type_contained,
 )
 from src.resolve.resolver import resolve
+from src.schema.iam_policy import AGENT_SA_MAP
 from src.gateway.gateway import AgentGateway, DocumentAlreadyExists
 from pydantic import BaseModel
 

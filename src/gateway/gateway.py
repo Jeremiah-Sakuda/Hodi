@@ -12,6 +12,7 @@ from src.schema.signing import unsigned_placeholder, sign_pydantic
 
 if TYPE_CHECKING:
     from src.supervisor.lease import LeaseLedger
+    from src.gateway.caller_identity import CallerIdentity
 
 class PolicyDenialEvent(BaseModel):
     event_type: str = "PolicyDenialEvent"
@@ -60,23 +61,52 @@ def _emit_denial_log(denial: PolicyDenialEvent) -> None:
     entry.update(json.loads(denial.model_dump_json()))
     print(json.dumps(entry), flush=True)
 
+class DurableStorageUnavailable(RuntimeError):
+    """
+    Raised when the gateway cannot reach Firestore and has NOT been told this
+    is an offline run. It exists because the alternative was worse: returning
+    None here made the gateway silently serve and accept PROCESS-LOCAL data
+    in production. Reads would answer from an empty in-memory dict — an
+    unfiltered "no grants exist" — and writes would land in a buffer that dies
+    with the instance, both with HTTP 200. A licensing decision computed
+    against phantom state is the most dangerous answer this system can give,
+    and it looked exactly like a healthy one.
+
+    Fail closed: an unreachable log is an outage, not an empty log.
+    """
+
+
 def _build_firestore_client(project_id: str):
-    """ADC first; falls back to the gcloud CLI token for local dev shells without ADC.
-    HODI_OFFLINE=1 forces no client — used by `make demo` so the credential-free
-    path is genuinely credential-free even on a machine that has credentials."""
+    """
+    ADC first; falls back to the gcloud CLI token for local dev shells without
+    ADC. Returns None ONLY when the caller has explicitly declared an offline
+    run (HODI_OFFLINE=1) — used by `make demo` and the offline suite so the
+    credential-free path is genuinely credential-free even on a machine that
+    has credentials.
+
+    Anything else — no credentials, a broken client, a network failure —
+    RAISES. The in-memory path is a stated testing/demo mode, never a
+    production fallback.
+    """
     if os.environ.get("HODI_OFFLINE") == "1":
         return None
     try:
         return firestore.Client(project=project_id)
-    except Exception:
+    except Exception as adc_error:
         try:
             token = subprocess.check_output(
                 ["gcloud", "auth", "print-access-token"], stderr=subprocess.DEVNULL
             ).decode("utf-8").strip()
             from google.oauth2 import credentials as oauth2_credentials
             return firestore.Client(project=project_id, credentials=oauth2_credentials.Credentials(token))
-        except Exception:
-            return None  # Allow fallback for unittests without any credentials
+        except Exception as cli_error:
+            raise DurableStorageUnavailable(
+                f"No Firestore client for project '{project_id}' and HODI_OFFLINE is not set. "
+                f"ADC failed ({type(adc_error).__name__}: {adc_error}); the gcloud-token fallback "
+                f"failed ({type(cli_error).__name__}: {cli_error}). Refusing to serve process-local "
+                "data as if it were the append-only log — set HODI_OFFLINE=1 for a deliberate "
+                "credential-free run, or fix credentials."
+            ) from cli_error
 
 class AgentGateway:
     """
@@ -111,7 +141,69 @@ class AgentGateway:
         # would make every idempotency test a test of nothing.
         self._offline_writes: Dict[str, Dict[str, Dict[str, Any]]] = {}
 
-    def _enforce(self, calling_sa: str, calling_role_key: str, target_collection: str, filters: Dict[str, Any] = None, session_context: Dict[str, Any] = None):
+    def _identify(self, calling_sa: str, calling_role_key: str, target_collection: str,
+                  identity: Optional["CallerIdentity"] = None) -> "CallerIdentity":
+        """
+        Establish WHO is calling before deciding what they may do (HOD-717).
+
+        Until this existed, `calling_role_key` selected the policy and
+        `calling_sa` was recorded in the log and otherwise ignored — nothing
+        checked that they belonged together. Now the binding is validated
+        against iam_policy.py on every call, and the identity carries how it
+        was established: `oidc_verified` (a Google-signed token whose issuer,
+        audience, expiry and verified email were checked) or
+        `in_process_trusted` (code in this process — a label for a limit, not
+        an authentication).
+
+        In strict mode the unverified category is refused outright, which is
+        the posture a split-service deployment runs in.
+        """
+        from src.gateway.caller_identity import (
+            CallerIdentity, IdentityVerificationError, strict_identity_required)
+        try:
+            caller = CallerIdentity.coerce(identity, calling_sa, calling_role_key)
+        except IdentityVerificationError as e:
+            self._deny(calling_sa=calling_sa or "unidentified",
+                       calling_role_key=calling_role_key or "unidentified",
+                       target_collection=target_collection,
+                       policy="caller_identity_v1", reason=str(e))
+        if strict_identity_required() and not caller.is_verified:
+            self._deny(calling_sa=caller.service_account, calling_role_key=caller.role_key,
+                       target_collection=target_collection,
+                       policy="caller_identity_v1",
+                       reason=(f"This deployment requires a verified workload identity and "
+                               f"the caller presented {caller.verification!r}. An in-process "
+                               "role assertion is only as trustworthy as the process."))
+        return caller
+
+    def _deny(self, calling_sa: str, calling_role_key: str, target_collection: str,
+              policy: str, reason: str, **context):
+        """Build, record, emit and raise one structured denial. Every refusal
+        in this class goes through here, so a denial is never silent and never
+        a bare exception."""
+        denial = PolicyDenialEvent(
+            event_id=f"denial-{uuid.uuid4()}",
+            calling_sa=calling_sa,
+            target_role=calling_role_key,
+            requested_collection=target_collection,
+            attempted_filters=context.get("filters"),
+            session_context=context.get("session_context"),
+            timestamp=datetime.now(timezone.utc),
+            policy_consulted=policy,
+            reason=reason,
+        )
+        self.denial_events.append(denial)
+        _emit_denial_log(denial)
+        raise GatewayPolicyDenial(denial)
+
+    def _enforce(self, calling_sa: str, calling_role_key: str, target_collection: str,
+                 filters: Dict[str, Any] = None, session_context: Dict[str, Any] = None,
+                 identity: Optional["CallerIdentity"] = None):
+        # WHO first, then WHAT. The role used for the policy lookup below is
+        # the one bound to the caller's identity, not a string it supplied.
+        caller = self._identify(calling_sa, calling_role_key, target_collection, identity)
+        calling_sa, calling_role_key = caller.service_account, caller.role_key
+
         permitted, required_filter_key = get_action_permission(calling_role_key, target_collection)
 
         reason = None
@@ -259,8 +351,11 @@ class AgentGateway:
             "payload": payload
         }
 
-    def read_collection(self, calling_sa: str, calling_role_key: str, target_collection: str, filters: Dict[str, Any] = None, session_context: Dict[str, Any] = None) -> List[Dict[str, Any]]:
-        self._enforce(calling_sa, calling_role_key, target_collection, filters=filters, session_context=session_context)
+    def read_collection(self, calling_sa: str, calling_role_key: str, target_collection: str,
+                        filters: Dict[str, Any] = None, session_context: Dict[str, Any] = None,
+                        identity: Optional["CallerIdentity"] = None) -> List[Dict[str, Any]]:
+        self._enforce(calling_sa, calling_role_key, target_collection, filters=filters,
+                      session_context=session_context, identity=identity)
         if not self.db:
             # Offline: serve injected documents plus anything written through
             # this gateway instance (a read after a write must see the write,
@@ -319,8 +414,9 @@ class AgentGateway:
         raise GatewayPolicyDenial(denial)
 
     def write_document(self, calling_sa: str, calling_role_key: str, target_collection: str,
-                       doc_id: str, data: Dict[str, Any], lease_id: Optional[str] = None):
-        self._enforce(calling_sa, calling_role_key, target_collection)
+                       doc_id: str, data: Dict[str, Any], lease_id: Optional[str] = None,
+                       identity: Optional["CallerIdentity"] = None):
+        self._enforce(calling_sa, calling_role_key, target_collection, identity=identity)
         self._enforce_lease(calling_sa, calling_role_key, target_collection, lease_id)
         if self.db:
             # `.create()`, not `.set()`. `.set()` is an UPSERT — it silently

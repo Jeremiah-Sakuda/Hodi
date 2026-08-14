@@ -1,19 +1,20 @@
 import uuid
 import base64
 import hashlib
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Literal, Optional
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
 
 from src.schema.scope import Scope, ScopeEvaluationResult, UseType
+from src.schema.iam_policy import AGENT_SA_MAP
 from src.schema.signing import unsigned_placeholder, sign_pydantic, SIGNATURE_CLAIM_LIMIT
 from src.schema.grant_event import GrantEvent, Receipt
 from src.resolve.evaluator import permits
 from src.resolve.resolver import active_grant_events
 from src.gateway.prompt_inspector import PromptInspector
-from src.gateway.gateway import AgentGateway, GatewayPolicyDenial
+from src.gateway.gateway import AgentGateway, GatewayPolicyDenial, DocumentAlreadyExists
 from src.agents.revocation_propagator import RevocationPropagatorAgent, CascadeResult
 from src.api.auth import (
     AuthenticatedCounterparty, CredentialStore, RequestAuthenticationError, authenticate,
@@ -24,7 +25,12 @@ from src.schema.iam_policy import AGENT_SA_MAP
 router = APIRouter()
 armor = PromptInspector()
 
-# The licensing negotiator agent acts under its own service account
+# Service accounts are READ FROM THE POLICY, never retyped (HOD-717).
+# These were hand-written literals, and one of them was wrong:
+# "licensing-negotiator@…" is not the identity iam_policy.py declares
+# ("licensing-negotiator-sa@…"), so every denial event this path ever logged
+# named a service account that does not exist. The gateway now binds role to
+# identity on every call, which is what surfaced it.
 NEGOTIATOR_SA = AGENT_SA_MAP["licensing_negotiator"]["sa_email"]
 PROPAGATOR_SA = AGENT_SA_MAP["revocation_propagator"]["sa_email"]
 # Ownership is a RIGHTS-CUSTODIAN concern: it holds works and artist identity.
@@ -374,6 +380,98 @@ async def request_license_natural(req: NaturalScopeRequest, request: Request):
         anomaly_detected=armor_result.injection_detected,
         inspector_engine=armor_result.inspector_engine
     )
+
+class RegisterWorkRequest(BaseModel):
+    """
+    An artist registering a work (HOD-718). Note what the caller may NOT set:
+    `artist_id` comes from the verified credential, and `control_tier` is
+    DERIVED from whether a resolvable proof was supplied — a registration
+    cannot talk its way to `verified_control` (HOD-105).
+    """
+    work_id: str = Field(..., min_length=3, max_length=128, pattern=r"^[A-Za-z0-9_.:-]+$")
+    medium: Literal["prose", "code", "audio", "image", "video"]
+    uri: str
+    content_hash: str = Field(..., pattern=r"^[a-f0-9]{64}$")
+    title: str
+    description: str = ""
+    published_at: str
+    control_proof: Optional[Dict[str, Any]] = None
+    canary_string: Optional[str] = None
+    canary_planted_at: Optional[str] = None
+
+
+class RegisterWorkResponse(BaseModel):
+    work_id: str
+    artist_id: str
+    control_tier: str
+    control_tier_reason: str
+
+
+@router.post("/api/v1/works", response_model=RegisterWorkResponse, status_code=201)
+async def register_work(req: RegisterWorkRequest, request: Request):
+    """
+    Register a work (HOD-718). Artist-credentialed, persisted through the
+    RIGHTS CUSTODIAN — the only role that may write `works` — so registration
+    crosses the same conflict boundary every other identity operation does.
+
+    The manifest at /works was a Python literal until this existed: five works
+    that could not be added to without a deploy, which made "register your
+    work" a claim the running system could not honour. It is now a fold over
+    what has actually been registered, with the committed corpus as a
+    LABELLED seed rather than a silent stand-in.
+
+    control_tier is derived, never accepted: a proof that parses gives
+    `verified_control`; no proof gives `asserted`, and `asserted` is never
+    hidden. The schema refuses the combination anyway (HOD-105) — this route
+    simply cannot be the path that violates it.
+    """
+    from src.schema.work import ControlProof, create_work
+
+    auth = await _authenticate_or_403(request, claimed_counterparty_id=None,
+                                      required_principal_type="artist")
+    gateway = _get_gateway()
+
+    proof, tier, reason = None, "asserted", (
+        "No control proof was supplied, so ownership is ASSERTED, not verified. "
+        "This is rendered distinctly everywhere it appears and is never hidden.")
+    if req.control_proof:
+        try:
+            proof = ControlProof(**req.control_proof)
+        except Exception as e:
+            raise HTTPException(status_code=422, detail=f"Malformed control_proof: {e}")
+        tier = "verified_control"
+        reason = (f"Control proof accepted (method: {proof.method}, evidence: "
+                  f"{proof.evidence_uri}), so ownership is VERIFIED.")
+
+    # Uniform 403 on a work that already exists, whoever owns it: a caller
+    # must not learn which work_ids are taken by probing this route.
+    try:
+        existing = gateway.read_collection(
+            calling_sa=RIGHTS_CUSTODIAN_SA, calling_role_key="rights_custodian",
+            target_collection="works", filters={"work_id": req.work_id})
+    except Exception:
+        raise HTTPException(status_code=403, detail="Registration denied: registry unavailable.")
+    if existing:
+        raise HTTPException(status_code=403, detail="Registration denied: work_id unavailable.")
+
+    work = create_work(
+        work_id=req.work_id, artist_id=auth.counterparty_id, medium=req.medium,
+        uri=req.uri, content_hash=req.content_hash, control_tier=tier,
+        control_proof=proof, title=req.title, description=req.description,
+        published_at=req.published_at, canary_string=req.canary_string,
+        canary_planted_at=req.canary_planted_at)
+
+    try:
+        gateway.write_document(
+            calling_sa=RIGHTS_CUSTODIAN_SA, calling_role_key="rights_custodian",
+            target_collection="works", doc_id=work.work_id,
+            data=work.model_dump(mode="json"))
+    except DocumentAlreadyExists:
+        raise HTTPException(status_code=403, detail="Registration denied: work_id unavailable.")
+
+    return RegisterWorkResponse(work_id=work.work_id, artist_id=work.artist_id,
+                                control_tier=work.control_tier, control_tier_reason=reason)
+
 
 class NegotiationRequest(BaseModel):
     counterparty_id: Optional[str] = None

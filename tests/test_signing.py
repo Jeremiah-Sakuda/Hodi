@@ -27,6 +27,7 @@ from src.schema.signing import (
     is_signature_envelope, is_unsigned_placeholder, parse_envelope,
     verify_envelope, verify_document,
 )
+from tests.offline_env import force_offline
 
 NOW = datetime(2026, 8, 14, tzinfo=timezone.utc)
 
@@ -116,8 +117,7 @@ class TestSignedDocuments(unittest.TestCase):
         from src.agents.revocation_propagator import RevocationPropagatorAgent
         from src.schema.grant_event import GrantEvent
         from src.schema.scope import Scope
-        os.environ["HODI_OFFLINE"] = "1"
-        self.addCleanup(lambda: os.environ.pop("HODI_OFFLINE", None))
+        force_offline(self)
 
         t0 = datetime(2026, 8, 1, tzinfo=timezone.utc)
         gateway = AgentGateway(offline_reads={"grants": [GrantEvent(

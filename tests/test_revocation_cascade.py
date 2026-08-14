@@ -5,6 +5,7 @@ from src.schema.revocation import RevocationNotice
 from src.gateway.gateway import AgentGateway
 from src.agents.revocation_propagator import RevocationPropagatorAgent
 from src.resolve.resolver import resolve
+from tests.offline_env import force_offline
 
 class TestRevocationCascade(unittest.TestCase):
     def setUp(self):
@@ -13,8 +14,7 @@ class TestRevocationCascade(unittest.TestCase):
         # events and notices into production Firestore (this happened once —
         # see BUILD-LOG 2026-08-07).
         import os
-        os.environ["HODI_OFFLINE"] = "1"
-        self.addCleanup(lambda: os.environ.pop("HODI_OFFLINE", None))
+        force_offline(self)
         self.gateway = AgentGateway()
         
         self.t0 = datetime.now(timezone.utc) - timedelta(days=2)
@@ -124,8 +124,7 @@ class TestDerivationMatchesTheLattice(unittest.TestCase):
 
     def setUp(self):
         import os
-        os.environ["HODI_OFFLINE"] = "1"
-        self.addCleanup(lambda: os.environ.pop("HODI_OFFLINE", None))
+        force_offline(self)
         self.propagator = RevocationPropagatorAgent(gateway=AgentGateway(), memory_bank_events=[])
 
     def test_derivation_matches_is_use_type_contained_across_the_full_order(self):

@@ -1,0 +1,143 @@
+name: verify-live
+
+# LIVE release verification (HOD-720). Everything verify.yml deliberately
+# excludes because it needs credentials or the deployed service, run on
+# demand against a real environment — and, crucially, WRITING ITS RESULT to
+# docs/deployment_status.json so the repository's deployment claims are
+# derived from a verification run rather than from memory.
+#
+# WHY IT IS SEPARATE. verify.yml is credential-free by construction and must
+# stay that way: it is the proof that a judge can clone and run everything.
+# This workflow is the other half — the proof that what is DEPLOYED does what
+# the deployed-path claims say.
+#
+# WHY workflow_dispatch AND NOT push. It costs money, it writes to real
+# collections, and it must not run from a fork. A release is a decision.
+#
+# NO LONG-LIVED KEYS. Authentication is Workload Identity Federation: GitHub's
+# OIDC token is exchanged for short-lived Google credentials. A service-account
+# JSON key in a repository secret would be the same defect class this project
+# spends its time removing — a credential that outlives its purpose.
+#
+# STATUS: authored, NEVER EXECUTED. The WIF pool, provider and repository
+# secrets do not exist yet, so this workflow has never run and
+# docs/deployment_status.json does not claim it has. Setting it up is the
+# remaining work; the job definition is not.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Which deployment to verify"
+        required: true
+        default: staging
+        type: choice
+        options: [staging, production]
+      write_status:
+        description: "Write results back to docs/deployment_status.json"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: write      # to commit the regenerated deployment status
+  id-token: write      # to mint the GitHub OIDC token WIF exchanges
+
+concurrency:
+  group: verify-live-${{ inputs.environment }}
+  cancel-in-progress: false   # never interrupt a run mid-write to real collections
+
+jobs:
+  verify-live:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}   # required reviewers gate production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pinned dependencies
+        run: pip install -r src/evidence_service/requirements.lock
+
+      # Short-lived credentials only. No JSON key exists to leak.
+      - name: Authenticate to Google Cloud via Workload Identity Federation
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.VERIFIER_SERVICE_ACCOUNT }}
+          token_format: access_token
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      # --- the four things the offline suite structurally cannot prove ---
+
+      - name: Boundary proof against the deployed service
+        run: make demo-live
+        env:
+          HODI_SERVICE_URL: ${{ vars.HODI_SERVICE_URL }}
+
+      - name: Live manifest and corpus integrity
+        run: make verify-manifest
+        env:
+          HODI_SERVICE_URL: ${{ vars.HODI_SERVICE_URL }}
+
+      - name: Live Firestore and IAM suite
+        run: HODI_E2E=1 python3 -m unittest discover -s tests -v
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+
+      - name: KMS sign / verify / tamper against the real key
+        run: |
+          set -euo pipefail
+          gcloud kms keys versions get-public-key 1 \
+            --key "${{ vars.KMS_KEY }}" --keyring "${{ vars.KMS_KEYRING }}" \
+            --location "${{ vars.KMS_LOCATION }}" --project "${{ vars.GCP_PROJECT_ID }}" \
+            --output-file /tmp/hodi-public-key.pem
+          python3 - <<'PY'
+          import json, os, subprocess, sys
+          sys.path.insert(0, ".")
+          os.environ["HODI_SIGNING"] = "kms"
+          from src.schema.grant_event import Receipt
+          from src.schema.signing import sign_pydantic
+          from datetime import datetime, timezone
+          receipt = sign_pydantic(Receipt(
+              receipt_id="ci-verify", grant_id="ci", work_id="ci", counterparty_id="ci",
+              payload_hash="0"*64, issued_at=datetime.now(timezone.utc), signature=""),
+              kind="receipt", reference="ci")
+          open("/tmp/receipt.json", "w").write(receipt.model_dump_json())
+          # Verifies with the PUBLIC key only — the property a recipient has.
+          assert subprocess.run([sys.executable, "scripts/hodi_verify.py", "/tmp/receipt.json",
+                                 "--key", "/tmp/hodi-public-key.pem"]).returncode == 0, "signed receipt did not verify"
+          # And a tampered byte must fail, or the check proves nothing.
+          doc = json.load(open("/tmp/receipt.json")); doc["counterparty_id"] = "tampered"
+          json.dump(doc, open("/tmp/receipt-bad.json", "w"))
+          assert subprocess.run([sys.executable, "scripts/hodi_verify.py", "/tmp/receipt-bad.json",
+                                 "--key", "/tmp/hodi-public-key.pem"]).returncode != 0, "a tampered receipt verified"
+          print("KMS sign/verify/tamper: PASS")
+          PY
+
+      # --- the result becomes the repository's deployment truth ---
+
+      - name: Record the verification in docs/deployment_status.json
+        if: ${{ inputs.write_status && inputs.environment == 'production' }}
+        run: |
+          python3 scripts/record_live_verification.py \
+            --revision "$(gcloud run services describe ${{ vars.HODI_SERVICE }} \
+                          --region ${{ vars.HODI_REGION }} --project ${{ vars.GCP_PROJECT_ID }} \
+                          --format='value(status.latestReadyRevisionName)')" \
+            --verified evidence_endpoint append_only_runtime_identity \
+                       cross_buyer_boundary_over_network kms_signing
+          python3 scripts/deployment_status.py --check
+          python3 scripts/check_doc_metrics.py
+
+      - name: Commit the updated deployment status
+        if: ${{ inputs.write_status && inputs.environment == 'production' }}
+        run: |
+          git config user.name "hodi-live-verifier"
+          git config user.email "noreply@github.com"
+          git add docs/deployment_status.json README.md
+          git diff --staged --quiet || git commit -m "chore: record live verification $(date -u +%FT%TZ)"
+          git push

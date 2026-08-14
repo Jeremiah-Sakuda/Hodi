@@ -2,7 +2,7 @@
 """
 scripts/red_team.py — `make red-team` (HOD-712).
 
-Five deliberate attacks on the institution, one command, credential-free
+Six deliberate attacks on the institution, one command, credential-free
 and offline. The point is not that Hodi behaves when asked nicely — it is
 that the boundaries hold when attacked, and the legitimate transaction
 still completes. Each attack ends in the CORRECT structured refusal or a
@@ -13,6 +13,11 @@ verification failure; a boundary that yields exits the script nonzero.
      is unmoved, the request is decided on its real scope.
   2. Compromised negotiator        — reaches for artist identity and for a
      rival's terms; the gateway denies both by policy, not by an `if`.
+ 2b. Role spoofing                 — presents one agent's service account
+     while claiming another's role; the gateway binds role to identity from
+     iam_policy.py and refuses. On the OIDC path the role is DERIVED from the
+     token's verified email, so it cannot be chosen; and strict mode refuses
+     unverified in-process identities outright.
   3. Compromised evidence agent     — tries to assert model-training; the
      claim has no assertion class (schema) AND the role has no authority
      (gateway). Two independent walls.
@@ -107,6 +112,54 @@ def attack_2_compromised_negotiator():
         ok("cross-counterparty terms denied by policy — not by a local `if`, by the gateway")
     print("     (live variant: `make demo-live` replays this over the network as 6/6 HTTP 403;")
     print("      the deployed split-identity variant is HOD-711, proved by real GCP IAM.)")
+
+
+def attack_2b_role_spoofing():
+    rule("ATTACK 2b — ROLE SPOOFING: present the evidence agent's identity, claim the custodian's role")
+    from src.gateway.gateway import AgentGateway, GatewayPolicyDenial
+    from src.gateway.caller_identity import CallerIdentity, IdentityVerificationError, STRICT_ENV
+
+    gateway = AgentGateway()
+    try:
+        gateway.read_collection(
+            calling_sa=AGENT_SA_MAP["evidence_agent"]["sa_email"],
+            calling_role_key="rights_custodian",   # a role this identity does not hold
+            target_collection="artists")
+        die("a caller read artist identity while presenting the evidence agent's SA")
+    except GatewayPolicyDenial as e:
+        ok(f"role/identity mismatch denied — {e.denial.policy_consulted} "
+           "(the binding is checked, not just logged)")
+
+    # And the role cannot be chosen at all on the verified path: it is derived
+    # from the token's verified email.
+    import time as _time
+    identity = CallerIdentity.from_oidc(
+        "token", "https://hodi.example",
+        verifier=lambda t, a: {"iss": "https://accounts.google.com", "aud": "https://hodi.example",
+                               "email": AGENT_SA_MAP["evidence_agent"]["sa_email"],
+                               "email_verified": True, "sub": "1", "exp": _time.time() + 300})
+    if identity.role_key != "evidence_agent":
+        die("an OIDC-derived identity did not take its role from the verified email")
+    ok("on the verified path the role is DERIVED from the token's email — the caller cannot choose it")
+
+    # The honest limit, demonstrated rather than asserted: in-process callers
+    # are trusted-by-construction, and a deployment can refuse that category.
+    os.environ[STRICT_ENV] = "1"
+    try:
+        strict = AgentGateway()
+        try:
+            strict.read_collection(
+                calling_sa=AGENT_SA_MAP["rights_custodian"]["sa_email"],
+                calling_role_key="rights_custodian", target_collection="works")
+            die("strict mode served an unverified in-process caller")
+        except GatewayPolicyDenial as e:
+            ok("strict mode refuses in-process identities entirely — "
+               f"{e.denial.policy_consulted} (the posture a split deployment runs in)")
+    finally:
+        os.environ.pop(STRICT_ENV, None)
+    print("     (LIMIT, stated: without strict mode, an in-process role assertion is only as")
+    print("      trustworthy as the process. Splitting the services is HOD-711, scripted and")
+    print("      not yet executed — see docs/deployment_status.json.)")
 
 
 def attack_3_compromised_evidence_agent():
@@ -269,14 +322,15 @@ def legitimate_transaction_still_completes():
 
 
 def main():
-    print("HODI RED-TEAM DRILL — five attacks on the institution, credential-free, offline.")
+    print("HODI RED-TEAM DRILL — six attacks on the institution, credential-free, offline.")
     attack_1_malicious_buyer()
     attack_2_compromised_negotiator()
+    attack_2b_role_spoofing()
     attack_3_compromised_evidence_agent()
     attack_4_rogue_worker_after_quarantine()
     attack_5_tampered_incident_package()
     legitimate_transaction_still_completes()
-    print("\n\033[32mALL FIVE BOUNDARIES HELD, AND THE LEGITIMATE TRANSACTION COMPLETED.\033[0m")
+    print("\n\033[32mALL SIX BOUNDARIES HELD, AND THE LEGITIMATE TRANSACTION COMPLETED.\033[0m")
 
 
 if __name__ == "__main__":
