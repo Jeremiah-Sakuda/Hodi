@@ -1,5 +1,5 @@
 {
-  "_deployment_currency": "As of 2026-08-14T17:00Z the deployed revisions CARRY the current repository code: hodi-evidence-endpoint-00045-dkz and hodi-revocation-worker-00004-m7t were both built from commit 17d83a2 and both postdate it. This key previously warned that the deployed revision predated the repository — true when written, and resolved by deploying rather than by rewording. Re-verified live after that deploy: boundary 6/6 HTTP 403; a revocation cascade carrying a real KMS-ECDSA-P256-SHA256 signature that scripts/hodi_verify.py accepts against /verification-key and rejects after a one-byte edit; the create-only runtime identity asserted from IAM. What remains not deployed-and-proven is listed per capability below — chiefly the durable trace backend and the live-release verification workflow.",
+  "_deployment_currency": "Deployment currency, as of the last live verification run. The deployed revisions carry the current repository code; the revision each capability was proven against is recorded on that capability's own row, not summarised here. This key previously ENUMERATED what remained unproven — 'chiefly the durable trace backend and the live-release verification workflow' — and that sentence was false within three hours of being written, because live release verification ran and was recorded as verified while this prose stayed behind. A hand-written summary of machine-readable state is the exact drift this file exists to prevent, so the enumeration is gone: what remains unproven is whatever carries a status other than 'verified' below, and scripts/check_doc_metrics.py now fails the build if any document says a verified capability has not been run.",
   "_comment": "Machine-readable deployment truth (HOD-715). Every 'is X deployed' claim in the docs is DERIVED from this file by scripts/deployment_status.py and guarded by `make check-docs`, because hand-maintained executed/not-executed prose drifted once: the README said asymmetric signing 'has not been built' for a commit after it was built, and an external review caught it. A capability may only be 'verified' if it names the evidence that verified it AND when — the generator refuses the file otherwise.",
   "status_vocabulary": {
     "verified": "Checked against the live deployment; evidence_source and last_verified_utc are both required and are what makes the claim admissible.",
@@ -13,77 +13,115 @@
       "detail": "Cloud Run service serving /works, /.well-known/hodi.json, /canaries, /evidence-counts, and logging every access to Firestore since 2026-08-06.",
       "evidence_source": "https://github.com/Jeremiah-Sakuda/Hodi/actions/runs/31827960181",
       "last_verified_utc": "2026-08-14T18:18:54Z",
-      "revision": "hodi-evidence-endpoint-00046-fmn"
+      "revision": "hodi-evidence-endpoint-00046-fmn",
+      "artifacts": [
+        "src/evidence_service/main.py",
+        "scripts/deploy.sh"
+      ]
     },
     "append_only_runtime_identity": {
       "status": "verified",
       "detail": "The deployed process runs as hodi-runtime-sa, whose effective permissions exclude datastore.entities.update and .delete, so grant history cannot be rewritten at runtime.",
       "evidence_source": "https://github.com/Jeremiah-Sakuda/Hodi/actions/runs/31827960181",
       "last_verified_utc": "2026-08-14T18:18:54Z",
-      "revision": "hodi-evidence-endpoint-00046-fmn"
+      "revision": "hodi-evidence-endpoint-00046-fmn",
+      "artifacts": [
+        "scripts/deploy.sh",
+        "tests/test_grant_log_iam.py"
+      ]
     },
     "cross_buyer_boundary_over_network": {
       "status": "verified",
       "detail": "The 2026-08-07 unauthenticated cross-buyer exploit and its variants are refused by the deployed service; 6/6 HTTP 403 including the mutating and internal routes.",
       "evidence_source": "https://github.com/Jeremiah-Sakuda/Hodi/actions/runs/31827960181",
       "last_verified_utc": "2026-08-14T18:18:54Z",
-      "revision": "hodi-evidence-endpoint-00046-fmn"
+      "revision": "hodi-evidence-endpoint-00046-fmn",
+      "artifacts": [
+        "scripts/test_live_cross_counterparty.py"
+      ]
     },
     "gemini_scope_interpretation": {
       "status": "verified",
       "detail": "POST /api/v1/license/natural performs one server-side Vertex AI generateContent call against the pinned gemini-3.5-flash on the global endpoint.",
       "evidence_source": "docs/metrics.json :: natural_language_license_path (deployed-over-network timings)",
       "last_verified_utc": "2026-08-07T18:43:00Z",
-      "revision": null
+      "revision": null,
+      "artifacts": [
+        "src/llm/scope_interpreter.py"
+      ]
     },
     "conflict_domain_separation": {
       "status": "in_process_only",
       "detail": "Enforced at three altitudes, and the remaining application-layer piece is named. (1) Append-only is runtime IAM on a create-only identity. (2) The DOMAIN boundary is now a CREDENTIAL boundary: per-domain named databases with IAM-conditioned per-SA grants, so a foreign-domain read fails at Google IAM (executed and proven by impersonation 2026-08-14). (3) The revocation worker runs as its own workload identity. What remains application-layer: the main service is still ONE process serving the custodian/negotiator/evidence/arbiter roles, and live collections still reside in (default), so row-level separation inside the grant log is gateway-enforced. Caller identity there is bound (role<->SA checked on every call) and labelled in_process_trusted; the OIDC-verified path and strict mode exist and apply to split services.",
       "evidence_source": "HODI_E2E=1 tests.test_workload_identity (live IAM denial, 7/7); tests.test_identity_binding + tests.test_caller_identity (offline); make demo-live (deployed, over the network)",
       "last_verified_utc": "2026-08-14T17:00:00Z",
-      "revision": "hodi-evidence-endpoint-00045-dkz"
+      "revision": "hodi-evidence-endpoint-00045-dkz",
+      "artifacts": [
+        "src/gateway/gateway.py"
+      ]
     },
     "kms_signing": {
       "status": "verified",
       "detail": "Cloud KMS asymmetric signing (ECDSA-P256) of receipts, notices and incident manifests. Keyring hodi-signing / key hodi-provenance provisioned 2026-08-14 with roles/cloudkms.signer bound to the runtime SA ONLY; deploy.sh sets HODI_SIGNING=kms and the key version only when the key is reachable, and FAILS the deploy unless /verification-key then serves the public key — a signature nobody can fetch the key for is decoration.",
       "evidence_source": "https://github.com/Jeremiah-Sakuda/Hodi/actions/runs/31827960181",
       "last_verified_utc": "2026-08-14T18:18:54Z",
-      "revision": "hodi-evidence-endpoint-00046-fmn"
+      "revision": "hodi-evidence-endpoint-00046-fmn",
+      "artifacts": [
+        "scripts/setup_kms_signing.sh"
+      ]
     },
     "per_domain_databases": {
       "status": "verified",
       "detail": "Each conflict domain has its own named Firestore database (hodi-identity, hodi-commercial, hodi-evidence, hodi-adjudication; the grant log stays in (default)), and each agent SA's grants are IAM-CONDITIONED to its own domain plus the grant log. The evidence SA reading the identity database is refused by Google IAM before any application code runs. NOTE: the first execution FAILED its own proof — the agent SAs' unconditional append-only bindings spanned every database, so the conditions narrowed nothing until the broad grants were replaced. deploy_gcp.sh carries a guard so a later provisioning run cannot silently un-harden it. Live collections still reside in (default), so row-level separation inside the grant log remains gateway-enforced until data migrates.",
       "evidence_source": "https://github.com/Jeremiah-Sakuda/Hodi/actions/runs/31827960181",
       "last_verified_utc": "2026-08-14T18:18:54Z",
-      "revision": "hodi-evidence-endpoint-00046-fmn"
+      "revision": "hodi-evidence-endpoint-00046-fmn",
+      "artifacts": [
+        "scripts/setup_workload_identity.sh"
+      ]
     },
     "split_revocation_worker": {
       "status": "verified",
       "detail": "hodi-revocation-worker deployed on Cloud Run under revocation-propagator-sa@, private (--no-allow-unauthenticated). Deployed SA read back and matched; effective permissions expanded across all held roles as append + read with no update and no delete; authenticated request 200, anonymous 403.",
       "evidence_source": "scripts/deploy_revocation_worker.sh (executed 2026-08-14; proves the deployed identity, permissions and invocation before reporting success)",
       "last_verified_utc": "2026-08-14T00:00:00Z",
-      "revision": null
+      "revision": null,
+      "artifacts": [
+        "scripts/deploy_revocation_worker.sh"
+      ]
     },
     "durable_trace_backend": {
       "status": "scripted_not_executed",
       "detail": "Cloud Trace export of the delegation spans (HODI_TRACE_EXPORT=cloud). The exporter selection is tested offline; no deployment has run with it enabled, so no waterfall has been captured from a backend.",
       "evidence_source": "src/observability/tracing.py + tests/test_tracing_backend.py (offline)",
       "last_verified_utc": null,
-      "revision": null
+      "revision": null,
+      "artifacts": [
+        "src/observability/tracing.py"
+      ]
     },
     "live_release_verification": {
       "status": "verified",
       "detail": "A workflow_dispatch job that runs the deployed boundary proof, the live manifest check, the HODI_E2E Firestore/IAM suite, and a KMS check that VERIFIES without signing — it asserts the public key /verification-key advertises is byte-identical to the one KMS holds, and that a real notice the deployed service issued still verifies under it while a one-byte change does not. It then RECORDS the result back into this file via scripts/record_live_verification.py and regenerates the README table. It authenticates by Workload Identity Federation conditioned to this repository alone — no long-lived service-account key exists to leak, and the CI identity deliberately holds no signing role, so it cannot mint a signature Hodi would be unable to repudiate.",
       "evidence_source": "https://github.com/Jeremiah-Sakuda/Hodi/actions/runs/31827960181",
       "last_verified_utc": "2026-08-14T18:18:54Z",
-      "revision": "hodi-evidence-endpoint-00046-fmn"
+      "revision": "hodi-evidence-endpoint-00046-fmn",
+      "artifacts": [
+        ".github/workflows/verify-live.yml",
+        "scripts/setup_release_verification.sh",
+        "scripts/record_live_verification.py"
+      ]
     },
     "scheduled_jobs": {
       "status": "verified",
       "detail": "Cloud Scheduler runs hodi-daily-accrual-audit (09:00 UTC -> GET /internal/accrual_audit under the Scheduler's verified OIDC identity, which appends one immutable row per run to `accrual_audits`) and hodi-nightly-teardown-trigger (23:00 UTC), both with visible execution history. Note the naming trap: scripts/daily_accrual_check.py is the MANUAL metrics path and is deliberately not scheduled; the autonomous loop is the endpoint in src/evidence_service/main.py.",
       "evidence_source": "Cloud Logging: resource.type=cloud_scheduler_job, job_id=hodi-daily-accrual-audit, AttemptFinished 2026-08-14T09:00:58Z 'Original HTTP response code number = 200'; docs/metrics.json :: daily_crawler_accrual_metrics (rows persisted by that job); Google-Cloud-Scheduler appears in distinct_user_agents",
       "last_verified_utc": "2026-08-14T17:20:00Z",
-      "revision": null
+      "revision": null,
+      "artifacts": [
+        "scripts/daily_accrual_check.py"
+      ]
     }
-  }
+  },
+  "_artifacts_note": "Each capability names the ARTIFACTS that implement it. This exists so the doc guard can be general instead of phrase-by-phrase: a judge found the README describing setup_workload_identity.sh and deploy_revocation_worker.sh as 'designed and scripted, not yet executed' while the table three sections below marked both verified. The old guard missed it because it only knew one hard-coded disclaimer sentence about KMS. Anchoring on the artifact path means any prose that calls a verified capability's script un-run fails the build, whatever words it uses."
 }
