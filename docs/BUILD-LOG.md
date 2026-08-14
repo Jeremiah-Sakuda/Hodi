@@ -683,6 +683,29 @@ The Aug 14 checkpoint gate (HOD-006) was due today and passed 8/8 — recorded a
 
 **Requirements touched:** HOD-006, HOD-701, HOD-702, HOD-703, HOD-704, HOD-705, HOD-706, HOD-707, HOD-708, HOD-709, HOD-710, HOD-711, HOD-712, HOD-713, HOD-714
 
+---
+
+### 2026-08-14 (session 2) — The GCP Half Executed: the Credential Boundary Failed Its Own Proof, Then Held
+
+**Prompt (verbatim, abridged):** Just implement the solution that addresses the feedback and is possible on this machine, and then we'll merge the branch to main.
+
+**Outcome:**
+1. **Both blocked scripts fixed and EXECUTED — the branch's "designed and unexecuted" status is retired.** `setup_workload_identity.sh` could not run at all on the operator's machine (`mapfile`/`declare -A` are bash 4+; macOS ships 3.2.57) — rewritten portable. `deploy_revocation_worker.sh` would have deployed a worker that 500s on its first read (the propagator SA held only the append-only role — no `datastore.databases.get` — the exact 2026-08-10 runtime-SA failure) and set two env vars (`HODI_ROLE`, `HODI_DB_ROUTING`) that NOTHING consumes; it now provisions viewer + `aiplatform.user` + `logging.logWriter` first and drops the dead vars.
+2. **The credential boundary's first live proof FAILED, and the failure was the finding.** After creating the four named databases and the conditional viewer bindings, the E2E test read the identity database with the evidence SA's own credentials — successfully. Cause: every agent SA held the append-only custom role UNCONDITIONALLY (from `deploy_gcp.sh`), so `datastore.entities.get` spanned every database in the project; a conditional grant narrows nothing while a broad grant stands beside it. The hardening step now REPLACES each domain SA's unconditional binding with one conditioned to `(default)` (the grant log, its only legitimate append target) alongside the domain-scoped viewer — add conditioned first, remove unconditional last, so no SA is ever grantless.
+3. **Held after hardening, proven by impersonation:** evidence SA → `hodi-identity`: **PermissionDenied from Google IAM**; → `hodi-evidence`: readable; → `(default)`: readable. `HODI_E2E=1 tests.test_workload_identity`: 7/7. The fifth agent's SA (`consent-arbiter-sa@`) did not exist — provisioned via `deploy_gcp.sh` (generated from the same policy module), with the same propagation-lag retry the runtime SA needed.
+4. **`deploy_gcp.sh` gained the un-hardening guard.** Re-running provisioning would have re-added the unconditional bindings and silently reopened the boundary — the next `make deploy` would undo the hardening with no test failing until the live E2E ran. It now detects the `grant-log-only` conditioned binding and skips the unconditional bind; proven by re-running provisioning and re-running the E2E (still 7/7).
+5. **The revocation worker is live as its own workload identity.** `hodi-revocation-worker` on Cloud Run under `revocation-propagator-sa@`, `--no-allow-unauthenticated`. Proof, not report: deployed SA read back and matched; effective permissions expanded across all held roles — append + read, **no update, no delete**; authenticated request 200, anonymous 403. (One more bash-3.2 bug surfaced in the proof itself: `case` patterns inside `$(...)` — replaced with if/else.)
+6. **`deploy.sh` assembles the service environment from what EXISTS.** `HODI_SIGNING=kms` + key version only if the KMS key is reachable (provisioned and verified earlier today: `hodi-signing/hodi-provenance`, ECDSA-P256, signer = runtime SA only); `HODI_REVOCATION_WORKER_URL` only if the worker service exists. When KMS signing is on, step 3 additionally fails the deploy unless `/verification-key` serves the public key — a signature nobody can fetch the key for is decoration.
+7. **The E2E test gained this machine's documented credentials fallback** (user auth, no ADC file): ADC first, then the gcloud CLI token — the same pattern as `gateway._build_firestore_client`. Operator impersonation rights (`serviceAccountTokenCreator` on the evidence SA) were granted to make the impersonation proof possible.
+8. **Outward docs updated to the executed state** — the README and Devpost scope notes now state three verified altitudes (append-only runtime IAM; domain credential boundary; worker workload identity) and name what remains application-layer: one process serves the other four roles, and live data still resides in `(default)`, so row-level separation there stays gateway-enforced until data migrates.
+
+**Key decisions:**
+1. Replace-then-remove for the hardening (add conditioned binding before removing the unconditional one) — an SA must never be left grantless mid-provisioning.
+2. Condition domain SAs' append-only role to `(default)` rather than their domain database — the grant log is the one shared surface, and it is the append target the role exists for; their domain databases get read-only viewer until a write-path migration is designed.
+3. Leave the runtime SA and propagator SA unconditioned — one is the disclosed single-process identity, the other's domain IS `(default)`; conditioning either would break live traffic to harden nothing.
+4. Publish the failed first proof rather than fold it silently into the fix — "conditions narrow nothing while a broad grant stands beside them" is the transferable lesson, and the guard in `deploy_gcp.sh` is its mechanism.
+
+**Requirements touched:** HOD-102, HOD-311, HOD-706, HOD-707, HOD-711, HOD-510, HOD-620
 ### 2026-08-14 (session 2) — A Second Review, Verified Before It Was Implemented (HOD-715 … HOD-720)
 
 **Prompt (verbatim, abridged):** a hackathon judge's evaluation of the v1.2 build — an external review of the v1.2 build — with a risk register and six recommended changes. The instruction: *"Verify claims and implement any changes worth implementing on main."*

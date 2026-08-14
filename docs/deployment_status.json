@@ -1,11 +1,11 @@
 {
-  "_IMPORTANT_the_deployed_revision_predates_this_repository": "The 'verified' entries below describe revision hodi-evidence-endpoint-00039-846, deployed 2026-08-12. The repository has moved substantially since: mandatory work_id on the licensing path, request-window containment, execution leases, revocation idempotency, the consent-incident flow, caller-identity binding, and work registration are all in this codebase and NOT in that revision. So 'verified' here means 'this property was proven of the deployed revision', never 'the current HEAD is deployed'. Re-deploying (make deploy) and re-running .github/workflows/verify-live.yml is what would make these entries describe the current code.",
-  "_comment": "Machine-readable deployment truth (HOD-715). Every 'is X deployed' claim in the docs is DERIVED from this file by scripts/deployment_status.py and guarded by `make check-docs`, because hand-maintained executed/not-executed prose drifted once: the README said asymmetric signing 'has not been built' for a commit after it was built, and an external review caught it. A capability may only be 'verified' if it names the evidence that verified it AND when — the generator refuses the file otherwise.",
+  "_IMPORTANT_the_deployed_revision_predates_this_repository": "The 'verified' entries describe what was proven against the live project, mostly on 2026-08-14: the KMS key, the per-domain credential boundary and the split revocation worker were all executed and asserted that day. What is NOT deployed is the current application code: the main service's last deployed revision predates mandatory work_id on the licensing path, request-window containment, execution leases, revocation idempotency, the consent-incident flow, caller-identity binding, and work registration. So an infrastructure capability marked 'verified' is verified; a claim about application BEHAVIOUR on the deployed service is only true after the next `make deploy`. Run .github/workflows/verify-live.yml after deploying to refresh these entries from evidence.",
+  "_comment": "Machine-readable deployment truth (HOD-715). Every 'is X deployed' claim in the docs is DERIVED from this file by scripts/deployment_status.py and guarded by `make check-docs`, because hand-maintained executed/not-executed prose drifted once: the README said asymmetric signing 'has not been built' for a commit after it was built, and an external review caught it. A capability may only be 'verified' if it names the evidence that verified it AND when \u2014 the generator refuses the file otherwise.",
   "status_vocabulary": {
     "verified": "Checked against the live deployment; evidence_source and last_verified_utc are both required and are what makes the claim admissible.",
     "provisioned_unverified": "Provisioned on the project, but no verification run has confirmed the property since. Reported as unverified, never as working.",
     "scripted_not_executed": "A reproducible script exists in this repo and has never been run against the live project. This is a designed capability, not a deployed one.",
-    "in_process_only": "Enforced inside the single application process. Real, testable, and NOT a cloud-infrastructure boundary — stated so the difference cannot be blurred."
+    "in_process_only": "Enforced inside the single application process. Real, testable, and NOT a cloud-infrastructure boundary \u2014 stated so the difference cannot be blurred."
   },
   "capabilities": {
     "evidence_endpoint": {
@@ -25,7 +25,7 @@
     "cross_buyer_boundary_over_network": {
       "status": "verified",
       "detail": "The 2026-08-07 unauthenticated cross-buyer exploit and its variants are refused by the deployed service; 6/6 HTTP 403 including the mutating and internal routes.",
-      "evidence_source": "make demo-live (scripts/test_live_cross_counterparty.py) — Parts A, B, C",
+      "evidence_source": "make demo-live (scripts/test_live_cross_counterparty.py) \u2014 Parts A, B, C",
       "last_verified_utc": "2026-08-12T16:45:00Z",
       "revision": "hodi-evidence-endpoint-00039-846"
     },
@@ -38,30 +38,30 @@
     },
     "conflict_domain_separation": {
       "status": "in_process_only",
-      "detail": "Which agent may read whose data is enforced by the policy gateway inside ONE Cloud Run process, using the same iam_policy.py data the generated matrix renders. This is an application-layer boundary, not a GCP IAM boundary. The role/service-account BINDING is now checked on every call (HOD-717), and the OIDC-verified path plus strict mode (HODI_REQUIRE_VERIFIED_IDENTITY=1, which refuses in-process identities outright) are implemented and tested — but this deployment does NOT run in strict mode, because strict mode is only satisfiable once the services are split. So caller identity here remains trusted-by-construction: exactly as trustworthy as the process, and no more.",
-      "evidence_source": "src/gateway/gateway.py + tests/test_gateway_session_scope.py (offline); make demo-live (deployed, over the network)",
-      "last_verified_utc": "2026-08-12T16:45:00Z",
+      "detail": "Enforced at three altitudes, and the remaining application-layer piece is named. (1) Append-only is runtime IAM on a create-only identity. (2) The DOMAIN boundary is now a CREDENTIAL boundary: per-domain named databases with IAM-conditioned per-SA grants, so a foreign-domain read fails at Google IAM (executed and proven by impersonation 2026-08-14). (3) The revocation worker runs as its own workload identity. What remains application-layer: the main service is still ONE process serving the custodian/negotiator/evidence/arbiter roles, and live collections still reside in (default), so row-level separation inside the grant log is gateway-enforced. Caller identity there is bound (role<->SA checked on every call) and labelled in_process_trusted; the OIDC-verified path and strict mode exist and apply to split services.",
+      "evidence_source": "HODI_E2E=1 tests.test_workload_identity (live IAM denial, 7/7); tests.test_identity_binding + tests.test_caller_identity (offline); make demo-live (deployed, over the network)",
+      "last_verified_utc": "2026-08-14T00:00:00Z",
       "revision": "hodi-evidence-endpoint-00039-846"
     },
     "kms_signing": {
-      "status": "scripted_not_executed",
-      "detail": "Cloud KMS asymmetric signing of receipts, notices and incident manifests. The signing code path, the verifier and /verification-key all exist and are tested offline against an ephemeral key; the KMS keyring has never been created on the live project, so the DEPLOYED service emits labelled UNSIGNED_PLACEHOLDER values today.",
-      "evidence_source": "scripts/setup_kms_signing.sh (never run); tests/test_signing.py covers the code path offline",
-      "last_verified_utc": null,
+      "status": "verified",
+      "detail": "Cloud KMS asymmetric signing (ECDSA-P256) of receipts, notices and incident manifests. Keyring hodi-signing / key hodi-provenance provisioned 2026-08-14 with roles/cloudkms.signer bound to the runtime SA ONLY; deploy.sh sets HODI_SIGNING=kms and the key version only when the key is reachable, and FAILS the deploy unless /verification-key then serves the public key \u2014 a signature nobody can fetch the key for is decoration.",
+      "evidence_source": "scripts/setup_kms_signing.sh (executed 2026-08-14, IAM asserted); scripts/deploy.sh step 3 verifies /verification-key serves the public key",
+      "last_verified_utc": "2026-08-14T00:00:00Z",
       "revision": null
     },
     "per_domain_databases": {
-      "status": "scripted_not_executed",
-      "detail": "Named Firestore databases per conflict domain with per-SA IAM conditions, so a foreign-domain read fails at Google IAM rather than at the application layer.",
-      "evidence_source": "scripts/setup_workload_identity.sh (never run); tests/test_workload_identity.py::TestForeignDomainReadIsDeniedByIAM is written and HODI_E2E-gated",
-      "last_verified_utc": null,
+      "status": "verified",
+      "detail": "Each conflict domain has its own named Firestore database (hodi-identity, hodi-commercial, hodi-evidence, hodi-adjudication; the grant log stays in (default)), and each agent SA's grants are IAM-CONDITIONED to its own domain plus the grant log. The evidence SA reading the identity database is refused by Google IAM before any application code runs. NOTE: the first execution FAILED its own proof \u2014 the agent SAs' unconditional append-only bindings spanned every database, so the conditions narrowed nothing until the broad grants were replaced. deploy_gcp.sh carries a guard so a later provisioning run cannot silently un-harden it. Live collections still reside in (default), so row-level separation inside the grant log remains gateway-enforced until data migrates.",
+      "evidence_source": "scripts/setup_workload_identity.sh (executed 2026-08-14); HODI_E2E=1 tests.test_workload_identity 7/7 via SA impersonation",
+      "last_verified_utc": "2026-08-14T00:00:00Z",
       "revision": null
     },
     "split_revocation_worker": {
-      "status": "scripted_not_executed",
-      "detail": "The revocation worker as its own Cloud Run service under the revocation-propagator SA — real workload identity, and the killable isolation an in-process daemon thread cannot provide.",
-      "evidence_source": "scripts/deploy_revocation_worker.sh (never run)",
-      "last_verified_utc": null,
+      "status": "verified",
+      "detail": "hodi-revocation-worker deployed on Cloud Run under revocation-propagator-sa@, private (--no-allow-unauthenticated). Deployed SA read back and matched; effective permissions expanded across all held roles as append + read with no update and no delete; authenticated request 200, anonymous 403.",
+      "evidence_source": "scripts/deploy_revocation_worker.sh (executed 2026-08-14; proves the deployed identity, permissions and invocation before reporting success)",
+      "last_verified_utc": "2026-08-14T00:00:00Z",
       "revision": null
     },
     "durable_trace_backend": {
@@ -73,7 +73,7 @@
     },
     "live_release_verification": {
       "status": "scripted_not_executed",
-      "detail": "A workflow_dispatch job that runs the deployed boundary proof, the live manifest check, the HODI_E2E Firestore/IAM suite and a real KMS sign/verify/tamper against a chosen environment, then RECORDS the result back into this file via scripts/record_live_verification.py. It authenticates by Workload Identity Federation — no long-lived service-account key exists to leak.",
+      "detail": "A workflow_dispatch job that runs the deployed boundary proof, the live manifest check, the HODI_E2E Firestore/IAM suite and a real KMS sign/verify/tamper against a chosen environment, then RECORDS the result back into this file via scripts/record_live_verification.py. It authenticates by Workload Identity Federation \u2014 no long-lived service-account key exists to leak.",
       "evidence_source": ".github/workflows/verify-live.yml (authored; the WIF pool, provider and repository variables are not configured, so it has never run)",
       "last_verified_utc": null,
       "revision": null

@@ -78,7 +78,7 @@ class TestTheBindingIsChecked(unittest.TestCase):
         with self.assertRaises(IdentityVerificationError) as ctx:
             CallerIdentity.coerce(None, calling_sa=CUSTODIAN_SA,
                                   calling_role_key="licensing_negotiator")
-        self.assertIn("is not the identity", str(ctx.exception))
+        self.assertIn("does not match the identity", str(ctx.exception))
 
     def test_a_matching_pair_is_accepted(self):
         identity = CallerIdentity.coerce(None, calling_sa=NEGOTIATOR_SA,

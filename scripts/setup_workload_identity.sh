@@ -15,64 +15,102 @@
 # (CONFLICT_DOMAIN_DATABASE), the same module the gateway and the conflict
 # matrix read, so it cannot drift.
 #
-# STATUS: designed and scripted; NOT executed against the live project in the
-# 2026-08-14 session (BUILD-LOG). Row-level scoping (counterparty_id) remains
-# gateway-enforced and is unaffected — this hardens the DOMAIN boundary, which
-# is the one the review asked to make real.
+# PORTABILITY: written for bash 3.2 (macOS ships 3.2.57 — the first version of
+# this script used `mapfile` and `declare -A`, both bash 4+, and could not run
+# on the operator's machine at all). The row list is generated to a temp file
+# and consumed with a plain read loop; database dedup is `cut | sort -u`.
+#
+# Named-database creation is effectively PERMANENT (deletion is gated and
+# slow) and the new databases start EMPTY — live data stays in (default).
+# Nothing here touches (default) or the running service; row-level scoping
+# (counterparty_id) remains gateway-enforced and unaffected. This hardens the
+# DOMAIN boundary, which is the one the review asked to make real.
 set -euo pipefail
 
 PROJECT_ID="${GCP_PROJECT_ID:-hodi-2026}"
 LOCATION="${HODI_FIRESTORE_LOCATION:-nam5}"
 
+cd "$(dirname "$0")/.."
+
 echo "== Hodi workload-identity separation — project ${PROJECT_ID} =="
 
-# 1. The named databases, one per conflict domain, from the policy module.
-mapfile -t ROWS < <(python3 - <<'PY'
+gcloud services enable firestore.googleapis.com iamcredentials.googleapis.com \
+  --project "${PROJECT_ID}"
+
+# 1. The role → domain → database → SA rows, from the policy module. One tab-
+#    separated row per agent; a temp file instead of mapfile (bash 3.2).
+ROWS_FILE="$(mktemp)"
+trap 'rm -f "${ROWS_FILE}"' EXIT
+python3 - <<'PY' > "${ROWS_FILE}"
 import os, sys
 sys.path.insert(0, os.getcwd())
 from src.schema.iam_policy import AGENT_SA_MAP, CONFLICT_DOMAIN_DATABASE
-seen = set()
 for role, info in AGENT_SA_MAP.items():
     db = CONFLICT_DOMAIN_DATABASE.get(info["conflict_domain"], "(default)")
-    sa = info["sa_email"]
-    print(f"{role}\t{info['conflict_domain']}\t{db}\t{sa}")
+    print(f"{role}\t{info['conflict_domain']}\t{db}\t{info['sa_email']}")
 PY
-)
 
-declare -A DB_SEEN
-for row in "${ROWS[@]}"; do
-  IFS=$'\t' read -r role domain db sa <<<"${row}"
-  if [ "${db}" != "(default)" ] && [ -z "${DB_SEEN[$db]:-}" ]; then
-    DB_SEEN[$db]=1
-    if ! gcloud firestore databases describe --database="${db}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
-      echo "[db] creating ${db} (domain: ${domain})"
-      gcloud firestore databases create --database="${db}" \
-        --location="${LOCATION}" --type=firestore-native --project="${PROJECT_ID}"
-    else
-      echo "[db] ${db} exists"
-    fi
+echo "-- generated domain map --"
+column -t -s $'\t' "${ROWS_FILE}" 2>/dev/null || cat "${ROWS_FILE}"
+
+# 2. Create each named database once (dedup without associative arrays).
+cut -f3 "${ROWS_FILE}" | sort -u | while IFS= read -r db; do
+  [ "${db}" = "(default)" ] && continue
+  if gcloud firestore databases describe --database="${db}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
+    echo "[db] ${db} exists"
+  else
+    echo "[db] creating ${db}"
+    gcloud firestore databases create --database="${db}" \
+      --location="${LOCATION}" --type=firestore-native --project="${PROJECT_ID}"
   fi
 done
 
-# 2. Per-database IAM: each agent SA gets datastore access ONLY on its domain's
-#    database, via an IAM condition on the database resource name. A foreign
-#    database is therefore uncredentialed for that SA.
-for row in "${ROWS[@]}"; do
-  IFS=$'\t' read -r role domain db sa <<<"${row}"
-  [ "${db}" = "(default)" ] && { echo "[iam] ${role}: (default) db — covered by the append-only role"; continue; }
-  echo "[iam] ${role} (${sa}) → datastore.viewer on database '${db}' ONLY"
+# 3. Per-database IAM. Two moves per agent SA, and the SECOND is the one that
+#    makes the boundary real:
+#
+#    (a) grant datastore.viewer conditioned to the SA's own domain database;
+#    (b) REPLACE the SA's unconditional append-only binding with one conditioned
+#        to (default) — the grant log's database, its only legitimate append
+#        target.
+#
+#    (b) exists because the first execution of this script FAILED its own E2E
+#    proof: the evidence SA read the identity database anyway. Cause: the
+#    append-only custom role was bound WITHOUT a condition (deploy_gcp.sh), so
+#    its datastore.entities.get applied to every database in the project, and
+#    the conditional viewer merely added reads on top. Conditions narrow
+#    nothing unless the broad grant is removed.
+#
+#    The revocation domain maps to (default) and is skipped: its SA's whole
+#    function is the shared grant log. The runtime SA is untouched — it is the
+#    disclosed single-process identity serving live traffic.
+while IFS=$'\t' read -r role domain db sa; do
+  if [ "${db}" = "(default)" ]; then
+    echo "[iam] ${role}: (default) db — unconditioned append-only role is correct here"
+    continue
+  fi
+  echo "[iam] ${role} (${sa}) -> viewer on '${db}' ONLY; append-only on (default) ONLY"
   gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${sa}" \
     --role="roles/datastore.viewer" \
     --condition="expression=resource.name.endsWith('/databases/${db}'),title=only-${db}" \
     --quiet >/dev/null
-done
+  gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+    --member="serviceAccount:${sa}" \
+    --role="projects/${PROJECT_ID}/roles/hodiAppendOnlyGrantWriter" \
+    --condition="expression=resource.name.endsWith('/databases/(default)'),title=grant-log-only" \
+    --quiet >/dev/null
+  # Remove the unconditional binding LAST, so the SA is never left grantless.
+  gcloud projects remove-iam-policy-binding "${PROJECT_ID}" \
+    --member="serviceAccount:${sa}" \
+    --role="projects/${PROJECT_ID}/roles/hodiAppendOnlyGrantWriter" \
+    --condition=None --quiet >/dev/null 2>&1 \
+    || echo "       (no unconditional append-only binding to remove — already hardened)"
+done < "${ROWS_FILE}"
 
 echo
-echo "== PROOF (run after provisioning) =="
+echo "== PROOF, not report =="
+echo "The claim is 'a foreign-domain read is refused BY GOOGLE IAM'. That can"
+echo "only be proven by attempting one with the foreign SA's own credentials:"
 echo "  HODI_E2E=1 python3 -m unittest tests.test_workload_identity -v"
-echo "  # asserts a foreign-domain read is PERMISSION_DENIED by IAM, not by the app."
-echo
-echo "NOTE: the deployed service must set HODI_DB_ROUTING=1 and run each split"
-echo "workload under its domain SA for these bindings to take effect. The single-"
-echo "process deployment continues to enforce the same boundary in-application."
+echo "(Impersonation requires roles/iam.serviceAccountTokenCreator for the"
+echo " operator on the target SA; the test names the exact failure otherwise.)"

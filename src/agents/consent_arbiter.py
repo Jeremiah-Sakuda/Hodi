@@ -25,6 +25,7 @@ from src.schema.iam_policy import AGENT_SA_MAP
 from src.schema.assertion import (
     TypedAssertion, IncidentDecision, ClaimFinding, NOT_DETERMINABLE_TRAINING,
 )
+from src.schema.iam_policy import AGENT_SA_MAP
 
 ARBITER_SA = AGENT_SA_MAP["consent_arbiter"]["sa_email"]
 

@@ -44,6 +44,7 @@ os.environ["HODI_OFFLINE"] = "1"
 os.environ.setdefault("HODI_SIGNING", "ephemeral")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+# After sys.path setup — this script runs from scripts/, not the repo root.
 from src.schema.iam_policy import AGENT_SA_MAP
 
 FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"

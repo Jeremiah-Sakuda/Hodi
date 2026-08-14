@@ -37,11 +37,17 @@ if ! gcloud kms keys describe "${KEY}" --keyring "${KEYRING}" --location "${LOCA
     --default-algorithm ec-sign-p256-sha256
 fi
 
-# Signer role to the runtime SA ONLY.
-gcloud kms keys add-iam-policy-binding "${KEY}" \
-  --keyring "${KEYRING}" --location "${LOCATION}" --project "${PROJECT_ID}" \
-  --member "serviceAccount:${RUNTIME_SA}" \
-  --role roles/cloudkms.signer >/dev/null
+# Signer role to the runtime SA ONLY — plus publicKeyViewer, because
+# roles/cloudkms.signer grants useToSign but NOT viewPublicKey: without the
+# second role the service can mint signatures it cannot serve the verification
+# key for, and /verification-key 500s (observed live 2026-08-14 — the deploy
+# gate caught it).
+for role in roles/cloudkms.signer roles/cloudkms.publicKeyViewer; do
+  gcloud kms keys add-iam-policy-binding "${KEY}" \
+    --keyring "${KEYRING}" --location "${LOCATION}" --project "${PROJECT_ID}" \
+    --member "serviceAccount:${RUNTIME_SA}" \
+    --role "${role}" >/dev/null
+done
 
 KEY_VERSION="projects/${PROJECT_ID}/locations/${LOCATION}/keyRings/${KEYRING}/cryptoKeys/${KEY}/cryptoKeyVersions/1"
 

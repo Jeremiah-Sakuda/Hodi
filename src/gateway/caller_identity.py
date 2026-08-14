@@ -168,9 +168,10 @@ class CallerIdentity(BaseModel):
         declared = cls.in_process(calling_role_key)
         if calling_sa and calling_sa != declared.service_account:
             raise IdentityVerificationError(
-                f"Service account '{calling_sa}' is not the identity iam_policy.py declares "
-                f"for role '{calling_role_key}' ('{declared.service_account}'). A role and an "
-                "identity that disagree cannot both be right, and the policy is the source.")
+                f"Service account '{calling_sa}' does not match the identity iam_policy.py "
+                f"declares for role '{calling_role_key}' ('{declared.service_account}'). The "
+                "identity enforced and the identity recorded must be the same principal, and "
+                "the policy is the source.")
         return declared
 
 
