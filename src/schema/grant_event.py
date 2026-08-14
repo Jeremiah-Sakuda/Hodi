@@ -28,6 +28,11 @@ class GrantEvent(BaseModel):
 class Receipt(BaseModel):
     receipt_id: str
     grant_id: str
+    # The RESOURCE the decision was about (HOD-701). The authorization tuple is
+    # principal × work × scope × time; a receipt that omits the work half-states
+    # the decision it records. Optional only so receipts written before
+    # 2026-08-14 still parse — every new receipt carries it.
+    work_id: Optional[str] = None
     counterparty_id: str
     payload_hash: str
     issued_at: datetime

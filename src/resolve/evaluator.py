@@ -18,7 +18,16 @@ def permits(
     3. Commercial Status (commercial grant permits non-commercial request; containment is one-way)
     4. Territory Containment ('WW' covers all; an empty/absent granted territory means unrestricted
        (worldwide); a non-empty granted set without 'WW' requires the requested set to be a non-empty subset)
-    5. Temporal Validity (valid_from <= at <= valid_until)
+    5. Temporal Validity — two conditions, both required (HOD-702):
+       (a) the grant is CURRENT at the evaluation instant (valid_from <= at <= valid_until), and
+       (b) the REQUESTED window is CONTAINED by the grant window:
+           request.valid_from >= grant.valid_from, and where the grant is bounded,
+           request.valid_until <= grant.valid_until. An open-ended request
+           (valid_until=None) asks for rights forever; only an unbounded grant
+           contains it. Checking (a) alone was the defect: a grant valid through
+           September, asked in August for rights through December, answered yes —
+           the evaluation instant was inside the grant, but the requested window
+           was not.
     
     # NOTE: attribution_required is deliberately NOT a gating dimension in permits().
     # Attribution is an obligation condition attached to the output license terms, not a permission gate.
@@ -52,11 +61,26 @@ def permits(
     for grant in active_grants:
         g_scope = grant.scope
 
-        # Dimension 5: Temporal Validity
+        # Dimension 5a: the grant is current at the evaluation instant.
         if eval_time < g_scope.valid_from:
             continue
         if g_scope.valid_until and eval_time > g_scope.valid_until:
             continue
+
+        # Dimension 5b: the requested window is contained by the grant window.
+        # Currency alone is not containment: it answers "is the grant alive
+        # right now", not "does the grant cover what is being asked for".
+        if requested_scope.valid_from < g_scope.valid_from:
+            # The request asks for rights beginning before the grant did.
+            continue
+        if g_scope.valid_until is not None:
+            if requested_scope.valid_until is None:
+                # Open-ended request against a bounded grant: the grant cannot
+                # contain "forever". Refuse rather than truncate — the API
+                # never quietly narrows what the caller asked for.
+                continue
+            if requested_scope.valid_until > g_scope.valid_until:
+                continue
 
         # Dimension 1: Use-Type Containment
         if not is_use_type_contained(g_scope.use_type, requested_scope.use_type):

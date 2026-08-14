@@ -36,14 +36,20 @@ class TestScopeContainmentTruthTable(unittest.TestCase):
             signature="sig"
         )
 
-    def _make_request(self, use_type, commercial=False, territory=None, model_class="all_models", attribution_required=False):
+    def _make_request(self, use_type, commercial=False, territory=None, model_class="all_models",
+                      attribution_required=False, valid_from=None, valid_until=None):
+        # Default request window: from now, open-ended. Under HOD-702 an
+        # open-ended request is contained only by an UNBOUNDED grant — cases
+        # pairing a bounded grant with an expected permit must request a
+        # window inside the grant's.
         return Scope(
             use_type=use_type,
             model_class=model_class,
             commercial=commercial,
             attribution_required=attribution_required,
             territory=territory or ["WW"],
-            valid_from=self.now
+            valid_from=valid_from or self.now,
+            valid_until=valid_until
         )
 
     # --- CORRECTION 1: UNION SEMANTICS & NO PER-DIMENSION MERGING (Cases 1-3) ---
@@ -219,8 +225,10 @@ class TestScopeContainmentTruthTable(unittest.TestCase):
 
     # --- TEMPORAL VALIDITY DIMENSION (Cases 30-34) ---
     def test_case_30_active_grant_permits_valid_time(self):
+        # The request's own window sits inside the grant's (HOD-702) — an
+        # open-ended request against this bounded grant is case 50's DENY.
         g = self._make_grant("g1", "training", valid_from=self.past, valid_until=self.future)
-        r = self._make_request("training")
+        r = self._make_request("training", valid_until=self.future)
         self.assertTrue(permits([g], r, at=self.now).permitted)
 
     def test_case_31_expired_grant_denies_request(self):
@@ -247,7 +255,8 @@ class TestScopeContainmentTruthTable(unittest.TestCase):
     # --- MULTI-DIMENSIONAL COMBINATIONS & EDGE CASES (Cases 35-42) ---
     def test_case_35_all_5_dimensions_matching_returns_true(self):
         g = self._make_grant("g1", "training", commercial=True, territory=["US", "EU"], model_class="all_models", valid_from=self.past, valid_until=self.future)
-        r = self._make_request("fine_tuning", commercial=False, territory=["US"], model_class="open_weights")
+        r = self._make_request("fine_tuning", commercial=False, territory=["US"], model_class="open_weights",
+                               valid_until=self.future)
         self.assertTrue(permits([g], r, at=self.now).permitted)
 
     def test_case_36_failure_on_single_dimension_use_type(self):
@@ -374,6 +383,73 @@ class TestScopeContainmentTruthTable(unittest.TestCase):
         self.assertTrue(permits(active, narrower_req, at=self.now).permitted)
         broader_req = self._make_request("fine_tuning", commercial=False, territory=["US", "EU"], model_class="open_weights")
         self.assertFalse(permits(active, broader_req, at=self.now).permitted)
+
+    # --- REQUEST-WINDOW CONTAINMENT (Cases 48-56, HOD-702) ---
+    # Currency is not containment. A grant alive at the evaluation instant has
+    # answered "am I alive", not "do I cover the window being asked for". These
+    # cases pin requested ⊆ granted on the temporal dimension itself.
+
+    def test_case_48_request_extending_past_bounded_grant_denied_even_while_grant_current(self):
+        """The September/December case: grant through +30d, asked NOW for
+        rights through +120d. The evaluation instant is inside the grant, and
+        the answer must still be no — checking currency alone was the defect."""
+        g = self._make_grant("g1", "training", valid_from=self.past, valid_until=self.future)
+        r = self._make_request("training", valid_until=self.now + timedelta(days=120))
+        self.assertFalse(permits([g], r, at=self.now).permitted)
+
+    def test_case_49_request_window_inside_bounded_grant_permitted(self):
+        g = self._make_grant("g1", "training", valid_from=self.past, valid_until=self.future)
+        r = self._make_request("training", valid_until=self.now + timedelta(days=10))
+        self.assertTrue(permits([g], r, at=self.now).permitted)
+
+    def test_case_50_open_ended_request_denied_by_bounded_grant(self):
+        """valid_until=None on a request asks for rights forever; a bounded
+        grant cannot contain forever, and the evaluator refuses rather than
+        quietly truncating what was asked."""
+        g = self._make_grant("g1", "training", valid_from=self.past, valid_until=self.future)
+        r = self._make_request("training")  # open-ended
+        self.assertFalse(permits([g], r, at=self.now).permitted)
+
+    def test_case_51_open_ended_request_permitted_by_unbounded_grant(self):
+        g = self._make_grant("g1", "training", valid_from=self.past, valid_until=None)
+        r = self._make_request("training")  # open-ended
+        self.assertTrue(permits([g], r, at=self.now).permitted)
+
+    def test_case_52_request_beginning_before_grant_denied(self):
+        """A request whose window opens before the grant existed asks for
+        rights the grant never covered."""
+        g = self._make_grant("g1", "training", valid_from=self.past, valid_until=None)
+        r = self._make_request("training", valid_from=self.past - timedelta(days=1))
+        self.assertFalse(permits([g], r, at=self.now).permitted)
+
+    def test_case_53_request_window_exactly_equal_to_grant_window_permitted(self):
+        """Boundary inclusivity: requested == granted is containment."""
+        g = self._make_grant("g1", "training", valid_from=self.past, valid_until=self.future)
+        r = self._make_request("training", valid_from=self.past, valid_until=self.future)
+        self.assertTrue(permits([g], r, at=self.now).permitted)
+
+    def test_case_54_malformed_interval_rejected_at_the_schema(self):
+        """valid_until before valid_from is not a narrow scope, it is a
+        malformed one, and it never reaches the evaluator."""
+        from pydantic import ValidationError
+        with self.assertRaises(ValidationError):
+            Scope(use_type="training", valid_from=self.now, valid_until=self.now - timedelta(seconds=1))
+
+    def test_case_55_request_one_second_past_grant_end_denied(self):
+        g = self._make_grant("g1", "training", valid_from=self.past, valid_until=self.future)
+        r = self._make_request("training", valid_until=self.future + timedelta(seconds=1))
+        self.assertFalse(permits([g], r, at=self.now).permitted)
+
+    def test_case_56_union_on_temporal_dimension_via_single_unbounded_grant(self):
+        """Two grants: one bounded short, one unbounded. An open-ended request
+        is permitted by the unbounded grant ALONE — union semantics hold on
+        the temporal dimension exactly as on every other."""
+        short = self._make_grant("g-short", "training", valid_from=self.past, valid_until=self.future)
+        forever = self._make_grant("g-forever", "training", valid_from=self.past, valid_until=None)
+        r = self._make_request("training")  # open-ended
+        res = permits([short, forever], r, at=self.now)
+        self.assertTrue(res.permitted)
+        self.assertEqual(res.matching_grant_id, "g-forever")
 
 if __name__ == "__main__":
     unittest.main()

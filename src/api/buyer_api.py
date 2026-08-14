@@ -139,6 +139,14 @@ class ScopeRequest(BaseModel):
     # identity, which is derived from the verified credential (see the
     # X-Hodi-* signed-request headers on src/api/auth.py).
     counterparty_id: Optional[str] = None
+    # MANDATORY (HOD-701). The authorization tuple is principal × work × scope
+    # × time. Until 2026-08-14 there was no work dimension: grants were matched
+    # by counterparty alone, so a buyer holding a training grant for Work A was
+    # answered "permitted" when asking about Work B. A missing work_id is
+    # rejected at the schema (HTTP 422) — never inferred from the buyer's
+    # grants, because inferring the resource from what the caller already holds
+    # is exactly the defect with a friendlier face.
+    work_id: str
     requested_scope: Scope
     raw_document_b64: str = Field(..., description="Base64 encoded raw buyer document bytes")
 
@@ -166,28 +174,33 @@ async def request_license(req: ScopeRequest, request: Request):
     armor_result = armor.inspect(raw_bytes)
     anomaly_detected = armor_result.injection_detected
 
-    # 3. Read active grants from real Firestore via AgentGateway
-    gateway = AgentGateway()
+    # 3. Read active grants from real Firestore via AgentGateway, constrained
+    #    by BOTH halves of the resource tuple (HOD-701): the credentialed
+    #    counterparty AND the requested work. The work filter is applied at the
+    #    query and re-applied after the fold — the evaluator must only ever see
+    #    grants applicable to the work the decision is about.
+    gateway = _get_gateway()
     raw_grants = gateway.read_collection(
         calling_sa=NEGOTIATOR_SA,
         calling_role_key="licensing_negotiator",
         target_collection="grants",
-        filters={"counterparty_id": auth.counterparty_id},
+        filters={"counterparty_id": auth.counterparty_id, "work_id": req.work_id},
         session_context={"counterparty_id": auth.counterparty_id}
     )
     # Parse back to Pydantic models, then FOLD: the log is append-only, so a
     # revoked grant's original `granted` event is still present — permits()
     # must only ever see grants that are active after the fold (HOD-107).
     all_events = [GrantEvent(**g) for g in raw_grants]
-    active_grants = active_grant_events(all_events)
+    active_grants = [g for g in active_grant_events(all_events) if g.work_id == req.work_id]
 
     # 4. Resolve scope against lattice
     eval_result = permits(active_grants=active_grants, requested_scope=req.requested_scope)
-    
+
     if eval_result.permitted:
         receipt = Receipt(
             receipt_id=str(uuid.uuid4()),
             grant_id=eval_result.matching_grant_id or "unknown",
+            work_id=req.work_id,
             counterparty_id=auth.counterparty_id,
             payload_hash=hashlib.sha256(await request.body()).hexdigest(),
             issued_at=datetime.now(timezone.utc),
@@ -218,6 +231,12 @@ async def request_license(req: ScopeRequest, request: Request):
 class NaturalScopeRequest(BaseModel):
     # Optional and NEVER trusted — see ScopeRequest.
     counterparty_id: Optional[str] = None
+    # MANDATORY (HOD-701), and deliberately NOT interpreted from the natural
+    # language: the model structures the SCOPE; the RESOURCE is addressed
+    # explicitly by the caller. Letting Gemini pick the work_id would put the
+    # model inside the authorization tuple, which is the opposite of "the model
+    # interprets intent, the lattice decides permission."
+    work_id: str
     request_text: str = Field(..., description="Natural-language license request from the counterparty")
 
 class NaturalLicenseResponse(BaseModel):
@@ -261,16 +280,18 @@ async def request_license_natural(req: NaturalScopeRequest, request: Request):
     except GeminiUnavailableError as e:
         raise HTTPException(status_code=503, detail=f"Interpreter unavailable: {e}")
 
-    gateway = AgentGateway()
+    gateway = _get_gateway()
     raw_grants = gateway.read_collection(
         calling_sa=NEGOTIATOR_SA,
         calling_role_key="licensing_negotiator",
         target_collection="grants",
-        filters={"counterparty_id": auth.counterparty_id},
+        filters={"counterparty_id": auth.counterparty_id, "work_id": req.work_id},
         session_context={"counterparty_id": auth.counterparty_id}
     )
-    # Fold before containment: permits() must only see active grants (HOD-107).
-    active_grants = active_grant_events([GrantEvent(**g) for g in raw_grants])
+    # Fold before containment: permits() must only see active grants (HOD-107),
+    # and only grants applicable to the addressed work (HOD-701).
+    active_grants = [g for g in active_grant_events([GrantEvent(**g) for g in raw_grants])
+                     if g.work_id == req.work_id]
 
     # The ONLY input the model contributed to this call is `interpreted`,
     # a schema-validated Scope. permits() is deterministic.
@@ -283,6 +304,7 @@ async def request_license_natural(req: NaturalScopeRequest, request: Request):
         receipt = Receipt(
             receipt_id=str(uuid.uuid4()),
             grant_id=eval_result.matching_grant_id or "unknown",
+            work_id=req.work_id,
             counterparty_id=auth.counterparty_id,
             payload_hash=hashlib.sha256(await request.body()).hexdigest(),
             issued_at=datetime.now(timezone.utc),

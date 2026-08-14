@@ -179,6 +179,7 @@ class TestLicenseHandlerFoldsBeforeContainment(unittest.TestCase):
     def test_a_revoked_grant_does_not_license_through_the_handler(self):
         with patch.object(AgentGateway, "read_collection", return_value=self.raw_events):
             r = self._post("/api/v1/license", {
+                "work_id": "w",
                 "requested_scope": {
                     "use_type": "training", "model_class": "all_models", "commercial": True,
                     "attribution_required": False, "territory": ["WW"],
@@ -194,6 +195,7 @@ class TestLicenseHandlerFoldsBeforeContainment(unittest.TestCase):
         active_only = [self.raw_events[0]]
         with patch.object(AgentGateway, "read_collection", return_value=active_only):
             r = self._post("/api/v1/license", {
+                "work_id": "w",
                 "requested_scope": {
                     "use_type": "fine_tuning", "model_class": "open_weights", "commercial": False,
                     "attribution_required": False, "territory": ["US"],
