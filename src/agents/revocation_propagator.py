@@ -66,7 +66,8 @@ class RevocationPropagatorAgent:
             calling_sa=PROPAGATOR_SA, calling_role_key="revocation_propagator",
             target_collection="artists")
 
-    def execute_revocation_cascade(self, work_id: str, revoked_use_type: str) -> CascadeResult:
+    def execute_revocation_cascade(self, work_id: str, revoked_use_type: str,
+                                   lease_id: str = None) -> CascadeResult:
         """
         Revokes the specified use_type for a given work across all active grants.
 
@@ -151,7 +152,8 @@ class RevocationPropagatorAgent:
                     receipt = self.gateway.deliver_revocation_notice(
                         sender=PROPAGATOR_SA,
                         counterparty_id=state.counterparty_id,
-                        notice=notice
+                        notice=notice,
+                        lease_id=lease_id,
                     )
                     
                     # 4. Generate the revoked GrantEvent and write to append-only log
@@ -171,7 +173,8 @@ class RevocationPropagatorAgent:
                         calling_role_key="revocation_propagator",
                         target_collection="grants",
                         doc_id=new_event_id,
-                        data=revoked_event.model_dump()
+                        data=revoked_event.model_dump(),
+                        lease_id=lease_id,
                     )
                     
                     if raw_events == []: # testing only
