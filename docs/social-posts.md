@@ -8,7 +8,7 @@ Both posts name Hodi and carry the exact hashtag. Created for the All Things Age
 
 > I built a system whose whole premise is refusing to claim what it can't verify.
 >
-> Then I kept a ledger of every place it lied to me anyway. 31 defects, 9 classes, 4 that came back after being fixed once.
+> Then I kept a ledger of every place it lied to me anyway. 36 defects, 9 classes, 4 that came back after being fixed once.
 >
 > The worst one: my own Cloud Scheduler job was being counted as a third-party crawler — so the project's signature honesty finding had quietly inverted into a fabricated positive, manufactured by its own infrastructure.
 >
