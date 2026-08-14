@@ -6,3 +6,7 @@ uvicorn==0.52.1
 google-cloud-firestore==2.28.1
 pydantic==2.13.4
 google-adk==2.6.2
+# Asymmetric signing (HOD-706): Cloud KMS on the live path; the offline demo
+# uses an in-process ephemeral Ed25519 key via `cryptography` (already pinned
+# transitively in the lock).
+google-cloud-kms==3.16.0
