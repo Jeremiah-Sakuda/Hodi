@@ -465,3 +465,23 @@ HTTP 422  {"type":"missing","loc":["body","work_id"],"msg":"Field required"}
 **Fix.** `scripts/daily_accrual_check.py` now opens by naming the scheduled endpoint, its job, its schedule, its identity requirement and where its rows land — and says plainly that it is not the scheduled path. The `scheduled_jobs` entry in `docs/deployment_status.json` now cites the Cloud Logging execution record directly rather than only the metrics rows it produces, so the claim is checkable by a reader who has not read this document.
 
 **The lesson, which is not about scheduling.** Every other finding here concerns a claim stronger than its mechanism. This is the inverse: a mechanism stronger than its trail. It cost nothing to fix and would have cost a category of credit that had actually been earned.
+
+---
+
+## Named finding — the public manifest was serving no canaries and no proof of control, and the proof route answered HTTP 500
+
+**Found:** 2026-08-14, by the live release-verification workflow's first execution · **Requirements:** HOD-718, HOD-731 · **Status:** fixed, deployed, verified live, guarded
+
+**What was live.** `GET /works` on the deployed service returned five works of **five fields each**. No `canary_string` on any work — the canaries are the entire mechanism behind the `canary_hit` evidence class. No `control_proof` on `work-repo-001`, the project's one `verified_control` work, while the README's opening sentence says Hodi registers works *"with proof of control"*. And `GET /works/work-repo-001/proof` — the endpoint whose only job is to serve that proof — returned **HTTP 500**.
+
+**The cause.** `get_registered_works()` unioned the committed seed corpus with the rows persisted in Firestore as `{**seed, **registered}`: a **row-level** replacement. The persisted rows carry `work_id`, `artist_id` and `control_tier`. The seed carries those plus eight more. So every persisted row silently deleted eight fields from the public manifest, and the proof route then indexed `work["control_proof"]` on a row where the key was absent rather than `None`. A comment directly above the union explained why replacement was correct — *"the seed is a starting point, not an override of what an artist actually did"* — and the reasoning is right about override and wrong about erasure. **Absence is not an assertion.**
+
+**Why it survived this long.** `scripts/verify_manifest.py` had been reporting all of it correctly for as long as it was true. It is wired into `make verify-manifest`, and `make verify-manifest` is in `.github/workflows/verify-live.yml` — the workflow that had been authored and **never executed**, because its Workload Identity Federation pool did not exist. The check existed, named the defect precisely, and had never been run against the thing it checks. Two external reviewers read `live_release_verification: scripted_not_executed` as a modest gap in production-readiness storytelling. It was hiding a live defect on a public endpoint that the submission's opening claim depends on.
+
+**The fix.** The union is now field-by-field: a persisted value overrides the seeded one, and a persisted row that is *silent* about a field inherits it. A persisted explicit `None` is treated as unset rather than as a deletion, because Firestore rows carry explicit nulls and the other reading reintroduces the same bug. `.get()` replaces `[]` in the proof route, so a missing proof is a statable `"unverified"` answer rather than a stack trace.
+
+**And the merged row does not pass the borrowed fields off as registered.** Every key inherited from the seed is named in `seed_supplemented_fields` on the row itself. A reader of the live manifest can see that `work-repo-001` is `source: registered` and that nine of its fields came from the committed seed. Fixing an erasure by silently filling the gap would have been the same defect class one layer up.
+
+**Verified live after deploying:** all five works carry their canary; `work-repo-001` carries its `control_proof`; `GET /works/work-repo-001/proof` returns **HTTP 200** with the signed-commit evidence.
+
+**What is now structural.** `tests/test_manifest_merge.py` — eight tests asserting that a partial persisted row keeps the canary and the proof, that a persisted value still wins, that an explicit `None` does not erase, that borrowed fields are named, and that the proof route answers instead of raising. Mutation-verified: restoring the row-level replacement fails four of them by name.

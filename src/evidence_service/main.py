@@ -213,14 +213,37 @@ def get_registered_works() -> List[Dict[str, Any]]:
         return [{**w, "registry_unavailable": True} for w in seed.values()]
 
     base = get_effective_base_url()
-    registered = {
-        r["work_id"]: {**r, "source": "registered",
-                       "hodi_record_uri": f"{base}/works/{r['work_id']}"}
-        for r in rows if r.get("work_id")
-    }
-    # A registered row wins over a seed row of the same id: the seed is a
-    # starting point, not an override of what an artist actually did.
-    return list({**seed, **registered}.values())
+    merged = dict(seed)
+    for r in rows:
+        wid = r.get("work_id")
+        if not wid:
+            continue
+        live = {k: v for k, v in r.items() if v is not None}
+        prior = merged.get(wid, {})
+        # A registered row wins FIELD BY FIELD, not row by row.
+        #
+        # This replaced the whole seed row, and that silently deleted every
+        # field the persisted row did not happen to carry. The rows in Firestore
+        # hold work_id/artist_id/control_tier; the seed holds those plus
+        # canary_string, canary_planted_at, control_proof, title, uri,
+        # content_hash, medium and published_at. So the live manifest served
+        # five works with five fields each, no canaries, and — on the one
+        # verified_control work — no control_proof, while /works/{id}/proof
+        # returned HTTP 500. `verify_manifest.py` had been reporting exactly
+        # this for as long as it was true; nothing ran it against the deployed
+        # service until the live release-verification workflow first executed.
+        #
+        # Overriding what a row asserts is correct. Erasing what it is silent
+        # about is not: absence is not an assertion.
+        supplemented = sorted(k for k in prior
+                              if k not in live and k not in ("source", "hodi_record_uri"))
+        merged[wid] = {**prior, **live, "source": "registered",
+                       "hodi_record_uri": f"{base}/{'works'}/{wid}"}
+        # Never let a merged row read as though the artist registered fields
+        # they did not. The provenance of every borrowed field is named.
+        if supplemented:
+            merged[wid]["seed_supplemented_fields"] = supplemented
+    return list(merged.values())
 
 
 def extract_client_ip(request: Request) -> str:
@@ -390,18 +413,23 @@ async def get_work_proof(work_id: str, request: Request):
     works = get_registered_works()
     for work in works:
         if work["work_id"] == work_id:
-            if work["control_tier"] != "verified_control" or work["control_proof"] is None:
+            # .get(), not [] — a manifest row is not guaranteed to carry every
+            # key, and this route answered HTTP 500 on the project's ONE
+            # verified_control work because `control_proof` was absent rather
+            # than None. A missing proof is a statable answer ("unverified"),
+            # never a stack trace.
+            if work.get("control_tier") != "verified_control" or work.get("control_proof") is None:
                 return {
                     "work_id": work_id,
-                    "control_tier": work["control_tier"],
+                    "control_tier": work.get("control_tier"),
                     "control_proof": None,
                     "status": "unverified",
                     "notice": "This work is registered under the 'asserted' tier without stored control proof (HOD-105)."
                 }
             return {
                 "work_id": work_id,
-                "control_tier": work["control_tier"],
-                "control_proof": work["control_proof"],
+                "control_tier": work.get("control_tier"),
+                "control_proof": work.get("control_proof"),
                 "status": "verified"
             }
     raise HTTPException(status_code=404, detail="Work not found")
