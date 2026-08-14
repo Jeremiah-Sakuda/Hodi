@@ -8,7 +8,7 @@ from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
 
 from src.schema.scope import Scope, ScopeEvaluationResult, UseType
-from src.schema.signing import unsigned_placeholder, SIGNATURE_CLAIM_LIMIT
+from src.schema.signing import unsigned_placeholder, sign_pydantic, SIGNATURE_CLAIM_LIMIT
 from src.schema.grant_event import GrantEvent, Receipt
 from src.resolve.evaluator import permits
 from src.resolve.resolver import active_grant_events
@@ -197,15 +197,18 @@ async def request_license(req: ScopeRequest, request: Request):
     eval_result = permits(active_grants=active_grants, requested_scope=req.requested_scope)
 
     if eval_result.permitted:
-        receipt = Receipt(
+        # Signed when a signer is configured (HODI_SIGNING=kms|ephemeral),
+        # honestly labelled placeholder when not (HOD-706). The signature is
+        # over the receipt's canonical bytes minus the signature field.
+        receipt = sign_pydantic(Receipt(
             receipt_id=str(uuid.uuid4()),
             grant_id=eval_result.matching_grant_id or "unknown",
             work_id=req.work_id,
             counterparty_id=auth.counterparty_id,
             payload_hash=hashlib.sha256(await request.body()).hexdigest(),
             issued_at=datetime.now(timezone.utc),
-            signature=unsigned_placeholder("receipt", eval_result.matching_grant_id or "unknown")
-        )
+            signature=""
+        ), kind="receipt", reference=eval_result.matching_grant_id or "unknown")
 
         granted_scope = next((g.scope for g in active_grants if g.grant_id == eval_result.matching_grant_id), None)
         licensable_set = [granted_scope.use_type, granted_scope.model_class] if granted_scope else []
@@ -301,15 +304,18 @@ async def request_license_natural(req: NaturalScopeRequest, request: Request):
     licensable_set: List[str] = []
     exclusions: List[str] = []
     if eval_result.permitted:
-        receipt = Receipt(
+        # Signed when a signer is configured (HODI_SIGNING=kms|ephemeral),
+        # honestly labelled placeholder when not (HOD-706). The signature is
+        # over the receipt's canonical bytes minus the signature field.
+        receipt = sign_pydantic(Receipt(
             receipt_id=str(uuid.uuid4()),
             grant_id=eval_result.matching_grant_id or "unknown",
             work_id=req.work_id,
             counterparty_id=auth.counterparty_id,
             payload_hash=hashlib.sha256(await request.body()).hexdigest(),
             issued_at=datetime.now(timezone.utc),
-            signature=unsigned_placeholder("receipt", eval_result.matching_grant_id or "unknown")
-        )
+            signature=""
+        ), kind="receipt", reference=eval_result.matching_grant_id or "unknown")
         granted_scope = next((g.scope for g in active_grants if g.grant_id == eval_result.matching_grant_id), None)
         licensable_set = [granted_scope.use_type, granted_scope.model_class] if granted_scope else []
     else:

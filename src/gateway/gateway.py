@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from google.cloud import firestore
 from google.api_core import exceptions as gcloud_exceptions
 from src.schema.iam_policy import is_action_permitted, get_action_permission
-from src.schema.signing import unsigned_placeholder
+from src.schema.signing import unsigned_placeholder, sign_pydantic
 
 if TYPE_CHECKING:
     from src.supervisor.lease import LeaseLedger
@@ -340,11 +340,11 @@ class AgentGateway:
             lease_id=lease_id,
         )
 
-        receipt = RevocationReceipt(
+        receipt = sign_pydantic(RevocationReceipt(
             revocation_id=str(uuid.uuid4()),
             grant_id=notice.grant_id,
             counterparty_id=counterparty_id,
             revoked_at=notice.revoked_at,
-            signature=unsigned_placeholder("revocation_receipt", notice.grant_id)
-        )
+            signature=""
+        ), kind="revocation_receipt", reference=notice.grant_id)
         return receipt

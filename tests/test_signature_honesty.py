@@ -78,11 +78,21 @@ class NoHandWrittenSignatureLiteralsTest(unittest.TestCase):
                 continue  # defines the prefix; contains no assignments
             for line_no, line in enumerate(path.read_text().splitlines(), 1):
                 m = FAKE_SIGNATURE_LITERALS.search(line)
-                if m and not is_unsigned_placeholder(m.group("value")):
-                    offenders.append(f"{path.relative_to(ROOT)}:{line_no}: {line.strip()}")
+                if m is None:
+                    continue
+                value = m.group("value")
+                # `signature=""` is the ONE permitted literal (HOD-706): the
+                # pre-signing value inside a sign_pydantic(...) construction,
+                # excluded from the signed payload and replaced in the returned
+                # copy. Empty cannot read as a real signature; anything
+                # non-empty that is not the labelled placeholder still fails.
+                if value == "" or is_unsigned_placeholder(value):
+                    continue
+                offenders.append(f"{path.relative_to(ROOT)}:{line_no}: {line.strip()}")
         self.assertEqual(
             offenders, [],
-            "signature fields must be filled by unsigned_placeholder(), never a "
+            "signature fields must be filled by unsigned_placeholder() or "
+            "sign_pydantic() (via a temporary signature=\"\"), never a "
             "hand-written literal that reads as a real signature:\n  "
             + "\n  ".join(offenders))
 
