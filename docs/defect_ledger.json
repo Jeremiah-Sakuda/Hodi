@@ -121,6 +121,11 @@
           "id": "adk-named-never-imported",
           "summary": "ADK was named as the runtime agent framework in the README, the PRD and on Diagram A while google.adk appeared nowhere in the codebase; the only occurrence of the string was inside a print().",
           "source": "docs/BUILD-LOG.md 2026-08-07 session 3, outcome 2"
+        },
+        {
+          "id": "recording-script-missing-work-id",
+          "summary": "docs/VIDEO-SCRIPT.md carried a top banner warning that work_id had become mandatory on /api/v1/license and /api/v1/license/natural, while three of its four on-camera command bodies still omitted it. Executed against the deployed service on 2026-08-14, Beat 3 and the hero's Frames A and C each returned HTTP 422 'work_id Field required'. The warning was correct for days and changed nothing, because a banner is not a mechanism. Fixed and guarded by tests/test_recording_script_contract.py, which derives the route-to-model table from src/api/buyer_api.py rather than transcribing it.",
+          "source": "docs/FINDINGS.md — the recording script would have failed on camera"
         }
       ]
     },
@@ -175,6 +180,16 @@
           "id": "console-claimed-a-write-path",
           "summary": "The artist console was drawn writing to the Gateway and its code claimed it would POST to /api/v1/revoke. It cannot: revocation needs an artist credential a static SPA must not hold.",
           "source": "docs/BUILD-LOG.md 2026-08-08 review feedback, outcome 9"
+        },
+        {
+          "id": "recording-script-hardcoded-valid-from",
+          "summary": "The hero beat's Frame A hardcoded valid_from: '2026-08-09T00:00:00Z' while make recording-prep seeds the demo grant with valid_from = now. permits() requires the request window to be contained in the grant window, so the request was correctly denied and the frame whose only job is to show the licence GRANTED returned permitted: false. Not a schema error — the request was well-formed and the answer was right — so no static check could have seen it as malformed; guarded instead by a specific assertion that request bodies do not hardcode valid_from.",
+          "source": "docs/FINDINGS.md — the recording script would have failed on camera"
+        },
+        {
+          "id": "recording-script-narrated-retired-placeholder",
+          "summary": "The recording script instructed the presenter to say on camera that the signature field reads UNSIGNED_PLACEHOLDER. Cloud KMS signing had shipped and the deployed service returns KMS-ECDSA-P256-SHA256:..., so the narration would have contradicted the screen and discarded the strongest provable claim in the submission. The inverse of this project's usual defect: the prose understated a mechanism that had become real.",
+          "source": "docs/FINDINGS.md — the recording script would have failed on camera"
         }
       ]
     },
@@ -197,6 +212,11 @@
           "id": "defect-count-drift",
           "summary": "The defect count itself: fifteen in the blog after the sort bug was added, fourteen in the README (twice), docs/index.md, the Devpost description, the Medium copy and social post 1. The count lived in seven documents and in no source, which is the same shape as the two defects above. This file and scripts/count_defect_ledger.py are the fix.",
           "source": "docs/BUILD-LOG.md 2026-08-09"
+        },
+        {
+          "id": "readme-latency-drift",
+          "summary": "The README's deployed-path sentence stated 'revocation cascade 3049 ms cold / 534 ms warm average' while docs/metrics.json — named as its source one clause earlier — said 2263 / 736.6. The metrics file had been regenerated hours before after a real regression; the prose citing it had not. Every other published figure in the README was guarded by check_doc_metrics.py; latency figures were not, so that is where the drift went. Fixed by check_deployed_timings(), which also requires the sentence to name the revision the measurement came from.",
+          "source": "docs/FINDINGS.md — the recording script would have failed on camera"
         }
       ]
     }

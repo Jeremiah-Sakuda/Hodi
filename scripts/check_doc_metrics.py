@@ -278,6 +278,58 @@ def check_arithmetic_claims(metrics, failures) -> None:
             f"it is {works * accesses}.")
 
 
+def check_deployed_timings(metrics, failures) -> None:
+    """
+    The README's deployed-path latency sentence, checked against its own source.
+
+    WHY. On 2026-08-14 that sentence read "revocation cascade 3049 ms cold /
+    534 ms warm average" while `docs/metrics.json` — which the sentence names
+    as its source, one clause earlier — said 2263 / 736.6. The metrics file had
+    been regenerated after a real regression; the prose citing it had not. Every
+    other figure in the README is guarded; these were not, so this is where the
+    drift went. Same class as the 47, the 160 and the defect ledger: a number
+    typed once and thereafter remembered.
+
+    A latency figure is the easiest number in the repo to leave stale and the
+    hardest to notice, because nothing breaks when it is wrong and it is
+    always plausible.
+    """
+    readme = README.read_text()
+    cascade = metrics["h6_revocation_cascade_real_corpus_scale"]
+    natural = metrics["natural_language_license_path"]
+    license_path = metrics["buyer_api_license_path"]
+
+    for label, pattern, expected in (
+        ("cascade cold", r"revocation cascade (\d+) ms cold", cascade["cold_start_ms"]),
+        ("cascade warm", r"revocation cascade \d+ ms cold / (\d+) ms warm", cascade["warm_avg_ms"]),
+        ("natural-language warm", r"natural-language license path (\d+) ms warm",
+         natural["warm_avg_ms"]),
+        ("license permitted warm", r"license path (\d+) ms warm average when permitted",
+         license_path["permitted_warm_avg_ms"]),
+        ("license denied warm", r"when permitted and (\d+) ms when denied",
+         license_path["denied_warm_ms"]),
+    ):
+        found = re.search(pattern, readme)
+        if not found:
+            failures.append(
+                f"README.md: could not find the '{label}' timing claim to check. If the "
+                "sentence was reworded, update the pattern — do not delete the check.")
+            continue
+        if int(found.group(1)) != round(expected):
+            failures.append(
+                f"README.md states {label}={found.group(1)} ms; metrics.json says "
+                f"{round(expected)} ms.")
+
+    # A timing claim is an observation, so it must carry the revision it was
+    # observed on — otherwise "re-measured" names no measurement.
+    revision = cascade.get("revision")
+    if revision and revision not in readme:
+        failures.append(
+            f"README.md cites deployed-path timings without naming the revision they were "
+            f"measured on ('{revision}'). A latency number without a revision is not an "
+            "observation, it is a memory.")
+
+
 def main() -> int:
     metrics = json.loads(METRICS.read_text())
     accrual = metrics["daily_crawler_accrual_metrics"]
@@ -369,6 +421,7 @@ def main() -> int:
     check_derived_counts(failures)
     check_arithmetic_claims(metrics, failures)
     check_deployment_claims(failures)
+    check_deployed_timings(metrics, failures)
 
     diagram = DIAGRAM_B.read_text()
     dm = re.search(r"(\d+)\s+records accrued", diagram)

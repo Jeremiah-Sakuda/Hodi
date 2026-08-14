@@ -1,6 +1,32 @@
 #!/usr/bin/env python3
-# scripts/daily_accrual_check.py — Daily Accrual Audit & Sitemap URL Health Verification (HOD-320)
-# Fetches robots.txt, sitemap.xml, verifies HTTP 200 status for all listed URLs, and updates metrics.json.
+"""
+scripts/daily_accrual_check.py — Daily Accrual Audit & Sitemap URL Health
+Verification (HOD-320). Fetches robots.txt and sitemap.xml, asserts HTTP 200 for
+every listed URL, verifies the corpus proof URIs, and regenerates
+`daily_crawler_accrual_metrics` in docs/metrics.json.
+
+THIS SCRIPT IS THE MANUAL PATH. IT IS NOT THE SCHEDULED ONE.
+--------------------------------------------------------------------
+Run by hand (or by `make metrics`) to refresh the published figures. The
+*autonomous* daily audit is a different execution surface with a confusingly
+similar name:
+
+    Cloud Scheduler job  hodi-daily-accrual-audit   09:00 UTC
+      -> GET /internal/accrual_audit on hodi-evidence-endpoint
+      -> src/evidence_service/main.py::run_accrual_audit
+      -> Gemma triage over crawler_access, one immutable row per run
+         appended to the `accrual_audits` collection
+
+That endpoint requires the Scheduler's verified OIDC identity, and its execution
+history is visible in Cloud Scheduler and in Cloud Logging.
+
+This note exists because an external reviewer grepped *this file*, found no
+scheduled trigger referencing it, and concluded the project's headline
+autonomous loop was not actually autonomous — while the job had in fact run that
+same morning and returned HTTP 200. The wiring was real; only the trail between
+the two names was missing. Two things sharing a name and not sharing a reference
+is a documentation defect, and the reader was not the one who erred.
+"""
 
 import urllib.request
 import urllib.parse

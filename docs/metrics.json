@@ -118,14 +118,15 @@
     "endpoint": "/api/v1/license/natural",
     "interpreter_model": "gemini-3.5-flash",
     "vertex_location": "global",
-    "measured_at_utc": "2026-08-07T18:43:00Z",
+    "measured_at_utc": "2026-08-14T17:29:00Z",
     "warm_runs_ms": [
-      3095.11,
-      3127.29,
-      3302.42
+      3378.0,
+      3554.0,
+      3623.0
     ],
-    "warm_avg_ms": 3174.94,
-    "note": "each request includes one server-side Vertex AI generateContent call (scope interpretation)"
+    "warm_avg_ms": 3518.3,
+    "revision": "hodi-evidence-endpoint-00045-dkz",
+    "note": "Re-measured 2026-08-14 on revision 00045-dkz while verifying that the recording script's beats still run. Each request includes one server-side Vertex AI generateContent call (scope interpretation). Rose from 3175 ms measured 2026-08-07."
   },
   "overclaim_lint_coverage": {
     "measured_at_utc": "2026-08-13T15:50:15Z",
@@ -172,7 +173,7 @@
   "defect_ledger": {
     "source": "docs/defect_ledger.json",
     "counting_rule": "one entry per distinct defect with a distinct fix; a recurrence in a new location is a new entry",
-    "total_defects": 27,
+    "total_defects": 31,
     "class_count": 9,
     "recurring_class_count": 4,
     "defects_per_class": {
@@ -181,10 +182,10 @@
       "deterministic-wrongness": 1,
       "tests-that-could-not-fail": 7,
       "infrastructure-reported-done": 1,
-      "claims-with-no-code": 1,
+      "claims-with-no-code": 2,
       "policy-looser-than-its-text": 3,
-      "semantics-that-disagreed": 5,
-      "narrative-number-drift": 3
+      "semantics-that-disagreed": 7,
+      "narrative-number-drift": 4
     },
     "recurring_classes": [
       "live-boundary-auth",
@@ -192,5 +193,22 @@
       "tests-that-could-not-fail",
       "narrative-number-drift"
     ]
+  },
+  "buyer_api_license_path": {
+    "measurement_surface": "deployed-over-network",
+    "endpoint": "/api/v1/license",
+    "measured_at_utc": "2026-08-14T17:33:00Z",
+    "permitted_warm_runs_ms": [
+      541.0,
+      600.0,
+      605.0,
+      769.0,
+      777.0,
+      980.0
+    ],
+    "permitted_warm_avg_ms": 712.0,
+    "denied_warm_ms": 455.0,
+    "revision": "hodi-evidence-endpoint-00045-dkz",
+    "note": "The permitted path rose from ~399 ms (2026-08-10) because its receipt is now signed by Cloud KMS \u2014 one asymmetricSign round-trip per issued receipt. The DENIED path is faster than the permitted one for exactly that reason: a denial issues no receipt, so it signs nothing. Supersedes h6_buyer_api_with_model_armor, which was measured before KMS signing existed and whose name refers to a product this project could not use."
   }
 }
