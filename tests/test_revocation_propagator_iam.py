@@ -16,6 +16,7 @@ from src.gateway.gateway import AgentGateway, GatewayPolicyDenial
 from src.agents.revocation_propagator import RevocationPropagatorAgent
 from src.schema.revocation import RevocationNotice
 from datetime import datetime, timezone
+from src.schema.iam_policy import AGENT_SA_MAP
 
 
 class TestRevocationPropagatorIAM(unittest.TestCase):
@@ -44,7 +45,7 @@ class TestRevocationPropagatorIAM(unittest.TestCase):
                          "terminates the legal license but does not un-train the model."),
         )
         receipt = self.gateway.deliver_revocation_notice(
-            sender="revocation-propagator@hodi-2026.iam.gserviceaccount.com",
+            sender=AGENT_SA_MAP["revocation_propagator"]["sa_email"],
             counterparty_id="buyer-iam-test",
             notice=notice,
         )

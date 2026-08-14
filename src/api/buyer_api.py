@@ -19,17 +19,18 @@ from src.api.auth import (
     AuthenticatedCounterparty, CredentialStore, RequestAuthenticationError, authenticate,
     HEADER_KEY_ID, HEADER_TIMESTAMP, HEADER_SIGNATURE
 )
+from src.schema.iam_policy import AGENT_SA_MAP
 
 router = APIRouter()
 armor = PromptInspector()
 
 # The licensing negotiator agent acts under its own service account
-NEGOTIATOR_SA = "licensing-negotiator@hodi-2026.iam.gserviceaccount.com"
-PROPAGATOR_SA = "revocation-propagator-sa@hodi-2026.iam.gserviceaccount.com"
+NEGOTIATOR_SA = AGENT_SA_MAP["licensing_negotiator"]["sa_email"]
+PROPAGATOR_SA = AGENT_SA_MAP["revocation_propagator"]["sa_email"]
 # Ownership is a RIGHTS-CUSTODIAN concern: it holds works and artist identity.
 # The propagator must not — it cannot read `works` at all — so the "does this
 # artist own this work" gate lives here, at the API layer, before delegation.
-RIGHTS_CUSTODIAN_SA = "rights-custodian-sa@hodi-2026.iam.gserviceaccount.com"
+RIGHTS_CUSTODIAN_SA = AGENT_SA_MAP["rights_custodian"]["sa_email"]
 
 # Injectable so tests never touch the production credential collection.
 _credential_store = CredentialStore()
@@ -117,7 +118,6 @@ def _refuse_if_frozen(gateway: "AgentGateway", counterparty_id: str) -> None:
     freeze imposed on its own counterparty. Refusal is a structured denial,
     never silent; a read failure fails closed.
     """
-    from src.schema.iam_policy import AGENT_SA_MAP
     try:
         freezes = gateway.read_collection(
             calling_sa=AGENT_SA_MAP["consent_arbiter"]["sa_email"],

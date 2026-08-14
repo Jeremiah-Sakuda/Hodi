@@ -6,6 +6,7 @@ from src.schema.revocation import (
     RevocationNotice, RevocationReceipt, NoticeOutboxRecord, revocation_effect_id,
 )
 from src.schema.signing import unsigned_placeholder, sign_pydantic
+from src.schema.iam_policy import AGENT_SA_MAP
 from src.schema.lattice import (
     USE_TYPE_CONTAINMENT, MODEL_CLASS_CONTAINMENT, use_type_derivation_chain,
     is_use_type_contained,
@@ -41,7 +42,11 @@ class CascadeResult(BaseModel):
     # run of this operation — nonzero exactly when this call was a retry.
     replayed_effects: int = 0
 
-PROPAGATOR_SA = "revocation-propagator@hodi-2026.iam.gserviceaccount.com"
+# Read from the policy module, never restated. This was a hand-written
+# literal missing the "-sa" suffix, so every gateway call and denial event
+# from the propagator logged an SA that does not exist — the audit record
+# named a principal no IAM policy could confirm.
+PROPAGATOR_SA = AGENT_SA_MAP["revocation_propagator"]["sa_email"]
 
 class RevocationPropagatorAgent:
     """

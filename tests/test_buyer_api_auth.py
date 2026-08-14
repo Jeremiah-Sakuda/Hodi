@@ -32,6 +32,7 @@ from src.api.auth import (
 )
 import json
 from src.schema.iam_policy import get_action_permission
+from src.schema.iam_policy import AGENT_SA_MAP
 
 VICTIM = "buyer-acme-2"
 ATTACKER = "rival-labs"
@@ -164,7 +165,7 @@ class TestCrossBuyerAuthentication(unittest.TestCase):
         from src.gateway.gateway import AgentGateway
         gw = AgentGateway()
         denial = gw.log_identity_claim_denial(
-            calling_sa="licensing-negotiator@hodi-2026.iam.gserviceaccount.com",
+            calling_sa=AGENT_SA_MAP["licensing_negotiator"]["sa_email"],
             authenticated_counterparty_id=ATTACKER, claimed_counterparty_id=VICTIM,
             key_id=ATTACKER_KEY)
         self.assertEqual(denial.outcome, "DENIED")

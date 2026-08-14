@@ -39,6 +39,9 @@ os.environ["HODI_OFFLINE"] = "1"
 os.environ.setdefault("HODI_SIGNING", "ephemeral")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+# After sys.path setup — this script runs from scripts/, not the repo root.
+from src.schema.iam_policy import AGENT_SA_MAP
+
 FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"
 
 PASS, FAIL = "  \033[32m✓\033[0m", "  \033[31m✗\033[0m"
@@ -124,7 +127,7 @@ def attack_3_compromised_evidence_agent():
     # Wall 2 — the authority matrix: even a real class it lacks authority for.
     try:
         AgentGateway().submit_assertion(
-            calling_sa="evidence-agent-sa@hodi-2026.iam.gserviceaccount.com",
+            calling_sa=AGENT_SA_MAP["evidence_agent"]["sa_email"],
             calling_role_key="evidence_agent",
             assertion=TypedAssertion(
                 assertion_id="a", assertion_class="GRANT_EXISTED",
@@ -153,7 +156,7 @@ def attack_4_rogue_worker_after_quarantine():
         release.wait(timeout=10)  # blocks past its deadline, holding its lease
         try:
             gateway.write_document(
-                calling_sa="revocation-propagator-sa@hodi-2026.iam.gserviceaccount.com",
+                calling_sa=AGENT_SA_MAP["revocation_propagator"]["sa_email"],
                 calling_role_key="revocation_propagator", target_collection="grants",
                 doc_id="late-write", data={"kind": "revoked"}, lease_id=lease_id)
             outcome["committed"] = True
@@ -170,7 +173,7 @@ def attack_4_rogue_worker_after_quarantine():
 
     def standby(lease_id=None):
         gateway.write_document(
-            calling_sa="revocation-propagator-sa@hodi-2026.iam.gserviceaccount.com",
+            calling_sa=AGENT_SA_MAP["revocation_propagator"]["sa_email"],
             calling_role_key="revocation_propagator", target_collection="grants",
             doc_id="standby-write", data={"kind": "revoked"}, lease_id=lease_id)
         return "completed_degraded"
