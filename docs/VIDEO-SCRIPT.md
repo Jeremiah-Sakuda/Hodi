@@ -301,8 +301,10 @@ refusal.
 > Cloud Run services under distinct service accounts and named databases. The front door cannot read
 > those databases and must invoke the owning workload. The shared append-only grant log remains in
 > `(default)`, where counterparty row separation is gateway-enforced. Do not describe the fleet as one
-> process. Before recording, verify the post-review revocation-worker cutover and update the measured
-> cascade timing; until then that cutover is implemented but not observed live.
+> process. Cascade timings were re-measured 2026-08-21 (median ~2.5 s warm) and every figure in this
+> file is that run's. The revocation-route cutover to the private worker is deployed code whose
+> activation marker is not set — do not claim it as executed on camera; the deployment table is the
+> source of truth for that sentence.
 
 ---
 
@@ -530,16 +532,18 @@ And a fifth column that does not exist: training-set membership. Not because we 
 because it is not determinable, there is no enum value for it, and the schema physically cannot
 express the claim. Revocation terminates a grant. It does not un-train a model.
 
-Then the measured finding — **and it changed on 2026-08-12, so use these words, not the old ones**:
-1613 accrued access records. **One** matches a crawler signature. On August 11th a self-identifying
-crawler fetched `/robots.txt` — and did not fetch `/.well-known/hodi.json`, one request away, where
-the machine-readable terms are served. It asked whether it was allowed to crawl. It never asked what
-it was allowed to *do with the work*.
+Then the measured finding — **it strengthened again on 2026-08-21, so use these words, not the old
+ones**: 3291 accrued access records. **Nine** match a crawler signature — two distinct
+self-identifying AI crawlers, nine visits between August 11th and August 20th. Every single one
+fetched `/robots.txt`. **Not one** fetched `/.well-known/hodi.json` — one request away, named in that
+very `robots.txt`, where the machine-readable terms are served. They asked whether they were allowed
+to crawl. Over ten days, none of them asked what they were allowed to *do with the work*.
 
-> This is stronger than the old line ("nobody came"), and it is the thesis in one record. It is also a
-> correction: the count read zero for a week because the detector's pattern required a word boundary
-> before `bot`, so a vendor prefix glued onto `bot` never matched. If you want one sentence for it:
-> *"the number was zero until the detector could see."*
+> This is the thesis in nine records, and it beats both prior versions ("nobody came", then "one
+> crawler came"). Do not name the vendors on camera — they did nothing wrong, and the point is not
+> who they are. The correction line still lands if you want it: the count read zero for a week
+> because the detector's pattern required a word boundary before `bot`, so a vendor prefix glued
+> onto `bot` never matched. *"The number was zero until the detector could see."*
 
 > Read those numbers off `docs/metrics.json` on the day you record. `make check-docs` keeps the
 > README, the diagram and the submission text in agreement, but the diagram PNG is only as fresh as
