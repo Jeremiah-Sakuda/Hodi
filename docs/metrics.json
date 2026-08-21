@@ -1,9 +1,9 @@
 {
-  "timestamp": "2026-08-21T04:10:00Z",
+  "timestamp": "2026-08-21T05:02:43Z",
   "daily_crawler_accrual_metrics": {
     "audit_date_utc": "2026-08-21",
-    "total_accrued_records": 3180,
-    "self_originated_count": 3106,
+    "total_accrued_records": 3291,
+    "self_originated_count": 3217,
     "non_self_originated_requests_count": 74,
     "known_crawler_ua_matches": 9,
     "known_crawler_user_agent_counts": {
@@ -18,8 +18,8 @@
     "distinct_user_agents_count": 30,
     "self_originated_user_agents_count": 19,
     "hostname_breakdown": {
-      "hodi-evidence-endpoint-406699565497.us-central1.run.app": 2289,
-      "hodi-evidence-agent-ifd7cg45ja-uc.a.run.app": 868,
+      "hodi-evidence-endpoint-406699565497.us-central1.run.app": 2326,
+      "hodi-evidence-agent-ifd7cg45ja-uc.a.run.app": 942,
       "hodi-evidence-endpoint-ifd7cg45ja-uc.a.run.app": 16,
       "hodi-rights-custodian-ifd7cg45ja-uc.a.run.app": 4,
       "hodi-revocation-worker-ifd7cg45ja-uc.a.run.app": 3
@@ -77,21 +77,25 @@
   },
   "h6_revocation_cascade_real_corpus_scale": {
     "measurement_surface": "deployed-over-network",
-    "measured_at_utc": "2026-08-14T21:05:00Z",
+    "measured_at_utc": "2026-08-21T05:20:00Z",
     "runtime_identity": "hodi-runtime-sa (append+read only; conditioned to (default) alone)",
-    "cold_start_ms": 3973.0,
-    "cold_start_note": "Both the front door AND the rights-custodian workload cold. The split adds a second cold start to the critical path, so the pre-flight warm-up now has to touch more than one service.",
+    "cold_start_ms": 19874.0,
+    "cold_start_note": "Front door, rights-custodian AND revocation-worker all cold. The chain is three services deep now, so the pre-flight has to warm more than the front door \u2014 a cold hero beat is twenty seconds, not two.",
     "warm_runs_ms": [
-      1785.0,
-      1796.0,
-      1805.0,
-      1806.0,
-      2064.0,
-      2119.0
+      2084.0,
+      2140.0,
+      2373.0,
+      2465.0,
+      2466.0,
+      2486.0,
+      2552.0,
+      2663.0,
+      4642.0
     ],
-    "warm_avg_ms": 1895.8,
-    "revision": "hodi-evidence-endpoint-00054-swn",
-    "note": "Re-measured 2026-08-14 after the conflict-domain split. Warm rose from ~737 ms to ~1896 ms: the revoke path's work-ownership check is a rights-custodian read, and the custodian is now a SEPARATE Cloud Run workload under its own identity and database, so that check is an authenticated HTTPS hop instead of an in-process call. The ~1160 ms is the price of the boundary being infrastructure rather than application code. Reported as a regression rather than absorbed, because the recording script quotes this figure."
+    "warm_avg_ms": 2652.3,
+    "revision": "hodi-evidence-endpoint-00056-7c5",
+    "note": "Re-measured 2026-08-21 after the revocation-route cutover put /api/v1/revoke behind the private worker. Warm rose ~1896 -> ~2652 ms mean (median 2466 ms; the 4642 ms sample is one service waking mid-run and is kept in the set rather than trimmed, because it is a take you can actually get). The full arc: ~519 ms in-process, ~737 ms once the cascade took an execution lease and an idempotency outbox, ~1896 ms once the work-ownership check crossed into the rights-custodian workload, ~2652 ms now that the cascade itself executes in the propagator's own service. Every increase bought a boundary that used to be a promise.",
+    "warm_median_ms": 2466.0
   },
   "natural_language_license_path": {
     "measurement_surface": "deployed-over-network",

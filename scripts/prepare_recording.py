@@ -8,7 +8,7 @@ wrong for take 2, and the cascade's cost depends on state in a way that is not
 visible from the terminal: it makes one Gemini notice-drafting call per affected
 grant, and a grant whose notice prompt is absent from the committed response
 cache adds ~4.7 s of live model latency. Two affected grants is a reproducible
-~6.5 s instead of ~1.9 s. Every verification run drifts the log further. An
+~7.2 s instead of ~2.5 s. Every verification run drifts the log further. An
 enumeration you must remember to re-run is not a mechanism, so this is a script.
 
     make recording-prep     full pre-flight, run once before the first take
@@ -170,7 +170,7 @@ def main() -> int:
                     help="fast reset: grants only, no credential sweep, no live probe")
     ap.add_argument("--two-counterparty", action="store_true",
                     help="re-grant grant-seed-2 so the cascade reaches two counterparties "
-                         "(costs ~6.5 s per take instead of ~1.9 s)")
+                         "(costs ~7.2 s per take instead of ~2.5 s)")
     args = ap.parse_args()
 
     if os.environ.get("HODI_OFFLINE") == "1":
@@ -246,11 +246,11 @@ def main() -> int:
 
     # Warm 1-grant base ~0.55 s (create-only runtime SA, measured 2026-08-10);
     # each uncached notice adds one ~4.7 s live Gemini call.
-    # Base is the measured warm one-grant cascade (~1.90 s on rev 00054-swn, after
-    # the conflict-domain split put the work-ownership check behind the
-    # rights-custodian workload);
+    # Base is the measured warm one-grant cascade (median ~2.47 s on rev
+    # 00056-7c5, after the revocation-route cutover put the cascade itself in
+    # the propagator's own workload);
     # each uncached notice adds one live Gemini call (~4.7 s).
-    predicted = "~1.9 s" if uncached == 0 else f"~{1.90 + 4.7 * uncached:.1f} s"
+    predicted = "~2.5 s" if uncached == 0 else f"~{2.47 + 4.7 * uncached:.1f} s"
     print(f"\n{INFO}PREDICTED cascade round-trip: {predicted} "
           f"({len(affected)} affected, {uncached} uncached notice call(s))")
     print(f"{INFO}log depth for {HERO_WORK}: {len(events)} events "

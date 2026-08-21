@@ -26,7 +26,7 @@ Everything except the recording. All durations below were **measured** — the s
 and the whole sequence was re-run end to end on **2026-08-14** against revision `00054-swn`. The
 boundary denial returns **6/6 HTTP 403 including Part C**; the hero cascade appends under create-only
 IAM with the affected set, derived scopes and issued notices all correct; a non-owner revoke is
-refused 403. Warm cascade ~1.9 s. Re-measure with `make metrics` if you record more than a day from now.
+refused 403. Warm cascade ~2.5 s. Re-measure with `make metrics` if you record more than a day from now.
 
 > **The signature narration changed, and it changed in your favour.** Earlier versions of this script
 > told you to say the `signature` field reads `UNSIGNED_PLACEHOLDER`. **It no longer does.** The
@@ -53,7 +53,7 @@ record:
 
 | Action | Measured (2026-08-14, rev `00054-swn`, unless noted) | Beat budget |
 |---|---|---|
-| Revocation cascade, **1 affected grant** | **1785 – 2119 ms** round-trip, ~1896 ms avg — last observed before the private-worker cutover; re-measure before recording | 45 s |
+| Revocation cascade, **1 affected grant** | **2084 – 4642 ms**, median **2466 ms** over 9 warm runs (2026-08-21, rev `00056-7c5`, post-cutover) | 45 s |
 | Revocation cascade, **2 affected grants** | **5086 / 5275 / 4953 ms** (2026-08-09) — see the trap below | — |
 | `POST /api/v1/license`, **permitted** (Frame A) | **1495 – 2036 ms**, ~1675 ms avg over 6 warm runs | — |
 | `POST /api/v1/license`, **denied** (Frame C) | **1591 ms** — it pays the custodian hop before it can refuse | — |
@@ -62,7 +62,7 @@ record:
 | `make demo`, all 7 beats | **1.4 – 1.8 s** (2026-08-09) | — |
 | Quarantine drill | 1114 ms server-side; **7.3 s** cold / 1.5 s warm round-trip (2026-08-09) | 20 s |
 
-**Every figure rose, and the reason is the architecture.** The cascade went ~737 → ~1896 ms and the
+**Every figure rose, and the reason is the architecture.** The cascade went ~737 → ~1896 → ~2466 ms and the
 permitted licence ~712 → ~1675 ms when the four conflict-domain roles became four separately-deployed
 Cloud Run workloads. Both paths check that the artist owns the work; that check reads `works`; and
 `works` now lives in `hodi-identity` behind the rights-custodian service, so an in-process call became
@@ -70,14 +70,14 @@ an authenticated HTTPS hop the front door **cannot bypass** — its identity is 
 every domain database. About 1.2 seconds is what the boundary costs. If you find yourself wishing for
 the old numbers, note what they were the speed of: one process holding credentials for every domain.
 
-So the hero beat is **not** 45 seconds of waiting. It is ~1.9 s of action wrapped in 45 s of
+So the hero beat is **not** 45 seconds of waiting. It is ~2.5 s of action wrapped in 45 s of
 *before* and *after*: the license granted, the command, the cascade output, the same license refused.
 Plan the shot as three static frames with one instant transition, not as a progress bar.
 
 ### The 5-second trap in the hero beat — read this before the first take
 
 The cascade's cost is **one Gemini notice-drafting call per affected grant that is not in the
-committed response cache.** With one affected grant it is ~1.9 s. With two, add roughly 4.5 s of live
+committed response cache.** With one affected grant it is ~2.5 s. With two, add roughly 4.5 s of live
 model call on top, and it is reproducibly so — not a cold start you can warm away.
 
 `work-repo-001` carries two grants: `grant-acme-il-001` (the demo grant, cached, fast) and
@@ -92,8 +92,8 @@ contradicts the "one call, instant" framing, and re-grant `grant-seed-2` first (
 containment across the *scope lattice* — all four use types derived from the partial order — and one
 affected grant demonstrates that completely.
 
-**Do not speed-ramp or cut mid-command.** The wall clock is the proof. If a command takes 1.9 s, show
-that it took 1.9 s. A legal revocation cascading across the lattice in under two seconds — while every
+**Do not speed-ramp or cut mid-command.** The wall clock is the proof. If a command takes 2.5 s, show
+that it took 2.5 s. A legal revocation cascading across the lattice in under two seconds — while every
 domain read crosses an authenticated service boundary the caller cannot bypass — is a stronger claim
 than a faster number produced by one process trusted with everything.
 
@@ -153,7 +153,7 @@ cd "path/to/Hodi"
    ```bash
    make recording-prep
    ```
-   Expect: `RECORDING STATE READY — cascade on the ~1.9 s path.` If it says `~6.6 s`, the affected
+   Expect: `RECORDING STATE READY — cascade on the ~2.5 s path.` If it says `~7.2 s`, the affected
    set is 2 — read its report, it names the grant responsible.
 
 5. **Confirm the boundary holds on the deployed service.**
@@ -405,7 +405,7 @@ json.dump(r["issued_notices"][0], open("/tmp/hodi_notice.json", "w"))
 EOF
 ```
 
-**Measured: 1785 – 2119 ms** round-trip warm, ~1896 ms average (2026-08-14, revision 00054-swn), with
+**Measured: 2084 – 4642 ms** round-trip warm, median **2466 ms** over 9 runs (2026-08-21, revision `00056-7c5`), with
 one affected grant. `metrics.json` records 2263 ms cold / 737 ms warm. It rose from ~519 ms when the
 cascade gained an execution lease and an idempotency outbox — a retry cannot double-issue a notice,
 and an abandoned worker cannot commit late. **Burn in the wall clock — the last observed run was
@@ -604,10 +604,10 @@ That is 33 s of reserve without touching the hero, the security beat, Diagram B,
 ## Things that will bite you
 
 - **Cold start, now on more than one service.** `min-instances=0` everywhere. A cold cascade measured
-  **3973 ms** with the front door AND the rights-custodian workload both cold, against ~1896 ms warm.
-  Warming the front door alone is no longer enough — `make recording-prep` step 5 touches the
-  delegating path so the custodian is warm too.
-- **Two affected grants costs ~6.5 s, not ~1.9 s.** One uncached Gemini notice-drafting call per
+  **19874 ms** with the front door, the rights-custodian AND the revocation worker all cold, against ~2466 ms warm. The chain is three services deep now.
+  Warming the front door alone is nowhere near enough — a cold hero beat is TWENTY SECONDS. Run the
+  hero command once as a throwaway immediately before the take, then `make recording-reset`.
+- **Two affected grants costs ~7 s, not ~2.5 s.** One uncached Gemini notice-drafting call per
   affected grant. Verify the affected set is 1 in pre-flight step 5. This is the single most likely
   way the hero beat goes wrong.
 - **Both secrets.** Frames A/C need the counterparty key, Frame B needs the artist key, and neither
