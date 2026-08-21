@@ -31,6 +31,7 @@ from src.api.auth import (
     HEADER_KEY_ID, HEADER_TIMESTAMP, HEADER_SIGNATURE,
 )
 import json
+from unittest.mock import patch
 from src.schema.iam_policy import get_action_permission
 from tests.offline_env import force_offline
 from src.schema.iam_policy import AGENT_SA_MAP
@@ -213,6 +214,60 @@ class TestCrossBuyerAuthentication(unittest.TestCase):
             body={"work_id": "work-repo-001", "revoked_use_type": "training"}))
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.json()["affected_grants"], [])
+
+    def test_live_revoke_delegates_to_private_worker(self):
+        """With a deployed worker configured, the front door must not execute
+        the propagator locally under its own workload identity."""
+        from src.agents.revocation_propagator import CascadeResult
+
+        gateway = AgentGateway(offline_reads={
+            "works": [{"work_id": "work-repo-001", "artist_id": "artist-jeremiah"}]})
+        buyer_api.set_gateway(gateway)
+        self.addCleanup(lambda: buyer_api.set_gateway(None))
+        result = CascadeResult(
+            operation_id="operation-remote-1", revoked_use_type="training",
+            derived_scopes=[], structured_derivation=[], affected_grants=[],
+            issued_notices=[], replayed_effects=0)
+
+        with patch.dict(os.environ, {
+                "HODI_OFFLINE": "0",
+                "HODI_REVOCATION_WORKER_URL": "https://worker.example"}), \
+             patch.object(buyer_api, "execute_remote_revocation", return_value=result) as remote, \
+             patch.object(buyer_api.RevocationPropagatorAgent,
+                          "execute_revocation_cascade",
+                          side_effect=AssertionError("front door executed the cascade locally")):
+            r = self._post(*self._signed(
+                ARTIST_KEY, ARTIST_SECRET, path="/api/v1/revoke",
+                body={"work_id": "work-repo-001", "revoked_use_type": "training",
+                      "operation_id": "operation-remote-1"}))
+
+        self.assertEqual(r.status_code, 200)
+        remote.assert_called_once_with(
+            "https://worker.example", work_id="work-repo-001",
+            revoked_use_type="training", operation_id="operation-remote-1")
+
+    def test_private_worker_failure_fails_closed_without_local_fallback(self):
+        from src.gateway.revocation_client import RevocationWorkerUnavailable
+
+        gateway = AgentGateway(offline_reads={
+            "works": [{"work_id": "work-repo-001", "artist_id": "artist-jeremiah"}]})
+        buyer_api.set_gateway(gateway)
+        self.addCleanup(lambda: buyer_api.set_gateway(None))
+
+        with patch.dict(os.environ, {
+                "HODI_OFFLINE": "0",
+                "HODI_REVOCATION_WORKER_URL": "https://worker.example"}), \
+             patch.object(buyer_api, "execute_remote_revocation",
+                          side_effect=RevocationWorkerUnavailable("timed out")), \
+             patch.object(buyer_api.RevocationPropagatorAgent,
+                          "execute_revocation_cascade",
+                          side_effect=AssertionError("fail-open local fallback")):
+            r = self._post(*self._signed(
+                ARTIST_KEY, ARTIST_SECRET, path="/api/v1/revoke",
+                body={"work_id": "work-repo-001", "revoked_use_type": "training"}))
+
+        self.assertEqual(r.status_code, 503)
+        self.assertIn("no effects were initiated", r.json()["detail"])
 
     def test_artist_cannot_revoke_a_work_they_do_not_own(self):
         """The finding: an artist credential must not revoke ANY work — only its

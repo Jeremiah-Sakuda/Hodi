@@ -75,7 +75,7 @@
     },
     "per_domain_databases": {
       "status": "verified",
-      "detail": "Each conflict domain has its own named Firestore database (hodi-identity, hodi-commercial, hodi-evidence, hodi-adjudication; the grant log stays in (default)), and each agent SA's grants are IAM-CONDITIONED to its own domain plus the grant log. The evidence SA reading the identity database is refused by Google IAM before any application code runs. NOTE: the first execution FAILED its own proof \u2014 the agent SAs' unconditional append-only bindings spanned every database, so the conditions narrowed nothing until the broad grants were replaced. deploy_gcp.sh carries a guard so a later provisioning run cannot silently un-harden it. Live collections still reside in (default), so row-level separation inside the grant log remains gateway-enforced until data migrates.",
+      "detail": "Each conflict domain has its own named Firestore database (hodi-identity, hodi-commercial, hodi-evidence, hodi-adjudication; the shared grant log stays in (default)), and the domain collections were migrated into them. Each agent SA's grants are IAM-CONDITIONED to its own domain plus the shared grant log. The evidence SA reading the identity database is refused by Google IAM before any application code runs. NOTE: the first execution FAILED its own proof \u2014 the agent SAs' unconditional append-only bindings spanned every database, so the conditions narrowed nothing until the broad grants were replaced. deploy_gcp.sh carries a guard so a later provisioning run cannot silently un-harden it. Row-level counterparty separation inside the shared grant log remains gateway-enforced by design; named databases separate conflict domains, not buyers within that shared log.",
       "evidence_source": "https://github.com/Jeremiah-Sakuda/Hodi/actions/runs/31845634850",
       "last_verified_utc": "2026-08-14T22:13:15Z",
       "revision": "hodi-evidence-endpoint-00055-8ts",
@@ -84,13 +84,26 @@
       ]
     },
     "split_revocation_worker": {
-      "status": "verified",
-      "detail": "hodi-revocation-worker deployed on Cloud Run under revocation-propagator-sa@, private (--no-allow-unauthenticated). Deployed SA read back and matched; effective permissions expanded across all held roles as append + read with no update and no delete; authenticated request 200, anonymous 403.",
-      "evidence_source": "scripts/deploy_revocation_worker.sh (executed 2026-08-14; proves the deployed identity, permissions and invocation before reporting success)",
-      "last_verified_utc": "2026-08-14T00:00:00Z",
+      "status": "provisioned_unverified",
+      "detail": "A private hodi-revocation-worker service exists under revocation-propagator-sa@. The checked-in deployment now removes its project-wide Firestore viewer and append bindings, replaces them with (default)-only conditions, grants only the front door run.invoker, pins the worker role from its environment, and preserves KMS signing. This hardened revision and its effective IAM have not yet been verified live, so the capability is provisioned but unverified.",
+      "evidence_source": null,
+      "last_verified_utc": null,
       "revision": null,
       "artifacts": [
         "scripts/deploy_revocation_worker.sh"
+      ]
+    },
+    "revocation_route_worker_cutover": {
+      "status": "scripted_not_executed",
+      "detail": "POST /api/v1/revoke delegates to the private worker when HODI_REVOCATION_WORKER_URL is configured, requires an explicit private-worker execution marker, and returns 503 without local fallback on worker failure. scripts/deploy.sh now requires and configures that worker. The cutover has passed offline tests but has not been deployed or observed over the network.",
+      "evidence_source": null,
+      "last_verified_utc": null,
+      "revision": null,
+      "artifacts": [
+        "src/api/buyer_api.py",
+        "src/gateway/revocation_client.py",
+        "src/evidence_service/main.py",
+        "scripts/deploy.sh"
       ]
     },
     "durable_trace_backend": {

@@ -80,14 +80,11 @@ done
 #    the conditional viewer merely added reads on top. Conditions narrow
 #    nothing unless the broad grant is removed.
 #
-#    The revocation domain maps to (default) and is skipped: its SA's whole
-#    function is the shared grant log. The runtime SA is untouched — it is the
-#    disclosed single-process identity serving live traffic.
+#    The revocation domain maps to (default), but it is NOT skipped. An
+#    unconditional grant on that SA would span every named database as well;
+#    default-only access must be expressed by an IAM condition just like every
+#    other domain. The runtime SA is narrowed separately by the domain deploy.
 while IFS=$'\t' read -r role domain db sa; do
-  if [ "${db}" = "(default)" ]; then
-    echo "[iam] ${role}: (default) db — unconditioned append-only role is correct here"
-    continue
-  fi
   echo "[iam] ${role} (${sa}) -> viewer on '${db}' ONLY; append-only on (default) ONLY"
   gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${sa}" \
@@ -100,11 +97,25 @@ while IFS=$'\t' read -r role domain db sa; do
     --condition="expression=resource.name.endsWith('/databases/(default)'),title=grant-log-only" \
     --quiet >/dev/null
   # Remove the unconditional binding LAST, so the SA is never left grantless.
-  gcloud projects remove-iam-policy-binding "${PROJECT_ID}" \
-    --member="serviceAccount:${sa}" \
-    --role="projects/${PROJECT_ID}/roles/hodiAppendOnlyGrantWriter" \
-    --condition=None --quiet >/dev/null 2>&1 \
-    || echo "       (no unconditional append-only binding to remove — already hardened)"
+  if gcloud projects remove-iam-policy-binding "${PROJECT_ID}" \
+      --member="serviceAccount:${sa}" \
+      --role="projects/${PROJECT_ID}/roles/hodiAppendOnlyGrantWriter" \
+      --condition=None --quiet >/dev/null 2>&1; then
+    echo "       removed unconditional append-only binding"
+  else
+    echo "       no unconditional append-only binding to remove"
+  fi
+
+  # The first worker deploy added an unconditional viewer to make Firestore
+  # reads succeed. Remove that broad grant after the database-scoped one is in
+  # place; otherwise this SA can still read every conflict database.
+  if gcloud projects remove-iam-policy-binding "${PROJECT_ID}" \
+      --member="serviceAccount:${sa}" --role="roles/datastore.viewer" \
+      --condition=None --quiet >/dev/null 2>&1; then
+    echo "       removed unconditional datastore.viewer binding"
+  else
+    echo "       no unconditional datastore.viewer binding to remove"
+  fi
 done < "${ROWS_FILE}"
 
 echo

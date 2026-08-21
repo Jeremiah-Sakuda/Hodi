@@ -130,4 +130,4 @@ Every session ends with an entry appended to `docs/BUILD-LOG.md`:
 
 Two or three decisions, each a fork where the alternative was live. If nothing forked, write "No forks this session" rather than manufacturing decisions.
 
-Append to `docs/FINDINGS.md` daily: crawler-log volume and Gemma triage rate, canary results, scope-lattice edge cases discovered, verbatim-match hit rate, `spend_to_date` — and the **Google-toolchain findings**, above all **Antigravity's multi-agent scoping and OTel span emission**, which is the least externally documented surface in the SDK and the thing a Fleet judge will most want to read about.
+Append to `docs/FINDINGS.md` daily: crawler-log volume and Gemma triage rate, canary results, scope-lattice edge cases discovered, verbatim-match hit rate, `spend_to_date` — and the **Google-toolchain findings**, above all the ADK multi-agent scoping and OTel span emission that runtime execution actually runs on. Negative results count and are published with their verbatim errors; the headless multi-agent assertion that failed is in FINDINGS for exactly that reason.

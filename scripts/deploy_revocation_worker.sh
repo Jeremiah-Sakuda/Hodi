@@ -31,6 +31,7 @@ PROJECT_ID="${GCP_PROJECT_ID:-hodi-2026}"
 REGION="${HODI_REGION:-us-central1}"
 WORKER_SERVICE="${HODI_REVOCATION_SERVICE:-hodi-revocation-worker}"
 PROPAGATOR_SA="revocation-propagator-sa@${PROJECT_ID}.iam.gserviceaccount.com"
+FRONT_DOOR_SA="hodi-runtime-sa@${PROJECT_ID}.iam.gserviceaccount.com"
 
 cd "$(dirname "$0")/.."
 
@@ -38,18 +39,54 @@ echo "== Deploying the revocation worker as its own service =="
 echo "  service:  ${WORKER_SERVICE}"
 echo "  identity: ${PROPAGATOR_SA} (revocation domain only)"
 
-# 1. Provision what the workload NEEDS, before deploying it. Same recipe that
-#    made the runtime SA viable, none of it grants update or delete:
-#      - the append-only custom role: already bound by deploy_gcp.sh (create/get/list)
-#      - datastore.viewer: all Firestore READ permissions incl. databases.get, zero writes
+# 1. Provision what the workload NEEDS, before deploying it. Database roles are
+#    conditioned to `(default)`, where the grant log and revocation outbox live.
+#    A project-wide viewer or append role would also reach every named conflict
+#    database and collapse the boundary despite the distinct service account.
 #      - aiplatform.user: Gemini notice drafting
 #      - logging.logWriter: structured logs
-for role in "roles/datastore.viewer" "roles/aiplatform.user" "roles/logging.logWriter"; do
+for role in "roles/datastore.viewer" "projects/${PROJECT_ID}/roles/hodiAppendOnlyGrantWriter"; do
+  gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+    --member="serviceAccount:${PROPAGATOR_SA}" \
+    --role="${role}" \
+    --condition="expression=resource.name.endsWith('/databases/(default)'),title=revocation-default-only" \
+    --quiet >/dev/null
+  echo "  [iam] bound ${role}, conditioned to (default)"
+  if gcloud projects remove-iam-policy-binding "${PROJECT_ID}" \
+      --member="serviceAccount:${PROPAGATOR_SA}" --role="${role}" \
+      --condition=None --quiet >/dev/null 2>&1; then
+    echo "        removed prior unconditional binding"
+  else
+    echo "        no prior unconditional binding present"
+  fi
+done
+for role in "roles/aiplatform.user" "roles/logging.logWriter"; do
   gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${PROPAGATOR_SA}" \
     --role="${role}" --condition=None --quiet >/dev/null
-  echo "  [iam] bound ${role}"
+  echo "  [iam] bound non-data role ${role}"
 done
+
+# Moving execution must not regress verified notices to placeholders. Configure
+# the worker for the same asymmetric key when it exists; otherwise select the
+# explicit labelled-ephemeral mode.
+KMS_KEY="${HODI_KMS_KEY:-hodi-provenance}"
+KMS_KEYRING="${HODI_KMS_KEYRING:-hodi-signing}"
+KMS_LOCATION="${HODI_KMS_LOCATION:-us-central1}"
+WORKER_ENV="GCP_PROJECT_ID=${PROJECT_ID},HODI_SERVICE_ROLE=revocation_propagator,HODI_FRONT_DOOR_SA=${FRONT_DOOR_SA}"
+if gcloud kms keys describe "${KMS_KEY}" --keyring "${KMS_KEYRING}" \
+    --location "${KMS_LOCATION}" --project "${PROJECT_ID}" >/dev/null 2>&1; then
+  gcloud kms keys add-iam-policy-binding "${KMS_KEY}" \
+    --keyring "${KMS_KEYRING}" --location "${KMS_LOCATION}" --project "${PROJECT_ID}" \
+    --member="serviceAccount:${PROPAGATOR_SA}" --role="roles/cloudkms.signer" \
+    --quiet >/dev/null
+  KMS_VERSION="projects/${PROJECT_ID}/locations/${KMS_LOCATION}/keyRings/${KMS_KEYRING}/cryptoKeys/${KMS_KEY}/cryptoKeyVersions/1"
+  WORKER_ENV="${WORKER_ENV},HODI_SIGNING=kms,HODI_KMS_KEY_VERSION=${KMS_VERSION}"
+  echo "  [iam] KMS signer bound on ${KMS_KEY}; worker configured for KMS signing"
+else
+  WORKER_ENV="${WORKER_ENV},HODI_SIGNING=ephemeral"
+  echo "  [iam] KMS key absent; worker configured for labelled-ephemeral signing"
+fi
 
 # 2. Deploy from the repository-root Dockerfile, private by default: only
 #    identities holding run.invoker (the supervisor / operator) can call it.
@@ -59,10 +96,16 @@ gcloud run deploy "${WORKER_SERVICE}" \
   --project "${PROJECT_ID}" \
   --service-account "${PROPAGATOR_SA}" \
   --no-allow-unauthenticated \
+  --set-env-vars "${WORKER_ENV}" \
   --quiet
 
 WORKER_URL="$(gcloud run services describe "${WORKER_SERVICE}" \
   --region "${REGION}" --project "${PROJECT_ID}" --format='value(status.url)')"
+
+gcloud run services add-iam-policy-binding "${WORKER_SERVICE}" \
+  --region "${REGION}" --project "${PROJECT_ID}" \
+  --member="serviceAccount:${FRONT_DOOR_SA}" --role="roles/run.invoker" \
+  --quiet >/dev/null
 
 echo
 echo "== PROOF, not report =="
@@ -96,6 +139,21 @@ for forbidden in datastore.entities.update datastore.entities.delete; do
   fi
 done
 echo "  effective permissions verified: append + read, no update, no delete"
+
+# A conditioned grant beside a broad one narrows nothing. Prove that neither
+# data role remains unconditioned on the propagator identity.
+UNCONDITIONED="$(gcloud projects get-iam-policy "${PROJECT_ID}" --format=json \
+  | python3 -c "
+import json,sys
+p=json.load(sys.stdin); me='serviceAccount:${PROPAGATOR_SA}'
+bad=[b['role'] for b in p['bindings']
+     if me in b.get('members',[]) and not b.get('condition')
+     and ('datastore' in b['role'] or 'GrantWriter' in b['role'])]
+print(','.join(bad))
+")"
+[ -z "${UNCONDITIONED}" ] \
+  || { echo "FAIL: propagator still holds unconditioned database grants: ${UNCONDITIONED}"; exit 1; }
+echo "  database scope verified: (default) only"
 
 # 3c. The worker answers an AUTHENTICATED request and refuses an anonymous one.
 AUTH_CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 120 \

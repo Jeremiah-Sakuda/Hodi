@@ -47,7 +47,12 @@ def check_url_status_200(url: str) -> bool:
     """Fetches URL and asserts HTTP 200 status."""
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "Hodi-HealthCheck/1.0"})
-        with urllib.request.urlopen(req, timeout=5.0) as resp:
+        # 30s, not 5s. Every public request now writes its access record through
+        # the evidence workload, so a cold domain service puts a liveness check
+        # over a five-second budget and `make metrics` fails claiming robots.txt
+        # is down when it is merely waking. A liveness check should time out on
+        # dead, not on slow.
+        with urllib.request.urlopen(req, timeout=30.0) as resp:
             return resp.status == 200
     except Exception as e:
         print(f"[HEALTH CHECK FAIL] URL '{url}' returned error: {e}")
@@ -102,13 +107,55 @@ def verify_sitemap_and_robots(base_url: str):
     assert len(dead_urls) == 0, f"CRITICAL: sitemap.xml contains {len(dead_urls)} dead URLs: {dead_urls}"
     print(f"[SUCCESS] ALL {len(locs)} sitemap URLs returned HTTP 200 OK!")
 
+# WHICH USER-AGENT STRINGS GET PUBLISHED, AND WHY SO FEW.
+#
+# A user agent is attacker-controlled text that this project copies into a
+# public, judge-facing metrics file. One request arrived with a ~1000-character
+# run of a single letter — a buffer-probe signature — and it went straight in.
+# Republishing arbitrary strings from unidentified callers is how a repository
+# ends up hosting someone else's payload, and it publishes the tooling
+# fingerprints of everyone who has ever touched the endpoint.
+#
+# So only KNOWN-CRAWLER user agents are published as strings. They are the
+# evidence: the whole finding is which crawlers came and what they fetched.
+# Everything else non-self is published as a COUNT, which is all the claim was
+# ever allowed to support — `claim_limit` says the unattributed bucket is
+# reported as unattributed, never promoted to crawler access, and a count is
+# exactly that claim and no more.
+MAX_PUBLISHED_UA_CHARS = 120
+
+
+def _ua_for_publication(ua: str) -> str:
+    ua = (ua or "unknown").strip()
+    return ua if len(ua) <= MAX_PUBLISHED_UA_CHARS else ua[:MAX_PUBLISHED_UA_CHARS] + f"…[truncated, {len(ua)} chars]"
+
+
+def _is_known_crawler(ua: str) -> bool:
+    return any(re.search(p, (ua or "").lower())
+               for p in GemmaTriageEngine.THIRD_PARTY_BOT_USER_AGENTS)
+
+
 def audit_firestore_crawler_access() -> dict:
     """Queries crawler_access collection and returns hostname and self vs third-party breakdown."""
     token = subprocess.check_output(['gcloud', 'auth', 'print-access-token']).decode('utf-8').strip()
     creds = credentials.Credentials(token)
-    db = firestore.Client(project="hodi-2026", credentials=creds)
+    # crawler_access lives in the EVIDENCE domain database, not (default). This
+    # read was hardcoded to (default) and survived the domain migration, so
+    # `make metrics` would have regenerated the published accrual figures from
+    # an empty collection and reported zero accrued records with complete
+    # confidence. The destination is derived from the policy, so this cannot
+    # drift from where the gateway actually puts the data.
+    from src.schema.iam_policy import database_for_collection
+    evidence_db = database_for_collection("evidence_agent", "crawler_access")
+    db = firestore.Client(project="hodi-2026", credentials=creds,
+                          **({} if evidence_db == "(default)" else {"database": evidence_db}))
 
     docs = list(db.collection("crawler_access").stream())
+    if not docs:
+        raise SystemExit(
+            f"crawler_access is EMPTY in database '{evidence_db}'. Refusing to publish an accrual "
+            "of zero — an empty read is far more likely to be a routing mistake than a corpus that "
+            "vanished. Check scripts/migrate_domain_collections.py --verify.")
     
     total_count = len(docs)
     hostname_breakdown = {}
@@ -130,7 +177,9 @@ def audit_firestore_crawler_access() -> dict:
             continue
 
         non_self_count += 1
-        non_self_user_agents[ua] = non_self_user_agents.get(ua, 0) + 1
+        if _is_known_crawler(ua):
+            pub = _ua_for_publication(ua)
+            non_self_user_agents[pub] = non_self_user_agents.get(pub, 0) + 1
         # The only number we are willing to call "a crawler": a user agent that
         # matches a KNOWN AI-crawler or search-crawler signature. Everything
         # else non-self is reported as unattributed, not promoted to a finding.
@@ -144,7 +193,20 @@ def audit_firestore_crawler_access() -> dict:
         "non_self_originated_count": non_self_count,
         "known_crawler_ua_matches": known_crawler_count,
         "non_self_user_agents": non_self_user_agents,
-        "distinct_user_agents": list(distinct_user_agents),
+        # Only NON-self user agents are enumerated. The self-originated ones are
+        # this project's own tooling calling its own endpoint — they are noise,
+        # not evidence, and the published figure this file exists to support is
+        # third-party accrual. Enumerating them also published the user-agent
+        # strings of the build tooling, which say nothing about the system.
+        "known_crawler_user_agents": sorted(
+            _ua_for_publication(ua) for ua in distinct_user_agents
+            if not is_self_originated(ua) and _is_known_crawler(ua)),
+        "unattributed_distinct_user_agents_count": sum(
+            1 for ua in distinct_user_agents
+            if not is_self_originated(ua) and not _is_known_crawler(ua)),
+        "distinct_user_agents_count": len(distinct_user_agents),
+        "self_originated_user_agents_count": sum(
+            1 for ua in distinct_user_agents if is_self_originated(ua)),
         "hostname_breakdown": hostname_breakdown
     }
 
@@ -209,13 +271,21 @@ def write_metrics(stats: dict):
         "self_originated_count": stats["self_originated_count"],
         "non_self_originated_requests_count": stats["non_self_originated_count"],
         "known_crawler_ua_matches": stats["known_crawler_ua_matches"],
-        "non_self_user_agents": stats["non_self_user_agents"],
-        "distinct_user_agents_count": len(stats["distinct_user_agents"]),
-        "distinct_user_agents": sorted(stats["distinct_user_agents"]),
+        "known_crawler_user_agent_counts": stats["non_self_user_agents"],
+        "known_crawler_user_agents": stats["known_crawler_user_agents"],
+        "unattributed_distinct_user_agents_count": stats["unattributed_distinct_user_agents_count"],
+        "distinct_user_agents_count": stats["distinct_user_agents_count"],
+        "self_originated_user_agents_count": stats["self_originated_user_agents_count"],
+
         "hostname_breakdown": stats["hostname_breakdown"],
-        "claim_limit": ("non_self_originated_requests_count counts requests this project did not "
-                        "make; it is NOT a crawler count. known_crawler_ua_matches is the only "
-                        "figure this project will describe as crawler access."),
+        "claim_limit": ("non_self_originated_requests_count counts requests whose user agent does "
+                        "not match this project's own instrumentation signatures. That is NOT the "
+                        "same as 'requests this project did not make' — it was phrased that way and "
+                        "the phrasing was stronger than the mechanism, which only ever compared "
+                        "user-agent strings and cannot establish who sent anything. It is NOT a "
+                        "crawler count. known_crawler_ua_matches is the only figure this project "
+                        "will describe as crawler access, and only its user agents are published "
+                        "as strings; the rest are counted, not quoted."),
     }
 
     with open(metrics_path, "w") as f:

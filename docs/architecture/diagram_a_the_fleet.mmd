@@ -52,11 +52,19 @@ flowchart TB
     SUP["SUPERVISOR<br/>deadline 5.0 s (derived from observed p95 2939 ms, ×1.7 headroom — metrics.json)<br/>quarantine · reroute · circuit-break · TaskAbandoned"]
     SUP -.bounds.-> ADK
 
-    subgraph DEPLOYED["Deployed on Cloud Run — hodi-evidence-endpoint (min-instances=0)"]
+    subgraph DEPLOYED["Cloud Run front door — hodi-evidence-endpoint (min-instances=0)"]
         API["BUYER API<br/>signed requests: X-Hodi-Key-Id / Timestamp / Signature<br/>HMAC over raw body; identity from the CREDENTIAL<br/>/api/v1/license · /api/v1/license/natural · /api/v1/revoke"]
         PUB["PUBLIC SURFACES<br/>/.well-known/hodi.json · /robots.txt<br/>/works · /canaries · /evidence-counts"]
         CON["ARTIST CONSOLE (READ-ONLY)<br/>renders works, control tiers,<br/>evidence by class with no total<br/>revoke is NOT wired: it needs an artist<br/>credential a static SPA must not hold"]
     end
+
+    subgraph DOMAINS["Private Cloud Run conflict-domain workloads — verified 2026-08-14"]
+        DRC["RIGHTS CUSTODIAN<br/>hodi-identity"]
+        DLN["LICENSING NEGOTIATOR<br/>hodi-commercial"]
+        DEV["EVIDENCE AGENT<br/>hodi-evidence"]
+        DAR["CONSENT ARBITER<br/>hodi-adjudication"]
+    end
+    RWORK["PRIVATE REVOCATION WORKER<br/>revocation-propagator-sa<br/>(default) only<br/>hardened cutover: NOT YET VERIFIED LIVE"]
 
     GEM(["GEMINI 3.5 FLASH via Vertex AI (global, temp 0, pinned)<br/>interprets natural language into a typed Scope<br/>THE MODEL INTERPRETS INTENT — THE LATTICE DECIDES PERMISSION"])
     GMA(["GEMMA gemma-4-26b-a4b-it-maas<br/>crawler-log triage: bot / human / unknown"])
@@ -65,12 +73,17 @@ flowchart TB
     API --> GEM
     GEM -- "validated Scope only" --> GW
     API --> GW
+    API --> DRC
+    API --> DLN
+    API --> DEV
+    API --> DAR
+    API -. "post-review cutover; unverified live" .-> RWORK
     CON -. reads .-> PUB
     PUB --> LOG
     EV --> GMA
     SCH -.triggers.-> PUB
 
-    NOTE["No SA holds two of {identity, buyer terms, evidence, revocation}; the consent arbiter holds none.<br/>A monolith here would itself be the violation.<br/>Numbers trace to /docs/metrics.json.<br/>SA labels are POLICY identities: one Cloud Run process, so the<br/>conflict-of-interest separation is enforced in-process by the Gateway<br/>(per-domain named databases EXECUTED 2026-08-14: hodi-identity/-commercial/-evidence/-adjudication,<br/>each agent SA IAM-conditioned to its own domain + the grant log; a foreign-domain read is<br/>refused by Google IAM, proven by SA impersonation in tests/test_workload_identity.py).<br/>Append-only IS runtime IAM: the process runs as a create-only<br/>runtime SA (no datastore update/delete) — history cannot be rewritten.<br/>Signing: Cloud KMS live / labelled-ephemeral Ed25519 offline; hodi verify checks with the public key only."]
+    NOTE["No SA holds two of {identity, buyer terms, evidence, revocation}; the consent arbiter holds none.<br/>A monolith here would itself be the violation.<br/>Numbers trace to /docs/metrics.json.<br/>Identity, commercial, evidence and adjudication data were migrated to named databases<br/>and are served by private workloads under IAM-conditioned service accounts; the front door<br/>is refused by Google IAM on all four. The shared append-only grant log stays in (default),<br/>so counterparty row separation inside it remains gateway-enforced by design.<br/>Revocation-worker IAM hardening and route cutover are implemented but unverified live.<br/>Signing: Cloud KMS on the last verified deployment / labelled-ephemeral Ed25519 offline;<br/>hodi verify checks with the public key only."]
 
     classDef wall fill:#1a1a1a,color:#ffffff,stroke:#d33,stroke-width:4px
     classDef agent fill:#eef6ff,stroke:#3367d6,stroke-width:1.5px,color:#111
@@ -85,5 +98,5 @@ flowchart TB
     class ARB arbiter
     class REG,GW,LOG,SUP,OTEL,SCH infra
     class GEM,GMA model
-    class API,PUB,CON deployed
+    class API,PUB,CON,DRC,DLN,DEV,DAR,RWORK deployed
     class NOTE note

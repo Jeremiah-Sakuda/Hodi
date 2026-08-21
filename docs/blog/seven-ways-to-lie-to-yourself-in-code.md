@@ -48,7 +48,7 @@ I had fixed the reported route. I had not asserted the property across the route
 
 ## The one where my own infrastructure lied for me
 
-Hodi's signature empirical finding is a negative result: *I published machine-readable consent terms at a discoverable endpoint and no crawler asked.* Nobody came. That absence is the evidence.
+Hodi's first empirical headline was a negative result: *I published machine-readable consent terms at a discoverable endpoint and no crawler asked.* It was an honest reading of the metric at the time. It was also wrong: a later audit found a self-identifying crawler request that the detector's word-boundary bug had missed.
 
 Its entire value depends on the third-party count being real.
 
@@ -64,7 +64,7 @@ And then it happened a third time. The final verification pass, days later, foun
 
 There's a coda. After fixing the list, ten non-self records remained. I nearly wrote them up as third-party hits. Then I looked: nine arrived within a single second, from cloud IPs, and one of them requested `/api/v1/debug/compromised_agent_read` — a path no sitemap advertises and no crawler would care about. That's someone inspecting the service. Not a crawler.
 
-Reporting those ten as crawler access would have been exactly the fabricated finding the project exists to refuse, arrived at from the opposite direction. So the metric changed shape rather than value: there's now a field called `known_crawler_ua_matches`, currently zero, and it's the only number this project will describe as crawler access. Everything else non-self is labelled *unattributed*, with a note in the metrics file itself saying that a count of requests I didn't make is not a count of crawlers.
+Reporting those ten as crawler access would have been exactly the fabricated finding the project exists to refuse, arrived at from the opposite direction. So the metric changed shape: `known_crawler_ua_matches` is the only number the project describes as crawler access, while every other non-self request stays *unattributed*. The later detector correction found one matching user agent: it fetched `/robots.txt` and did not fetch the machine-readable consent document linked from it. That is the current finding. It is still attribution, not authentication—a user agent is whatever the requester chose to send—and the live count remains sourced from `docs/metrics.json`, not from this essay.
 
 ---
 

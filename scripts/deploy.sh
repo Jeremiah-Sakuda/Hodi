@@ -65,36 +65,30 @@ else
   ENV_VARS="HODI_SIGNING=ephemeral"
   echo "  signing: KMS key not found — configuring labelled-ephemeral signing"
 fi
+echo "  deploying the required private revocation workload from this source tree"
+./scripts/deploy_revocation_worker.sh
 WORKER_URL="$(gcloud run services describe "${HODI_REVOCATION_SERVICE:-hodi-revocation-worker}" \
-  --region "${REGION}" --project "${PROJECT_ID}" --format='value(status.url)' 2>/dev/null || true)"
-if [ -n "${WORKER_URL}" ]; then
-  ENV_VARS="${ENV_VARS:+${ENV_VARS},}HODI_REVOCATION_WORKER_URL=${WORKER_URL}"
-  echo "  revocation worker endpoint: ${WORKER_URL}"
-else
-  echo "  revocation worker: not deployed — registry keeps the in-process placeholder"
-fi
+  --region "${REGION}" --project "${PROJECT_ID}" --format='value(status.url)')"
+ENV_VARS="${ENV_VARS:+${ENV_VARS},}HODI_REVOCATION_WORKER_URL=${WORKER_URL}"
+echo "  revocation execution: private worker ${WORKER_URL} (required; no live in-process fallback)"
 
 # Domain services, DISCOVERED from Cloud Run rather than read from a local file.
-# If the four per-domain workloads are deployed, the front door delegates every
-# domain read and write to them and stops touching domain data itself. If they
-# are not, HODI_DOMAIN_SERVICE_URLS stays unset and the gateway runs in-process
-# exactly as before — the split is a property of the deployment, not an
-# assumption in the code.
+# All four are required: silently omitting this variable would re-enable the
+# in-process path and collapse the deployed conflict boundary.
 DOMAIN_URLS=""
 for role in rights_custodian licensing_negotiator evidence_agent consent_arbiter; do
   svc="hodi-$(echo "${role}" | tr '_' '-')"
-  url="$(gcloud run services describe "${svc}" --region "${REGION}" \
-          --project "${PROJECT_ID}" --format='value(status.url)' 2>/dev/null || true)"
-  if [ -n "${url}" ]; then
-    DOMAIN_URLS="${DOMAIN_URLS:+${DOMAIN_URLS}|}${role}=${url}"
+  if ! url="$(gcloud run services describe "${svc}" --region "${REGION}" \
+      --project "${PROJECT_ID}" --format='value(status.url)' 2>/dev/null)" \
+      || [ -z "${url}" ]; then
+    echo "FAIL: required conflict-domain service '${svc}' is unavailable." >&2
+    echo "      Run ./scripts/deploy_domain_services.sh before deploying the front door." >&2
+    exit 1
   fi
+  DOMAIN_URLS="${DOMAIN_URLS:+${DOMAIN_URLS}|}${role}=${url}"
 done
-if [ -n "${DOMAIN_URLS}" ]; then
-  ENV_VARS="${ENV_VARS:+${ENV_VARS},}HODI_DOMAIN_SERVICE_URLS=${DOMAIN_URLS}"
-  echo "  domain services: delegating to $(( $(echo "${DOMAIN_URLS}" | tr -cd '|' | wc -c) + 1 )) workloads"
-else
-  echo "  domain services: none deployed — gateway stays in-process"
-fi
+ENV_VARS="${ENV_VARS:+${ENV_VARS},}HODI_DOMAIN_SERVICE_URLS=${DOMAIN_URLS}"
+echo "  domain services: delegating to $(( $(echo "${DOMAIN_URLS}" | tr -cd '|' | wc -c) + 1 )) required workloads"
 
 # Durable trace backend, set only if BOTH halves of it actually exist: the API
 # enabled, and the runtime identity holding roles/cloudtrace.agent. Setting
@@ -145,43 +139,39 @@ HODI_E2E=1 GCP_PROJECT_ID="${PROJECT_ID}" HODI_SERVICE="${SERVICE}" HODI_REGION=
 if [ -n "${ENV_VARS}" ] && printf '%s' "${ENV_VARS}" | grep -q 'HODI_SIGNING=kms'; then
   SERVICE_URL="$(gcloud run services describe "${SERVICE}" \
     --region "${REGION}" --project "${PROJECT_ID}" --format='value(status.url)')"
-  VK_BODY="$(curl -s --max-time 90 "${SERVICE_URL}/verification-key" || true)"
+  if ! VK_BODY="$(curl -s --fail --max-time 90 "${SERVICE_URL}/verification-key")"; then
+    echo "FAIL: /verification-key could not be fetched" >&2
+    exit 1
+  fi
   printf '%s' "${VK_BODY}" | grep -q "BEGIN PUBLIC KEY" \
     || { echo "FAIL: /verification-key does not serve the public key"; exit 1; }
   echo "  /verification-key serves the KMS public key"
 fi
 
-# The revocation worker is a SEPARATE service that `make deploy` does not build.
-# On 2026-08-14 it silently ran 85 minutes behind HEAD — same repository, stale
-# image, nothing failing — carrying the pre-fix SA literals and the fail-open
-# storage path. A deploy that leaves a sibling service on older code should say
-# so rather than let the operator assume one coherent release.
+# The revocation worker is a separate service. `make deploy` rebuilds it from
+# the same source tree and refuses to omit its URL; this freshness proof catches
+# a worker revision that did not actually advance.
 WORKER_SERVICE="${HODI_REVOCATION_SERVICE:-hodi-revocation-worker}"
-WORKER_REV_CREATED="$(gcloud run revisions describe \
-  "$(gcloud run services describe "${WORKER_SERVICE}" --region "${REGION}" \
-       --project "${PROJECT_ID}" --format='value(status.latestReadyRevisionName)' 2>/dev/null)" \
+WORKER_REV="$(gcloud run services describe "${WORKER_SERVICE}" --region "${REGION}" \
+  --project "${PROJECT_ID}" --format='value(status.latestReadyRevisionName)')"
+WORKER_REV_CREATED="$(gcloud run revisions describe "${WORKER_REV}" \
   --region "${REGION}" --project "${PROJECT_ID}" \
-  --format='value(metadata.creationTimestamp)' 2>/dev/null || true)"
-if [ -n "${WORKER_REV_CREATED}" ]; then
-  HEAD_EPOCH="$(git -C "$(dirname "$0")/.." log -1 --format=%ct)"
-  # -u is load-bearing: Cloud Run stamps UTC, and `date -j -f` without it parses
-  # the string as LOCAL time. On a UTC-5 machine that shifted the worker's build
-  # 5 hours into the future and reported a genuinely stale worker as "coherent"
-  # — a freshness guard that lied in the safe-sounding direction, which is worse
-  # than no guard. Verified against a worker known to predate HEAD.
-  WORKER_EPOCH="$(date -j -u -f '%Y-%m-%dT%H:%M:%S' "${WORKER_REV_CREATED%%.*}" +%s 2>/dev/null \
-                  || date -u -d "${WORKER_REV_CREATED}" +%s 2>/dev/null || echo 0)"
-  if [ "${WORKER_EPOCH}" -lt "${HEAD_EPOCH}" ] 2>/dev/null; then
-    echo
-    echo "WARNING: ${WORKER_SERVICE} was built BEFORE the current HEAD commit."
-    echo "         It is running older code from this same repository."
-    echo "         Redeploy it:  ./scripts/deploy_revocation_worker.sh"
-  else
-    echo "  revocation worker: build postdates HEAD (coherent release)"
-  fi
+  --format='value(metadata.creationTimestamp)')"
+HEAD_EPOCH="$(git -C "$(dirname "$0")/.." log -1 --format=%ct)"
+if WORKER_EPOCH="$(date -j -u -f '%Y-%m-%dT%H:%M:%S' "${WORKER_REV_CREATED%%.*}" +%s 2>/dev/null)"; then
+  :
+elif WORKER_EPOCH="$(date -u -d "${WORKER_REV_CREATED}" +%s 2>/dev/null)"; then
+  :
 else
-  echo "  revocation worker: not deployed"
+  echo "FAIL: could not parse worker revision timestamp '${WORKER_REV_CREATED}'" >&2
+  exit 1
 fi
+if [ "${WORKER_EPOCH}" -lt "${HEAD_EPOCH}" ]; then
+  echo "FAIL: ${WORKER_SERVICE} was built before the current HEAD commit." >&2
+  echo "      Redeploy it with ./scripts/deploy_revocation_worker.sh." >&2
+  exit 1
+fi
+echo "  revocation worker: build postdates HEAD (coherent release)"
 
 echo
 echo "================================================================================"

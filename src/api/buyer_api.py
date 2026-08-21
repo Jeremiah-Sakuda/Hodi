@@ -1,3 +1,4 @@
+import os
 import uuid
 import base64
 import hashlib
@@ -16,6 +17,9 @@ from src.resolve.resolver import active_grant_events
 from src.gateway.prompt_inspector import PromptInspector
 from src.gateway.gateway import AgentGateway, GatewayPolicyDenial, DocumentAlreadyExists
 from src.agents.revocation_propagator import RevocationPropagatorAgent, CascadeResult
+from src.gateway.revocation_client import (
+    RevocationWorkerUnavailable, execute_revocation as execute_remote_revocation,
+)
 from src.api.auth import (
     AuthenticatedCounterparty, CredentialStore, RequestAuthenticationError, authenticate,
     HEADER_KEY_ID, HEADER_TIMESTAMP, HEADER_SIGNATURE
@@ -583,9 +587,31 @@ async def revoke_scope(req: RevokeRequest, request: Request):
     _verify_work_ownership_or_403(gateway, work_id=req.work_id,
                                   authenticated_artist_id=auth.counterparty_id)
 
+    worker_url = os.environ.get("HODI_REVOCATION_WORKER_URL", "").strip()
+    if worker_url and os.environ.get("HODI_OFFLINE") != "1":
+        try:
+            return execute_remote_revocation(
+                worker_url,
+                work_id=req.work_id,
+                revoked_use_type=req.revoked_use_type,
+                operation_id=req.operation_id,
+            )
+        except RevocationWorkerUnavailable as exc:
+            # Never fall back to executing under the front-door identity.  A
+            # fail-open fallback would silently collapse the workload boundary
+            # precisely when the private service is unavailable.
+            raise HTTPException(
+                status_code=503,
+                detail=f"Revocation worker unavailable; no effects were initiated: {exc}",
+            ) from exc
+
+    # Credential-free demo/test path. Production deployment refuses to start
+    # without HODI_REVOCATION_WORKER_URL, so this cannot become a silent live
+    # fallback (scripts/deploy.sh and its offline contract tests enforce that).
     propagator = RevocationPropagatorAgent(gateway=gateway, memory_bank_events=[])
     return propagator.execute_revocation_cascade(
-        work_id=req.work_id, revoked_use_type=req.revoked_use_type,
+        work_id=req.work_id,
+        revoked_use_type=req.revoked_use_type,
         operation_id=req.operation_id,
     )
 
