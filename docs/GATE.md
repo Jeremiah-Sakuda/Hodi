@@ -48,13 +48,13 @@ This document records the pre-committed decision gates for Hodi. All dates and d
 - Feature freeze at 23:59 UTC regardless of the answer.
 - Focus shifts entirely to documentation, video editing, and final bonus assets.
 
-**AMENDED by owner decision — 2026-08-14 (see §4):** the Aug 22 feature freeze is **lifted** for the judge-feedback implementation scope (HOD-701 through HOD-714) by the owner's explicit authorization. The recording-ready *question* stands and moves with the work: the video is recorded from a known-good revision after the feedback scope lands, and every on-camera duration is re-measured on that revision before recording (Observation vs. Prediction Rule). No other scope is unfrozen — the §7 cut list and non-goals are unchanged.
+**AMENDED by owner decision — 2026-08-14 (see §4):** the Aug 22 feature freeze is **lifted** for the external-review implementation scope (HOD-701 through HOD-714) by the owner's explicit authorization. The recording-ready *question* stands and moves with the work: the video is recorded from a known-good revision after the feedback scope lands, and every on-camera duration is re-measured on that revision before recording (Observation vs. Prediction Rule). No other scope is unfrozen — the §7 cut list and non-goals are unchanged.
 
 ---
 
 ## 4. Aug 14, 2026 — Owner Decision: Implement the External Review in Full
 
-An external judge-style review of the project was received and the owner **explicitly authorized** implementing it in full. Two pre-commitments in this file blocked that scope, and both overrides are recorded here rather than resolved silently (per AGENTS.md):
+An external technical review of the project was received and the owner **explicitly authorized** implementing it in full. Two pre-commitments in this file blocked that scope, and both overrides are recorded here rather than resolved silently (per AGENTS.md):
 
 1. **The PRD's banked status is lifted.** PRD v1.1 → v1.2, an *additive* amendment: a new requirement block (HOD-701 through HOD-714) covering work-scoped authorization, request-window temporal containment, assertion authority, the consent arbiter, the incident state machine and signed manifest, cryptographic provenance, execution leases, revocation idempotency, durable registry and memory bank, real workload-identity separation, the red-team drill, constrained negotiation, and durable trace export. No existing requirement is weakened or removed; the honesty invariants and non-goals are untouched.
 2. **The Aug 22 feature freeze is lifted** for exactly that scope (gate 3 above, amended in place).

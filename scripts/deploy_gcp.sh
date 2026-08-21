@@ -95,10 +95,13 @@ while IFS=$'\t' read -r account_id role_name conflict_domain; do
   # would undo the hardening with no test failing until the live E2E ran.
   # Skip the bind when the conditioned form is present.
   SA_EMAIL="${account_id}@${PROJECT_ID}.iam.gserviceaccount.com"
-  EXISTING_TITLES="$(gcloud projects get-iam-policy "${PROJECT_ID}" \
-    --flatten='bindings[].members' --format='value(bindings.condition.title)' \
-    --filter="bindings.members:serviceAccount:${SA_EMAIL} AND bindings.role:projects/${PROJECT_ID}/roles/${ROLE_ID}" 2>/dev/null || true)"
-  if printf '%s\n' "${EXISTING_TITLES}" | grep -q '^grant-log-only$'; then
+  if ! EXISTING_TITLES="$(gcloud projects get-iam-policy "${PROJECT_ID}" \
+      --flatten='bindings[].members' --format='value(bindings.condition.title)' \
+      --filter="bindings.members:serviceAccount:${SA_EMAIL} AND bindings.role:projects/${PROJECT_ID}/roles/${ROLE_ID}")"; then
+    echo "ERROR: could not inspect IAM bindings for ${SA_EMAIL}; refusing to guess and broaden access" >&2
+    exit 1
+  fi
+  if printf '%s\n' "${EXISTING_TITLES}" | grep -Eq '^(grant-log-only|revocation-default-only)$'; then
     echo "    (hardened: append-only already conditioned to (default) — not re-binding unconditionally)"
   else
     gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
@@ -145,6 +148,18 @@ for role in "projects/${PROJECT_ID}/roles/${ROLE_ID}" \
             "roles/datastore.viewer" \
             "roles/aiplatform.user" \
             "roles/logging.logWriter"; do
+  if [[ "${role}" == "roles/datastore.viewer" || "${role}" == "projects/${PROJECT_ID}/roles/${ROLE_ID}" ]]; then
+    if ! EXISTING_TITLES="$(gcloud projects get-iam-policy "${PROJECT_ID}" \
+        --flatten='bindings[].members' --format='value(bindings.condition.title)' \
+        --filter="bindings.members:serviceAccount:${RUNTIME_SA_EMAIL} AND bindings.role:${role}")"; then
+      echo "ERROR: could not inspect runtime IAM binding ${role}; refusing to guess and broaden access" >&2
+      exit 1
+    fi
+    if printf '%s\n' "${EXISTING_TITLES}" | grep -q '^front-door-default-only$'; then
+      echo "    (hardened: ${role} already conditioned to (default) — not re-binding unconditionally)"
+      continue
+    fi
+  fi
   gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${RUNTIME_SA_EMAIL}" \
     --role="${role}" --condition=None --quiet >/dev/null

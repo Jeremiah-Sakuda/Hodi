@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from google.cloud import firestore
 from src.api.buyer_api import router as buyer_router
 from src.gateway.gateway import GatewayPolicyDenial
+from src.schema.scope import UseType
 from pydantic import BaseModel
 from opentelemetry import trace as otel_trace
 from src.observability.tracing import active_exporter_kind
@@ -347,6 +348,25 @@ def evidence_read(collection: str, filters=None):
         target_collection=collection, filters=filters)
 
 
+def evidence_counts(collections: list) -> dict:
+    """Counts for several evidence collections in one hop when delegating."""
+    from src.gateway.domain_client import DomainServiceClient
+    domains = DomainServiceClient()
+    if domains.handles("evidence_agent"):
+        from src.gateway.domain_client import _post
+        out = _post(domains._urls["evidence_agent"], "/internal/domain/counts",
+                    {"role": "evidence_agent", "collections": list(collections)})
+        return out.get("counts", {})
+    counts = {}
+    for c in collections:
+        try:
+            counts[c] = len(evidence_read(c))
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"Failed to count '{c}': {e}")
+            counts[c] = "unavailable"
+    return counts
+
+
 def evidence_append(collection: str, record: dict) -> str:
     import uuid as _uuid
     doc_id = str(_uuid.uuid4())
@@ -614,11 +634,18 @@ def verify_front_door_oidc(request: Request) -> str:
 
 class DomainOperation(BaseModel):
     role: str
-    collection: str
+    collection: str = ""
+    collections: Optional[List[str]] = None
     filters: Optional[Dict[str, Any]] = None
     session_context: Optional[Dict[str, Any]] = None
     doc_id: Optional[str] = None
     data: Optional[Dict[str, Any]] = None
+
+
+class InternalRevocationOperation(BaseModel):
+    work_id: str
+    revoked_use_type: UseType
+    operation_id: Optional[str] = None
 
 
 def _domain_service_or_404(req: "DomainOperation") -> str:
@@ -665,6 +692,39 @@ async def domain_read(req: DomainOperation, request: Request):
     return {"role": role, "collection": req.collection, "documents": docs}
 
 
+@app.post("/internal/domain/counts", response_class=JSONResponse)
+async def domain_counts(req: DomainOperation, request: Request):
+    """
+    Count several collections of ONE domain in ONE round trip.
+
+    /evidence-counts reports four evidence classes. Delegated one collection at
+    a time that is four sequential authenticated HTTPS hops for a single public
+    page — measured at ~3.7 s warm. All four live in the same database behind
+    the same workload, so asking four times is purely our own doing. Each
+    collection is still policy-checked individually; batching changes how many
+    times we ask, never what is permitted.
+    """
+    role = _domain_service_or_404(req)
+    verify_front_door_oidc(request)
+    from src.gateway.gateway import AgentGateway, GatewayPolicyDenial
+    from src.schema.iam_policy import AGENT_SA_MAP
+    gw = AgentGateway()
+    out = {}
+    for collection in (req.collections or []):
+        try:
+            out[collection] = len(gw.read_collection(
+                calling_sa=AGENT_SA_MAP[role]["sa_email"], calling_role_key=role,
+                target_collection=collection))
+        except GatewayPolicyDenial:
+            # A denial is an ANSWER about that collection, and it must not take
+            # the other three down with it.
+            out[collection] = "denied"
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"count failed for '{collection}': {e}")
+            out[collection] = "unavailable"
+    return {"role": role, "counts": out}
+
+
 @app.post("/internal/domain/write", response_class=JSONResponse)
 async def domain_write(req: DomainOperation, request: Request):
     """A domain append, performed by the workload that owns the domain."""
@@ -678,6 +738,37 @@ async def domain_write(req: DomainOperation, request: Request):
         calling_sa=AGENT_SA_MAP[role]["sa_email"], calling_role_key=role,
         target_collection=req.collection, doc_id=req.doc_id, data=req.data)
     return {"role": role, "collection": req.collection, "doc_id": req.doc_id, "status": "APPENDED"}
+
+
+@app.post("/internal/revocation/execute", response_class=JSONResponse)
+async def execute_private_revocation(req: InternalRevocationOperation, request: Request):
+    """Execute the mutating cascade only inside the propagator workload.
+
+    Cloud Run IAM rejects anonymous callers first; this handler then pins the
+    workload role from its environment and verifies the front door's OIDC
+    identity.  The response carries an explicit surface marker so the caller
+    cannot mistake an unrelated HTTP 200 for execution by this worker.
+    """
+    role = _domain_service_or_404(DomainOperation(
+        role="revocation_propagator", collection="grants"))
+    if role != "revocation_propagator":
+        raise HTTPException(status_code=404, detail="Not found.")
+    verify_front_door_oidc(request)
+
+    from src.agents.revocation_propagator import RevocationPropagatorAgent
+    from src.gateway.gateway import AgentGateway
+
+    result = RevocationPropagatorAgent(
+        gateway=AgentGateway(), memory_bank_events=[]
+    ).execute_revocation_cascade(
+        work_id=req.work_id,
+        revoked_use_type=req.revoked_use_type,
+        operation_id=req.operation_id,
+    )
+    return {
+        "execution_surface": "private-revocation-worker",
+        "result": result.model_dump(mode="json"),
+    }
 
 
 @app.get("/internal/accrual_audit", response_class=JSONResponse)
@@ -764,13 +855,13 @@ async def get_evidence_counts(request: Request):
     # the migration and reported 7 crawler_access records against a corpus of
     # 1904 — a live surface confidently serving a number from the database the
     # data had just left. "unavailable" on failure, never a plausible number.
-    counts = {}
-    for evidence_class, collection in class_collections.items():
-        try:
-            counts[evidence_class] = len(evidence_read(collection))
-        except Exception as e:
-            logger.error(f"Failed to count '{collection}': {e}")
-            counts[evidence_class] = "unavailable"
+    try:
+        by_collection = evidence_counts(list(class_collections.values()))
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Evidence counts unavailable: {e}")
+        by_collection = {}
+    counts = {cls: by_collection.get(coll, "unavailable")
+              for cls, coll in class_collections.items()}
 
     try:
         from src.gateway.prompt_inspector import PromptInspector

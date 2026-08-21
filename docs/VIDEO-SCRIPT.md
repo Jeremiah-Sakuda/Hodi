@@ -9,7 +9,7 @@
 > **Two commands in this script would have failed on camera, and did.** Run exactly as previously
 > written, Beat 3 and the hero's Frames A and C returned **HTTP 422 — `work_id` Field required**:
 > `ScopeRequest.work_id` and `NaturalScopeRequest.work_id` are required with no default
-> ([src/api/buyer_api.py:191](../src/api/buyer_api.py:191), [:288](../src/api/buyer_api.py:288)), and
+> ([src/api/buyer_api.py:191](../src/api/buyer_api.py#L191), [:288](../src/api/buyer_api.py#L288)), and
 > the bodies here carried none. A banner had warned about this since the build that introduced it; the
 > banner was written and the bodies were never changed. **A warning is not a fix.**
 >
@@ -53,7 +53,7 @@ record:
 
 | Action | Measured (2026-08-14, rev `00054-swn`, unless noted) | Beat budget |
 |---|---|---|
-| Revocation cascade, **1 affected grant** | **1785 – 2119 ms** round-trip, ~1896 ms avg | 45 s |
+| Revocation cascade, **1 affected grant** | **1785 – 2119 ms** round-trip, ~1896 ms avg — last observed before the private-worker cutover; re-measure before recording | 45 s |
 | Revocation cascade, **2 affected grants** | **5086 / 5275 / 4953 ms** (2026-08-09) — see the trap below | — |
 | `POST /api/v1/license`, **permitted** (Frame A) | **1495 – 2036 ms**, ~1675 ms avg over 6 warm runs | — |
 | `POST /api/v1/license`, **denied** (Frame C) | **1591 ms** — it pays the custodian hop before it can refuse | — |
@@ -297,9 +297,12 @@ make demo
 monolith here would itself be the violation. Every denial is a structured event, never a silent
 refusal.
 
-> Say **"policy identities"** — the four SAs exist in GCP with the append-only role, but the
-> deployed service is one Cloud Run process and the separation is enforced in-process. The README
-> says this; the video must not imply four runtime principals.
+> Say **"workload identities"** — identity, commercial, evidence, and adjudication are four private
+> Cloud Run services under distinct service accounts and named databases. The front door cannot read
+> those databases and must invoke the owning workload. The shared append-only grant log remains in
+> `(default)`, where counterparty row separation is gateway-enforced. Do not describe the fleet as one
+> process. Before recording, verify the post-review revocation-worker cutover and update the measured
+> cascade timing; until then that cutover is implemented but not observed live.
 
 ---
 
@@ -405,8 +408,9 @@ EOF
 **Measured: 1785 – 2119 ms** round-trip warm, ~1896 ms average (2026-08-14, revision 00054-swn), with
 one affected grant. `metrics.json` records 2263 ms cold / 737 ms warm. It rose from ~519 ms when the
 cascade gained an execution lease and an idempotency outbox — a retry cannot double-issue a notice,
-and an abandoned worker cannot commit late. **Burn in the wall clock — under a second, and it is
-now buying exactly-once effects.**
+and an abandoned worker cannot commit late. **Burn in the wall clock — the last observed run was
+roughly two seconds, not under one, and it is buying the authenticated ownership hop plus exactly-once
+effects. Re-measure after the private-worker cutover and narrate only that observed value.**
 
 On screen, in the response (all seven top-level keys confirmed present on 2026-08-14):
 - `derived_scopes` — `fine_tuning`, `human_reference`, `rag_retrieval`, `training`, walked from the

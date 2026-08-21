@@ -103,7 +103,7 @@ class TestRuntimeIdentityProvisioning(unittest.TestCase):
     Offline: deploy_gcp.sh binds the runtime identity for append + read and
     withholds every role that could rewrite history.
 
-    This is the guard for the defect the final panel found: the four agent SAs
+    This is the guard for a readiness-review defect: the four agent SAs
     held the append-only role, but the deployed PROCESS ran as the default
     compute SA with roles/editor, so the identity that actually writes grant
     events could also update and delete them. The invariant was true of the
@@ -192,7 +192,7 @@ class TestDeployedRuntimeIdentityCannotRewriteHistory(unittest.TestCase):
     Live: the identity the deployed Cloud Run service actually executes as holds
     no permission to update or delete a grant event.
 
-    This is the panel's exact finding, answered against reality rather than the
+    This is the readiness review's exact finding, answered against reality rather than the
     script: read the service's runtime service account, enumerate every role it
     holds, expand each role's permissions, and assert the UNION contains neither
     datastore.entities.update nor .delete. It is the strongest form of the claim

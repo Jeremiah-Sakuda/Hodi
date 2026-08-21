@@ -153,10 +153,13 @@ for r in "roles/datastore.viewer" "projects/${PROJECT_ID}/roles/hodiAppendOnlyGr
   ok "conditioned to (default): ${r}"
 done
 for r in "roles/datastore.viewer" "projects/${PROJECT_ID}/roles/hodiAppendOnlyGrantWriter"; do
-  gcloud projects remove-iam-policy-binding "${PROJECT_ID}" \
-    --member="serviceAccount:${FRONT_DOOR_SA}" --role="${r}" \
-    --condition=None --quiet >/dev/null 2>&1 || true
-  ok "unconditioned grant removed: ${r}"
+  if gcloud projects remove-iam-policy-binding "${PROJECT_ID}" \
+      --member="serviceAccount:${FRONT_DOOR_SA}" --role="${r}" \
+      --condition=None --quiet >/dev/null 2>&1; then
+    ok "unconditioned grant removed: ${r}"
+  else
+    info "no unconditional grant present: ${r}"
+  fi
 done
 
 # PROOF: the front door now holds NO unconditioned database grant. An

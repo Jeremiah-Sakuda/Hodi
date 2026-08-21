@@ -58,6 +58,34 @@ class TestDomainDatabaseMapIsCoherent(unittest.TestCase):
         # It PROVES the deployed identity rather than only reporting it.
         self.assertIn("PROOF", script)
         self.assertIn("FAIL", script)
+        self.assertIn("revocation-default-only", script)
+        self.assertIn("HODI_SERVICE_ROLE=revocation_propagator", script)
+        self.assertIn("roles/run.invoker", script)
+
+    def test_worker_has_no_unconditioned_database_grant(self):
+        """The split is false if a broad viewer or append role sits beside the
+        default-database condition."""
+        script = (ROOT / "scripts" / "deploy_revocation_worker.sh").read_text()
+        self.assertIn("resource.name.endsWith('/databases/(default)')", script)
+        self.assertIn("remove-iam-policy-binding", script)
+        self.assertIn("propagator still holds unconditioned database grants", script)
+
+    def test_main_deploy_requires_the_private_worker(self):
+        script = (ROOT / "scripts" / "deploy.sh").read_text()
+        self.assertIn("./scripts/deploy_revocation_worker.sh", script)
+        self.assertIn("no live in-process fallback", script)
+
+    def test_general_deploy_cannot_restore_broad_database_roles(self):
+        """A routine redeploy must preserve IAM narrowing already in place."""
+        script = (ROOT / "scripts" / "deploy_gcp.sh").read_text()
+        self.assertIn("front-door-default-only", script)
+        self.assertIn("revocation-default-only", script)
+        self.assertIn("refusing to guess and broaden access", script)
+        self.assertNotIn("2>/dev/null || true", script)
+
+    def test_domain_deploy_does_not_mask_unconditional_role_removal(self):
+        script = (ROOT / "scripts" / "deploy_domain_services.sh").read_text()
+        self.assertNotIn("--condition=None --quiet >/dev/null 2>&1 || true", script)
 
 
 @unittest.skipUnless(os.environ.get("HODI_E2E") == "1",

@@ -77,7 +77,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // HOD-370: Evidence grouped by class, no totals.
         const classes = [
-            { id: 'crawler_access', label: 'Crawler Access', count: counts.crawler_access, note: 'designed-and-instrumented-but-not-yet-observed' },
+            { id: 'crawler_access', label: 'Crawler Access', count: counts.crawler_access, note: 'observed user-agent matches; attributable, not authenticated' },
             { id: 'canary_hit', label: 'Canary Hits', count: counts.canary_hit, note: 'No occurrences yet' },
             { id: 'verbatim_match', label: 'Verbatim Matches', count: counts.verbatim_match, note: 'No occurrences yet' },
             { id: 'redistribution', label: 'Redistribution', count: counts.redistribution, note: 'No occurrences yet' },

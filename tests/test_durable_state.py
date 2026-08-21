@@ -148,7 +148,7 @@ class TestRegistrySurvivesInstanceDeath(unittest.TestCase):
 
     def test_the_default_registry_is_durable_not_process_local(self):
         """
-        The judge's finding, guarded: AgentRegistry() defaulted to
+        The readiness-review finding, guarded: AgentRegistry() defaulted to
         InMemoryEventStore, and build_fleet()/IncidentEngine constructed it
         bare — so the durable registry was built, tested, and never used.
         A mechanism that is not wired is indistinguishable from one that was

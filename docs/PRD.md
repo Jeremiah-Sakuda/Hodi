@@ -2,7 +2,7 @@
 
 **Version:** 1.2 · **Date:** Aug 5, 2026 (v1.2 amendment Aug 14, 2026) · **Owner:** Jeremiah Sakuda
 **Entity:** Individual entry · **Hackathon:** All Things Agentic (deadline Aug 31, 7:00 PM CDT = **Sep 1, 00:00 UTC**)
-**Category:** The Fortified Enterprise Fleet · **Prize targets:** Fortified Enterprise Fleet (primary, $20,000); Grand Prize (upside). *Individual/Hobbyist has two winners and Baraza also sits there — no collision, but no stacking either: each project wins at most one prize.*
+**Category:** The Fortified Enterprise Fleet.
 **Name:** *Hodi* — what you call at someone's door before entering. The Swahili answer to "you knock first."
 **Opening line:** *"Your voice is in a product you never agreed to."* · **Thesis line:** *"Hodi is the knock."*
 
@@ -16,9 +16,8 @@
 | 5 | **Wall-clock measured 3× on the deployed path** (HOD-317) | Two live beats whose duration was an assumption; you get one take. |
 | 6 | **Seconds-denominated video cut order** (§6) | The build cut list cannot recover video runtime on Aug 27. Eight proofs in 3:40 needs its own ladder. |
 | 7 | `verbatim_match` fallback stated (HOD-320) | The one evidence class needing an external model surface. |
-| 8 | Individual/Hobbyist dilution noted (§9) | Two entries from one author in a two-slot pool is not a doubled chance. |
 
-**Changelog v1.1 → v1.2 (Aug 14, 2026)** — an external judge-style review was implemented in full by explicit owner decision; the banked-PRD and feature-freeze overrides are recorded in `docs/GATE.md` §4. All additions; no existing requirement weakened; invariants and non-goals untouched.
+**Changelog v1.1 → v1.2 (Aug 14, 2026)** — an external technical review was implemented in full by explicit owner decision; the banked-PRD and feature-freeze overrides are recorded in `docs/GATE.md` §4. All additions; no existing requirement weakened; invariants and non-goals untouched.
 | # | Change | Reason |
 |---|---|---|
 | 1 | **Authorization tuple gains the resource** (HOD-701) | A buyer's training grant for Work A must not imply training rights for Work B. Grants were matched by counterparty alone — the review's top correctness finding, and the repo's own recorded open item. |
@@ -302,7 +301,7 @@ Every AC below names the property it proves. Before accepting any: *could this g
 | Rule | Why |
 |---|---|
 | **Every adversary in every fixture is a fictional, unnamed scraper.** No real company appears as a violator in the repo, video, blog, or social post — and never Google. | The framing decides whether this is a sponsor story or a sponsor liability. One frame showing a real crawler being caught undoes the entire positioning. |
-| Never claim training-set membership. | Unsolved problem; a technical judge knows within thirty seconds. |
+| Never claim training-set membership. | Membership inference against frontier models is unsolved. The claim would be false, and a system built on refusing to overclaim cannot make it. |
 | Never imply revocation removes work from a model. | It terminates a grant. Anything more is false. |
 | Never render an aggregate across evidence classes. | Honest tiers collapse into a dishonest number the moment they're summed. |
 | Lead artist-side; architect two-sided. | The story and the Unlikely Hero are artist-side; the API surface is buyer-side. |
@@ -334,18 +333,10 @@ Eight proofs is too many for 3:40 with an uncompressible 45-second hero. Budget 
 
 **Never cut:** the revocation cascade at 45 seconds; the Prompt Inspector catch landing live inside the request window; Diagram B; the thesis at 0:08 and at close; the wall clock's continuity.
 
-## 9. Prize notes
-
-**Fleet is the category and the floor.** It has the most explicit mandatory checklist in the contest, and §2 answers all seven items with mechanisms — the cheapest points available anywhere in this portfolio. Do not reposition to Taskmaster or Collaborative Partner; the fit exists but is weaker, and repositioning forfeits the checklist advantage.
-
-**Individual/Hobbyist dilution, stated so it isn't discovered in October.** Two winners, and Baraza also sits in that pool. That is not a doubled chance: a judge who recognizes both entries as one author's may spread the awards rather than concentrate them. Neither entry should be built or framed toward it.
-
-**Not targets:** Startup Excellence (individual entry; and §1.4's no-PMF rule stands — do not relitigate it), Best Multimodal UX. Best Architectural Design is a consolation at a quarter the value of the category prize — maximize the architecture score because it is 30% of every path that matters, not because of the $5k.
-
 ## 7. Cut list
 **Cut now:** payments, escrow, marketplace UI, takedown automation, any second front-end, Veo/Lyria.
 **Aug 14 / Aug 22 abort order:** Gemma Vertex proof (keep Ollama + diagram + README) → redistribution evidence class → canary class (keep the mechanism documented) → artist console polish → verbatim-match class.
 **Never on the abort list:** the four conflict boundaries and their negative tests, the revocation cascade, the honesty invariants and their lints, Diagram B, `make demo`, the README, the blog, the social posts, `## Findings and learnings`.
 
 ## 8. Build toolchain
-Karani's §8 applies unchanged: **Gemini at runtime, exclusively**; Antigravity as the build and orchestration environment with ADK pre-committed as the fallback; every shipped prompt iterated in-family; long-context passes for whole-repo audits; `/docs/BUILD-LOG.md` with verbatim prompts, outcomes, and 2–3 key decisions per session. The highest-value findings here are **Antigravity's multi-agent scoping and OTel span emission**, which is the least externally documented surface in the SDK and the one a Fleet judge will most want to read about.
+**Gemini at runtime, exclusively.** Runtime agent execution runs on **ADK + the OpenTelemetry SDK**, which was the pre-committed fallback and became the shipped path: the headless multi-agent assertion failed at the first check and the branch executed the same day — the negative result and its verbatim error are recorded in `docs/FINDINGS.md` and the README rather than quietly dropped. `docs/BUILD-LOG.md` carries the outcomes and the key decisions per session.
