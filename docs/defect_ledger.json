@@ -122,6 +122,11 @@
           "id": "migration-verification-compared-the-wrong-sets",
           "summary": "The migration verified a copy by comparing the destination's WHOLE digest against the source's, which holds only when the destination starts empty. The incremental sweep therefore aborted rather than deleting rows it could not prove it had copied — correct instinct, wrong comparison. The property is containment: every source document present byte for byte, with the destination legitimately holding more.",
           "source": "docs/FINDINGS.md — the conflict boundary became a credential boundary"
+        },
+        {
+          "id": "derived-count-checks-were-unreachable-code",
+          "summary": "Adding a new derived-count check to scripts/check_doc_metrics.py inserted its helper function INTO the body of check_derived_counts, splitting that function in two. Everything from the `checks = [...]` list onward — the guards on the correction-note count, the containment truth-table count, the offline-test count and the typed-evidence-class count — became statements after a `return`, unreachable. The script continued to print 'Doc metric check PASSED' naming documents it had stopped reading. Found by mutating README figures and observing that three known-wrong numbers all passed; the check had been green for exactly one edit. Python raises nothing for code after a return, so the only signal available was the mutation.",
+          "source": "scripts/check_doc_metrics.py — _count_e2e_gated_tests is now module-level, before its caller"
         }
       ]
     },

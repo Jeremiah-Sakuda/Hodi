@@ -44,9 +44,9 @@ I built a system whose entire premise is refusing to assert what it cannot verif
 
 The project is called Hodi — *hodi* is what you call at someone's door before entering. It's a governed fleet of agents that administers creative consent: registering works with proof of control, expressing machine-readable licensing terms, negotiating with buyers under confidentiality, propagating revocations. Four agents separated by conflict of interest, an append-only event log, and a set of honesty invariants that are supposed to be enforced by structure rather than by good intentions.
 
-Over about seventy-two hours it produced forty-four real defects. They sort into nine classes. **Four of those classes recurred after being fixed once** — which is the actually interesting part, because a bug you fix twice is telling you something a bug you fix once is not.
+Over about seventy-two hours it produced forty-five real defects. They sort into nine classes. **Four of those classes recurred after being fixed once** — which is the actually interesting part, because a bug you fix twice is telling you something a bug you fix once is not.
 
-The title says seven. The ledger says nine, and it says forty-four rather than the fifteen this piece was published with — because the count is now generated from an enumerated ledger instead of typed into seven documents by hand, and the enumeration found more than the prose had been carrying. The old number had already drifted: fifteen here, fourteen everywhere else. **A number repeated in seven places and derived in none is not a measurement**, and it is the same defect class as two others in the ledger below. So the title stays as a record of what I thought the shape was, and the number moves, because that one is checked by a build step now.
+The title says seven. The ledger says nine, and it says forty-five rather than the fifteen this piece was published with — because the count is now generated from an enumerated ledger instead of typed into seven documents by hand, and the enumeration found more than the prose had been carrying. The old number had already drifted: fifteen here, fourteen everywhere else. **A number repeated in seven places and derived in none is not a measurement**, and it is the same defect class as two others in the ledger below. So the title stays as a record of what I thought the shape was, and the number moves, because that one is checked by a build step now.
 
 Before the ledger, the one idea worth understanding, because most of what follows only lands if you have it.
 
@@ -189,7 +189,7 @@ Everywhere I hadn't built that wire, things drifted.
 
 Worth saying plainly: much of this was built with agentic assistance, and several classes in this ledger are that practice's characteristic failure modes — infrastructure reported done without an observed execution, tests that assert what they were just constructed to assert, transcripts written rather than captured. The speed is real and so is that failure surface. The guards are the answer to it specifically: **a mechanism that fails loudly is the only thing that distinguishes work verified from work reported as verified.** Reading more carefully does not scale; a build that goes red does.
 
-So the fixes that matter aren't the forty-four patches. They're the four guards:
+So the fixes that matter aren't the forty-five patches. They're the four guards:
 
 - **One list, two consumers.** The self-traffic user agents live in one module now, imported by both the audit script and the triage engine. The duplication that caused the same defect twice is gone.
 - **Docs must equal the tool.** A check fails the build if any *accrual* number — the ones that carry the honesty finding — disagrees between the regenerated metrics file and the README, the honesty diagram, or the submission text. Named figures, not every integer in the repo; the ones where drift would change what a reader believes.

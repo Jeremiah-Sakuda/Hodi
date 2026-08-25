@@ -777,3 +777,84 @@ The Aug 14 checkpoint gate (HOD-006) was due today and passed 8/8 — recorded a
 3. Demote deployment status until a real run verifies the new revision — passing offline tests proves implementation behavior, not deployed IAM, routing, KMS, or latency.
 
 **Requirements touched:** HOD-102, HOD-311, HOD-312, HOD-350, HOD-510, HOD-620, HOD-711, HOD-715, HOD-733
+
+---
+
+### 2026-08-25 — Final Panel Fixes: Exposure Guards, Temporal Correctness, Credential Isolation, and the Reel
+
+**Prompt (summary):** a final review panel raised submission-exposure leaks, an unenforced temporal
+predicate in the revocation cascade, credentials sharing a database with the grant log, an
+under-covered route-authentication guard, and a video that overran its cap with the cloud evidence in
+the last cuttable position.
+
+**Outcome:** All five addressed, each with a guard rather than a correction.
+
+1. **Submission exposure.** `tests/test_submission_exposure.py` fails the build on evaluation-score
+   literals and on any named vendor crawler appearing as a violator, enforcing the rule AGENTS.md and
+   the PRD had both written down and both broken. Recorded evidence (`docs/metrics.json`, the response
+   caches) is exempt by name: editing measured data to satisfy a prose rule would be tampering, not
+   compliance.
+2. **Generated artifacts.** `tests/test_generated_artifacts_are_current.py` compares **git commit
+   times, not mtimes** — a fresh clone gives every file an identical mtime, so the mtime version of
+   this check would have passed vacuously in CI, which is the failure mode it exists to prevent. The
+   conflict matrix is regenerated and diffed, and restored in a `finally`.
+3. **Temporal correctness.** `is_scope_current()` is now one shared predicate in
+   `src/resolve/evaluator.py`, called by both `permits()` and the revocation cascade. The cascade
+   previously selected affected grants by lattice containment alone and would have cascaded into
+   expired scopes; it also re-read the clock inside its loop. `cascade_at` is fixed once before the
+   loop. The tests call `execute_revocation_cascade` rather than restating the predicate — the first
+   version of them asserted the predicate directly, passed the mutation, and was rewritten.
+4. **Credential isolation.** `counterparty_credentials` moved to its own `hodi-credentials`
+   database. Firestore IAM is database-scoped, so while the HMAC secrets sat in `(default)` beside the
+   grant log, the append-only role every agent identity holds granted `datastore.entities.get` over
+   them: under this project's own compromised-agent threat model, one container compromise yielded
+   every counterparty's credentials. `scripts/prepare_recording.py` was sharing the grants client and
+   would have swept an empty collection while reporting success.
+5. **Route authentication.** The app-wide coverage guard found **zero** `/api` routes while the test
+   client served them: FastAPI stores included routers as `_IncludedRouter`, whose `.routes` attribute
+   is a string. Walking `original_router` took coverage from 7 routes to 11. Until this was fixed the
+   guard reported success over an enumeration missing every route that has ever broken.
+6. **The reel.** Narration cut to **367 spoken words** (147 s inside a 200 s runtime), and the Google
+   Cloud proof moved from Beat 8 to Beat 2 at **0:35**, out of the cut ladder entirely — in a
+   cloud-infrastructure category the cloud evidence must not be the first thing an overrun eats. The
+   budget total, the beat-to-row correspondence, the stated word count and the position of the cloud
+   proof are now all recomputed by `tests/test_recording_script_contract.py`.
+
+**Two defects found by mutation-testing the new guards, not by running them:**
+
+- **`scripts/check_doc_metrics.py` was checking nothing.** Adding a derived-count helper inserted it
+  *into* `check_derived_counts`, splitting that function so everything from `checks = [...]` onward
+  became statements after a `return`. Python raises nothing for unreachable code. The script kept
+  printing `Doc metric check PASSED` while naming four documents it had stopped reading. Found by
+  mutating three known-good README figures and observing that all three passed. New ledger entry:
+  `derived-count-checks-were-unreachable-code`, in `tests-that-could-not-fail`, which is now the
+  thirteenth member of the project's most-recurring class.
+- **The defect count in four documents had never been checked.** `NUMBER_WORDS` stopped at thirty and
+  `_as_int` returns `None` above it, which the ledger check treats as "not a number, skip". So
+  `forty-four defects` — the headline figure in the README, the project site, the Devpost draft and
+  both copies of the blog — matched the pattern, resolved to `None`, and was silently skipped every
+  run. The compounds are now generated rather than listed. The count is **forty-five**.
+
+**Measured, re-measured because the architecture moved under the old figures:**
+- Revocation cascade through the private worker: **2334–3307 ms**, median **2389 ms**, mean 2563 ms
+  over 7 warm runs, rev `00059-z55`. Statistically unchanged from before the cutover.
+- `make demo-live`: **8.62 / 8.91 / 9.35 s** warm. The recording script had carried "~2.2 s warm"
+  since before the domain split — a figure measured when one process answered all six probes without
+  leaving itself.
+- `scripts/prepare_recording.py` now reads its predicted cascade base from `docs/metrics.json`
+  instead of two disagreeing hardcoded comments.
+
+**Key decisions:**
+1. **Fix the mechanism, never the number.** Every drift above was resolved by making the figure
+   derived and the derivation enforced, not by retyping it.
+2. **Mutation-verify every new guard before trusting it.** Three tests written this session passed
+   their own mutations on the first attempt and were rewritten as behavioral; two shipped guards were
+   found to be inert the same way. A guard that has not been shown to fail has not been shown to work.
+3. **Derive the OIDC audience from the `Host` header, not a literal.** One image runs five Cloud Run
+   services, so a single canonical-domain constant made the worker compare a token correctly minted
+   for its own URL against the front door's, and the cascade returned 503.
+
+**Requirements touched:** HOD-311, HOD-350, HOD-510, HOD-620, HOD-711, HOD-730, HOD-733, HOD-745
+
+**Deployment:** `revocation_route_worker_cutover` and `split_revocation_worker` verified live against
+rev `00059-z55`. `docs/deployment_status.json` now reports **12 verified, zero unproven**.

@@ -201,5 +201,90 @@ class RecordingScriptDoesNotNarrateARetiredClaimTest(unittest.TestCase):
                 self.fail(f"VIDEO-SCRIPT.md still narrates UNSIGNED_PLACEHOLDER as current: {line!r}")
 
 
+class RecordingScriptBudgetIsArithmeticNotAspirationTest(unittest.TestCase):
+    """The script asserts a runtime and a narration length. Both are checkable.
+
+    The round-12 panel's finding was that the video overruns and that the Google
+    Cloud proof — last beat before the close — is the first thing an overrun
+    eats. The response was to cut narration and move that beat to 0:35. Both
+    halves of that response are claims *written in the document about the
+    document*, which is precisely the shape this repo keeps getting wrong: the
+    budget table said 205 s while its own rows summed elsewhere, and a stated
+    word count is a number a later edit silently invalidates.
+
+    So: the total is recomputed from the rows, every `### Beat N` heading must
+    have a row, and the stated narration word count must equal the actual sum of
+    the `**Say:**` blocks. A rewritten beat that pushes the reel over the cap now
+    fails a test instead of being discovered on the day.
+    """
+
+    HARD_CAP_S = 240
+
+    def setUp(self):
+        self.text = SCRIPT.read_text()
+
+    def _budget_rows(self):
+        rows = []
+        for m in re.finditer(r"^\|\s*(\d+)\s*\|(.+?)\|\s*(\d+)\s*s\s*\|\s*$",
+                             self.text, re.M):
+            rows.append((int(m.group(1)), m.group(2).strip(), int(m.group(3))))
+        self.assertTrue(rows, "no numbered budget rows parsed — the guard would pass vacuously")
+        return rows
+
+    def test_every_beat_heading_has_a_budget_row(self):
+        headings = {int(m.group(1)) for m in
+                    re.finditer(r"^### Beat (\d+)\b", self.text, re.M)}
+        budgeted = {n for n, _, _ in self._budget_rows()}
+        self.assertEqual(headings, budgeted,
+                         f"beats and budget rows disagree: headings={sorted(headings)} "
+                         f"budget={sorted(budgeted)}")
+
+    def test_stated_total_equals_the_sum_of_its_own_rows_and_fits_the_cap(self):
+        beats = sum(secs for _, _, secs in self._budget_rows())
+        trans = re.search(r"^\|\s*—\s*\|\s*Transitions\s*\|\s*(\d+)\s*s\s*\|",
+                          self.text, re.M)
+        self.assertIsNotNone(trans, "transitions row missing from the budget table")
+        computed = beats + int(trans.group(1))
+
+        stated = re.search(r"\*\*Total\*\*\s*\|\s*\*\*(\d+)\s*s", self.text)
+        self.assertIsNotNone(stated, "budget table states no total")
+        self.assertEqual(computed, int(stated.group(1)),
+                         "the budget table's total is not the sum of its rows")
+        self.assertLessEqual(computed, self.HARD_CAP_S,
+                             f"{computed}s exceeds the {self.HARD_CAP_S}s hard cap")
+
+    def test_stated_narration_word_count_is_the_real_one(self):
+        said = re.findall(r"\*\*Say:\*\*(.*?)(?=\n\n|\Z)", self.text, re.S)
+        self.assertGreater(len(said), 5, "almost no Say blocks parsed — guard is vacuous")
+        # Drop the parenthetical stage directions; they are not spoken.
+        actual = sum(len(re.sub(r"\*?\(≈?[^)]*\)\*?", " ", block).split())
+                     for block in said)
+
+        stated = re.search(r"\*\*(\d+) words\*\* — at a deliberate 150 wpm", self.text)
+        self.assertIsNotNone(stated, "the budget section no longer states a narration word count")
+        self.assertAlmostEqual(
+            actual, int(stated.group(1)), delta=8,
+            msg=f"script narrates {actual} words but claims {stated.group(1)}")
+
+    def test_the_google_cloud_proof_is_early_and_out_of_the_cut_ladder(self):
+        """The panel's actual finding, pinned so an edit cannot quietly undo it."""
+        rows = self._budget_rows()
+        cloud = [(n, secs) for n, label, secs in rows if re.search(r"cloud proof", label, re.I)]
+        self.assertEqual(len(cloud), 1, f"expected exactly one Google Cloud proof row, got {cloud}")
+        n, _ = cloud[0]
+
+        elapsed_before = sum(secs for num, _, secs in rows if num < n)
+        self.assertLessEqual(
+            elapsed_before, 60,
+            f"the Google Cloud proof starts at {elapsed_before}s; a cloud-infrastructure "
+            "submission must show its cloud evidence inside the first minute")
+
+        ladder = re.search(r"deepest reserve first.*?(?=\n\n\*\*Never cut)", self.text, re.S)
+        self.assertIsNotNone(ladder, "the cut ladder is gone; this guard would pass vacuously")
+        self.assertNotRegex(
+            ladder.group(0), r"(?i)(gcp|google cloud) proof\s*→",
+            "the Google Cloud proof is back in the cut ladder")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,8 +1,13 @@
 # Hodi — recording script
 
-> **CURRENT AS OF 2026-08-14T21:10Z, revision `hodi-evidence-endpoint-00054-swn`.** Every command in
-> this file was executed against that deployed revision on that date, and every duration below is the
-> round-trip that run produced. The earlier stale-banner warning is retired because the thing it
+> **CURRENT AS OF 2026-08-25, revision `hodi-evidence-endpoint-00059-z55`.** Every command in this
+> file was executed against a deployed revision and every duration below is the round-trip that run
+> produced — but they were **not all produced on the same day**, and the table says which. The hero
+> cascade and the live boundary test were re-measured on **2026-08-25 against `00059-z55`**, after
+> `/api/v1/revoke` was cut over to the private revocation worker; the natural-language licence and the
+> signature verification are from **2026-08-14 against `00054-swn`**, on code paths the cutover did not
+> touch. Where a figure carries a date, that date is the one to believe. `docs/metrics.json` is the
+> source; `make metrics` regenerates it. The earlier stale-banner warning is retired because the thing it
 > warned about was fixed rather than restated — see the two paragraphs immediately below, which record
 > what was wrong, because the same defect will recur if only the symptom is remembered.
 >
@@ -26,7 +31,8 @@ Everything except the recording. All durations below were **measured** — the s
 and the whole sequence was re-run end to end on **2026-08-14** against revision `00054-swn`. The
 boundary denial returns **6/6 HTTP 403 including Part C**; the hero cascade appends under create-only
 IAM with the affected set, derived scopes and issued notices all correct; a non-owner revoke is
-refused 403. Warm cascade ~2.5 s. Re-measure with `make metrics` if you record more than a day from now.
+refused 403. Warm cascade **2389 ms median**. Re-measure with `make metrics` if you record more than a
+day from now.
 
 > **The signature narration changed, and it changed in your favour.** Earlier versions of this script
 > told you to say the `signature` field reads `UNSIGNED_PLACEHOLDER`. **It no longer does.** The
@@ -51,18 +57,18 @@ with them:
 **The actions are far faster than the beats.** This is the single thing to internalise before you
 record:
 
-| Action | Measured (2026-08-14, rev `00054-swn`, unless noted) | Beat budget |
+| Action | Measured (date and revision named per row) | Beat budget |
 |---|---|---|
-| Revocation cascade, **1 affected grant** | **2084 – 4642 ms**, median **2466 ms** over 9 warm runs (2026-08-21, rev `00056-7c5`, post-cutover) | 45 s |
+| Revocation cascade, **1 affected grant** | **2334 – 3307 ms**, median **2389 ms**, mean **2563 ms** over 7 warm runs (2026-08-25, rev `00059-z55`, through the private worker) | 45 s |
 | Revocation cascade, **2 affected grants** | **5086 / 5275 / 4953 ms** (2026-08-09) — see the trap below | — |
-| `POST /api/v1/license`, **permitted** (Frame A) | **1495 – 2036 ms**, ~1675 ms avg over 6 warm runs | — |
-| `POST /api/v1/license`, **denied** (Frame C) | **1591 ms** — it pays the custodian hop before it can refuse | — |
-| Natural-language license | **3751 / 3885 / 4141 ms**, ~3.9 s avg warm | 30 s |
-| Full boundary test, 6 denials | **8.4 s** cold, ~2.2 s warm (2026-08-09) | 20 s |
+| `POST /api/v1/license`, **permitted** (Frame A) | **1495 – 2036 ms**, ~1675 ms avg over 6 warm runs (2026-08-14, `00054-swn`) | — |
+| `POST /api/v1/license`, **denied** (Frame C) | **1591 ms** — it pays the custodian hop before it can refuse (2026-08-14, `00054-swn`) | — |
+| Natural-language license | **3751 / 3885 / 4141 ms**, ~3.9 s avg warm (2026-08-14, `00054-swn`) | 30 s |
+| Full boundary test, 6 denials | **8.62 / 8.91 / 9.35 s** warm, avg **8.96 s** (2026-08-25) | 20 s |
 | `make demo`, all 7 beats | **1.4 – 1.8 s** (2026-08-09) | — |
 | Quarantine drill | 1114 ms server-side; **7.3 s** cold / 1.5 s warm round-trip (2026-08-09) | 20 s |
 
-**Every figure rose, and the reason is the architecture.** The cascade went ~737 → ~1896 → ~2466 ms and the
+**Every figure rose, and the reason is the architecture.** The cascade went ~737 → ~1896 → ~2389 ms and the
 permitted licence ~712 → ~1675 ms when the four conflict-domain roles became four separately-deployed
 Cloud Run workloads. Both paths check that the artist owns the work; that check reads `works`; and
 `works` now lives in `hodi-identity` behind the rights-custodian service, so an in-process call became
@@ -70,14 +76,14 @@ an authenticated HTTPS hop the front door **cannot bypass** — its identity is 
 every domain database. About 1.2 seconds is what the boundary costs. If you find yourself wishing for
 the old numbers, note what they were the speed of: one process holding credentials for every domain.
 
-So the hero beat is **not** 45 seconds of waiting. It is ~2.5 s of action wrapped in 45 s of
+So the hero beat is **not** 45 seconds of waiting. It is ~2.4 s of action wrapped in 45 s of
 *before* and *after*: the license granted, the command, the cascade output, the same license refused.
 Plan the shot as three static frames with one instant transition, not as a progress bar.
 
 ### The 5-second trap in the hero beat — read this before the first take
 
 The cascade's cost is **one Gemini notice-drafting call per affected grant that is not in the
-committed response cache.** With one affected grant it is ~2.5 s. With two, add roughly 4.5 s of live
+committed response cache.** With one affected grant it is ~2.4 s. With two, add roughly 4.7 s of live
 model call on top, and it is reproducibly so — not a cold start you can warm away.
 
 `work-repo-001` carries two grants: `grant-acme-il-001` (the demo grant, cached, fast) and
@@ -92,8 +98,8 @@ contradicts the "one call, instant" framing, and re-grant `grant-seed-2` first (
 containment across the *scope lattice* — all four use types derived from the partial order — and one
 affected grant demonstrates that completely.
 
-**Do not speed-ramp or cut mid-command.** The wall clock is the proof. If a command takes 2.5 s, show
-that it took 2.5 s. A legal revocation cascading across the lattice in under two seconds — while every
+**Do not speed-ramp or cut mid-command.** The wall clock is the proof. If a command takes 2.4 s, show
+that it took 2.4 s. A legal revocation cascading across the lattice in under two seconds — while every
 domain read crosses an authenticated service boundary the caller cannot bypass — is a stronger claim
 than a faster number produced by one process trusted with everything.
 
@@ -153,7 +159,7 @@ cd "path/to/Hodi"
    ```bash
    make recording-prep
    ```
-   Expect: `RECORDING STATE READY — cascade on the ~2.5 s path.` If it says `~7.2 s`, the affected
+   Expect: `RECORDING STATE READY — cascade on the ~2.4 s path.` If it says `~7.1 s`, the affected
    set is 2 — read its report, it names the grant responsible.
 
 5. **Confirm the boundary holds on the deployed service.**
@@ -282,7 +288,7 @@ tier is never hidden — one work is `verified_control` with a proof that resolv
 
 ---
 
-### Beat 2 — The four conflict walls · 20 s
+### Beat 2 — The four conflict walls, and the cloud they run on · 30 s
 
 **Command:**
 ```bash
@@ -301,10 +307,23 @@ refusal.
 > Cloud Run services under distinct service accounts and named databases. The front door cannot read
 > those databases and must invoke the owning workload. The shared append-only grant log remains in
 > `(default)`, where counterparty row separation is gateway-enforced. Do not describe the fleet as one
-> process. Cascade timings were re-measured 2026-08-21 (median ~2.5 s warm) and every figure in this
-> file is that run's. The revocation-route cutover to the private worker is deployed code whose
-> activation marker is not set — do not claim it as executed on camera; the deployment table is the
-> source of truth for that sentence.
+> process. Cascade timings were re-measured 2026-08-25 (median 2389 ms warm) and every figure in this
+> file is that run's. The revocation-route cutover to the private worker is **deployed and verified**
+> as of 2026-08-25 — `/api/v1/revoke` executes through the private worker, and the hero beat's
+> figures below are that path's.
+
+**Frame B — the cloud, ~10 s.** Two browser tabs, ~5 s each:
+1. Cloud Run → the five services, then Revisions → the serving revision
+2. Cloud Scheduler → both jobs `ENABLED` with real **Last run** timestamps
+
+**Say:** *(≈24 words)*
+"Five Cloud Run services, scale-to-zero, one per conflict domain. Two scheduled jobs with real
+execution history — the nightly teardown fires on its own cron, unattended."
+
+> **This beat was Beat 8 and is now Beat 2, deliberately.** At the end of the reel the Google Cloud
+> proof was the first thing an overrun ate, and a cloud-infrastructure category cannot afford for its
+> cloud evidence to be the optional part. At 0:35 it is load-bearing and unskippable: the walls are
+> claimed in Frame A and shown to be real infrastructure in Frame B, before anything is asked of them.
 
 ---
 
@@ -407,7 +426,7 @@ json.dump(r["issued_notices"][0], open("/tmp/hodi_notice.json", "w"))
 EOF
 ```
 
-**Measured: 2084 – 4642 ms** round-trip warm, median **2466 ms** over 9 runs (2026-08-21, revision `00056-7c5`), with
+**Measured: 2334 – 3307 ms** round-trip warm, median **2389 ms**, mean **2563 ms** over 7 runs (2026-08-25, revision `00059-z55`), with
 one affected grant. `metrics.json` records 2263 ms cold / 737 ms warm. It rose from ~519 ms when the
 cascade gained an execution lease and an idempotency outbox — a retry cannot double-issue a notice,
 and an abandoned worker cannot commit late. **Burn in the wall clock — the last observed run was
@@ -441,11 +460,9 @@ you cannot decide a request about a work without first establishing the work.
 > terminate a narrower grant, and `make recording-prep` seeds `training` for exactly this
 > reason. The cascade selecting the wrong grants was the defect fixed on 2026-08-12.
 
-**Say:** one call. Containment resolves downstream scopes from the partial order — `training` was
-revoked, and `fine_tuning` fell with it because the lattice says `training ⊃ fine_tuning`, not
-because anyone wrote that rule in code. The original grant is **not deleted** — it is a new event
-that supersedes, and the log still shows what was permitted before. And the notice says the grant is
-terminated. It does **not** say the model forgot anything, because a lint refuses to let it.
+**Say:** *(≈22 words — do not extend this; the flip carries the beat, not the explanation)*
+"One call. `fine_tuning` fell with `training` because the lattice says so — nobody coded that rule.
+The grant isn't deleted; a new event supersedes it."
 
 > The A→C flip is the whole beat: *the identical request, granted and then refused, about two seconds
 > apart.* That is worth more on camera than any amount of JSON, and it cannot be faked by a stub —
@@ -470,11 +487,9 @@ python3 scripts/hodi_verify.py /tmp/hodi_notice_bad.json --key /tmp/hodi_pub.pem
 
 **Verified the same day:** `✗ document signature INVALID` → `VERIFICATION FAILED`, exit 1.
 
-**Say:** the private key has never left Cloud KMS. This check used the public key and the document
-bytes — no Hodi service, no credentials, no database. So the counterparty can prove Hodi issued this
-notice, and Hodi cannot deny it. One changed byte and it fails. *That* is what the signature field is
-worth, and it is why it no longer says `UNSIGNED_PLACEHOLDER` — the placeholder was honest while
-nothing could verify anything, and it was replaced by building the thing rather than by relabelling.
+**Say:** *(≈25 words)*
+"The private key never left Cloud KMS. This used the public key alone — no Hodi service. A court
+could verify this notice; Hodi couldn't forge it. One byte, and it fails."
 
 **Reset before the next take:** `make recording-reset`
 
@@ -485,16 +500,19 @@ nothing could verify anything, and it was replaced by building the thing rather 
 ```bash
 make demo-live
 ```
-**Measured: 8.4 s cold (2026-08-09), ~2.2 s warm.** Warm the service first (pre-flight step 6) or this beat
-overruns.
+**Measured: 8.62 / 8.91 / 9.35 s warm, avg 8.96 s** (2026-08-25, `docs/metrics.json`
+→ `live_boundary_proof`). **This script said "~2.2 s warm" until 2026-08-25, and that figure predated
+the domain split** — it was measured when one process answered all six probes without leaving
+itself. Six denials now cross real service boundaries. It still fits the 20 s
+beat, but plan for nine seconds of screen time, not two: do not start narrating over it expecting to
+finish.
 
 **On screen:** all three parts, ending on **6 × HTTP 403** and `ALL LIVE BOUNDARY TESTS PASSED`.
 
-**Say:** Part A is the gateway policy layer. Part B replays the real cross-buyer exploit that worked
-against this service on August 7th — unauthenticated, it read another counterparty's grant and got a
-receipt. Part C replays anonymous revocation and an anonymous internal audit. All six refused. The
-exploit is now a permanent regression test, and a test enumerates the router and fails CI if any new
-mutating route forgets to authenticate.
+**Say:** *(≈40 words)*
+"Part B replays the real cross-buyer exploit that worked against this service on August 7th —
+unauthenticated, it read another buyer's grant and got a receipt. All six refused now. The exploit is
+a permanent regression test, and CI fails if any mutating route forgets to authenticate."
 
 > This is the strongest 20 seconds in the video. A boundary that was broken and rebuilt, with the
 > attack preserved, beats a boundary that was never tested.
@@ -514,11 +532,10 @@ on camera — it is instant and deterministic.
 **On screen:** the propagator ABANDONED by the supervisor, then QUARANTINED, deregistered, rerouted,
 `COMPLETED_DEGRADED`, `0 notices issued`.
 
-**Say:** the worker is forced into an infinite loop. The supervisor bounds its own wait and writes
-`TaskAbandoned` itself — the worker is still looping and has reported nothing. The registry
-deregisters it for the rest of the run. The task reroutes to a standby that returns a **stated**
-partial result and deliberately writes nothing, because the quarantined worker's write state is
-unknown and the log is append-only. The request still completes.
+**Say:** *(≈40 words)*
+"The worker is forced into an infinite loop. The supervisor writes `TaskAbandoned` itself — the
+worker is still looping and has reported nothing. The registry deregisters it, and a standby returns
+a stated partial result and writes nothing, because the log is append-only."
 
 ---
 
@@ -551,20 +568,7 @@ to crawl. Over ten days, none of them asked what they were allowed to *do with t
 
 ---
 
-### Beat 8 — GCP proof · 15 s
-
-**On screen, in order, ~5 s each:**
-1. Cloud Run → Revisions → the serving revision
-2. Cloud Scheduler → both jobs `ENABLED` with **Last run** timestamps
-3. GitHub → Actions → the green `verify` run
-
-**Say:** deployed on Cloud Run, scale-to-zero. Two scheduled jobs with real execution history — the
-nightly teardown has fired on its own cron. And every structural guard in the repo runs in CI on
-every push.
-
----
-
-### Beat 9 — Close · 10 s
+### Beat 8 — Close · 10 s
 
 **On screen:** the README title card, or the thesis lower-third.
 **Say:** *Hodi* is what you call at someone's door before entering. **Hodi is the knock.**
@@ -576,42 +580,44 @@ every push.
 | # | Beat | Budget |
 |---|---|---|
 | 1 | Cold open — registered work | 15 s |
-| 2 | Four conflict walls | 20 s |
+| 2 | Four conflict walls **+ Google Cloud proof** | 30 s |
 | 3 | Model interprets, lattice decides | 30 s |
 | 4 | **HERO — revocation cascade** (A 10 · B 5 · C 20 · D 10) | 45 s |
 | 5 | Security — live boundary, 6 denials | 20 s |
 | 6 | Quarantine and reroute | 20 s |
 | 7 | **Diagram B — the honesty beat** | 15 s |
-| 8 | GCP proof | 15 s |
-| 9 | Close | 10 s |
+| 8 | Close | 10 s |
 | — | Transitions | 15 s |
-| | **Total** | **205 s (3:25)** |
+| | **Total** | **200 s (3:20)** |
 
-**Five seconds under the 3:30 target, 35 s under the hard cap.** The original §6 list came to 210 s
-with a 35 s beat 3; the natural-language beat lands in 30 s because the command self-times.
+**Ten seconds under the 3:30 target, 40 s under the hard cap.** Narration across all eight beats is
+**367 words** — at a deliberate 150 wpm that is 147 s of speech inside 200 s of runtime, so every beat
+has air in it. If you find yourself rushing, you are reading something not written below.
 
-**Nothing needs cutting.** But if you overrun on the day, use PRD §7's pre-committed order —
-deepest reserve first, and do not improvise:
+**Nothing needs cutting.** But if you overrun on the day, use this order — deepest reserve first, and
+do not improvise:
 
-1. **GCP proof → 5 s** (revision + Scheduler in one frame; drop the CI tab) — **−10 s**
-2. **Quarantine → 10 s** (the two transcript lines only, no setup) — **−10 s**
-3. **Cold open → 10 s** (one burned-in stat card) — **−5 s**
-4. **Conflict walls → 12 s** (hold Diagram A with narration over it) — **−8 s**
+1. **Quarantine → 10 s** (the two transcript lines only, no setup) — **−10 s**
+2. **Cold open → 10 s** (one burned-in stat card) — **−5 s**
+3. **Conflict walls Frame A → 12 s** (hold Diagram A with narration over it) — **−8 s**
 
-That is 33 s of reserve without touching the hero, the security beat, Diagram B, or the thesis.
+That is 23 s of reserve without touching the hero, the security beat, the Google Cloud proof,
+Diagram B, or the thesis. **The Google Cloud proof is no longer in the cut ladder at all** — in a
+cloud-infrastructure category it is not reserve, and it now sits at 0:35 where an overrun cannot
+reach it.
 
-**Never cut:** the revocation cascade at 45 s · the live boundary denials · Diagram B · the thesis at
-0:08 and at close · the burned-in wall clock's continuity.
+**Never cut:** the revocation cascade at 45 s · the live boundary denials · the Google Cloud proof ·
+Diagram B · the thesis at 0:08 and at close · the burned-in wall clock's continuity.
 
 ---
 
 ## Things that will bite you
 
 - **Cold start, now on more than one service.** `min-instances=0` everywhere. A cold cascade measured
-  **19874 ms** with the front door, the rights-custodian AND the revocation worker all cold, against ~2466 ms warm. The chain is three services deep now.
+  **19874 ms** with the front door, the rights-custodian AND the revocation worker all cold, against ~2563 ms warm. The chain is three services deep now.
   Warming the front door alone is nowhere near enough — a cold hero beat is TWENTY SECONDS. Run the
   hero command once as a throwaway immediately before the take, then `make recording-reset`.
-- **Two affected grants costs ~7 s, not ~2.5 s.** One uncached Gemini notice-drafting call per
+- **Two affected grants costs ~7 s, not ~2.4 s.** One uncached Gemini notice-drafting call per
   affected grant. Verify the affected set is 1 in pre-flight step 5. This is the single most likely
   way the hero beat goes wrong.
 - **Both secrets.** Frames A/C need the counterparty key, Frame B needs the artist key, and neither

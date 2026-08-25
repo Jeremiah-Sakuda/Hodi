@@ -17,6 +17,7 @@ Exits nonzero listing every mismatch, so the fix is always "regenerate, then
 update the docs", never "hope nobody checks".
 """
 
+import ast
 import json
 import re
 import sys
@@ -67,6 +68,22 @@ NUMBER_WORDS = {
     "twenty-three": 23, "twenty-four": 24, "twenty-five": 25, "twenty-six": 26,
     "twenty-seven": 27, "twenty-eight": 28, "twenty-nine": 29, "thirty": 30,
 }
+
+# Word-forms above thirty were absent, and `_as_int` returns None for anything
+# it does not know while the ledger check treats None as "not a number, skip".
+# The effect was that "forty-four defects" — the figure in the README, the
+# project site and both copies of the blog — matched the pattern, resolved to
+# None, and was skipped. The guard reported those four documents as checked and
+# had never once compared their headline number to the ledger. Generate the
+# compounds instead of listing them, so the next decade cannot reopen the hole.
+_TENS = {"thirty": 30, "forty": 40, "fifty": 50, "sixty": 60,
+         "seventy": 70, "eighty": 80, "ninety": 90}
+_UNITS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+          "six": 6, "seven": 7, "eight": 8, "nine": 9}
+for _t, _tv in _TENS.items():
+    NUMBER_WORDS[_t] = _tv
+    for _u, _uv in _UNITS.items():
+        NUMBER_WORDS[f"{_t}-{_u}"] = _tv + _uv
 
 # (regex over the doc, which derived figure it must equal). Each pattern captures
 # a numeral or a number-word immediately preceding the noun it quantifies.
@@ -248,6 +265,33 @@ def check_deployment_claims(failures) -> None:
                         "deployment_status.json marks it scripted_not_executed.")
 
 
+def _count_e2e_gated_tests() -> int:
+    """Test methods the offline suite skips because they need live GCP.
+
+    The README states this number in words. It said "Sixteen" while the suite
+    skipped seventeen — the same drift the containment-truth-table and
+    offline-test counts were already guarded against, in the one sentence that
+    tells a reader how much of the suite they are NOT seeing. Derived by AST so
+    a class-level `@unittest.skipUnless(... HODI_E2E ...)` correctly counts
+    every test method beneath it.
+    """
+    def gated(node) -> bool:
+        return any("HODI_E2E" in ast.dump(dec) for dec in node.decorator_list)
+
+    total = 0
+    for path in sorted((ROOT / "tests").glob("*.py")):
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef) and gated(node):
+                total += sum(1 for b in node.body
+                             if isinstance(b, (ast.FunctionDef, ast.AsyncFunctionDef))
+                             and b.name.startswith("test_"))
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) \
+                    and node.name.startswith("test_") and gated(node):
+                total += 1
+    return total
+
+
 def check_derived_counts(failures) -> None:
     """
     The other narrative numbers repeated across documents. Each is derived HERE,
@@ -283,6 +327,11 @@ def check_derived_counts(failures) -> None:
             sum(len(re.findall(r"^\s+def test_", p.read_text(), re.M))
                 for p in sorted((ROOT / "tests").glob("*.py"))),
             [(README, r"full offline suite — (\d+) tests")],
+        ),
+        (
+            "E2E-gated tests",
+            _count_e2e_gated_tests(),
+            [(README, r"(\w+) tests that genuinely require live Firestore or live IAM")],
         ),
         (
             "typed evidence classes",

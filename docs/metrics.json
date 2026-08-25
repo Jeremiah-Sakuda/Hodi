@@ -77,25 +77,23 @@
   },
   "h6_revocation_cascade_real_corpus_scale": {
     "measurement_surface": "deployed-over-network",
-    "measured_at_utc": "2026-08-21T05:20:00Z",
+    "measured_at_utc": "2026-08-25T15:50:00Z",
     "runtime_identity": "hodi-runtime-sa (append+read only; conditioned to (default) alone)",
     "cold_start_ms": 19874.0,
     "cold_start_note": "Front door, rights-custodian AND revocation-worker all cold. The chain is three services deep now, so the pre-flight has to warm more than the front door \u2014 a cold hero beat is twenty seconds, not two.",
     "warm_runs_ms": [
-      2084.0,
-      2140.0,
-      2373.0,
-      2465.0,
-      2466.0,
-      2486.0,
-      2552.0,
-      2663.0,
-      4642.0
+      2334.0,
+      2345.0,
+      2356.0,
+      2389.0,
+      2569.0,
+      2639.0,
+      3307.0
     ],
-    "warm_avg_ms": 2652.3,
-    "revision": "hodi-evidence-endpoint-00056-7c5",
-    "note": "Re-measured 2026-08-21 after the revocation-route cutover put /api/v1/revoke behind the private worker. Warm rose ~1896 -> ~2652 ms mean (median 2466 ms; the 4642 ms sample is one service waking mid-run and is kept in the set rather than trimmed, because it is a take you can actually get). The full arc: ~519 ms in-process, ~737 ms once the cascade took an execution lease and an idempotency outbox, ~1896 ms once the work-ownership check crossed into the rights-custodian workload, ~2652 ms now that the cascade itself executes in the propagator's own service. Every increase bought a boundary that used to be a promise.",
-    "warm_median_ms": 2466.0
+    "warm_avg_ms": 2562.7,
+    "revision": "hodi-evidence-endpoint-00059-z55",
+    "note": "Re-measured 2026-08-25 with /api/v1/revoke executing THROUGH the private revocation worker rather than in-process. Median 2389 ms, mean 2563 ms over 7 runs \u2014 statistically unchanged from the ~2466 ms measured before the cutover, because the worker is warm and the hop is cheap relative to the KMS signing and Firestore appends already on the path. The full arc: ~519 ms in-process, ~737 ms with an execution lease and idempotency outbox, ~1896 ms once the work-ownership check crossed into the rights-custodian workload, ~2389 ms now that the cascade itself runs under the propagator's own identity. Every increase bought a boundary that used to be a promise.",
+    "warm_median_ms": 2389.0
   },
   "natural_language_license_path": {
     "measurement_surface": "deployed-over-network",
@@ -157,14 +155,14 @@
   "defect_ledger": {
     "source": "docs/defect_ledger.json",
     "counting_rule": "one entry per distinct defect with a distinct fix; a recurrence in a new location is a new entry",
-    "total_defects": 44,
+    "total_defects": 45,
     "class_count": 9,
     "recurring_class_count": 4,
     "defects_per_class": {
       "live-boundary-auth": 3,
       "self-instrumentation-contamination": 3,
       "deterministic-wrongness": 1,
-      "tests-that-could-not-fail": 12,
+      "tests-that-could-not-fail": 13,
       "infrastructure-reported-done": 3,
       "claims-with-no-code": 4,
       "policy-looser-than-its-text": 3,
@@ -194,5 +192,17 @@
     "denied_warm_ms": 1591.0,
     "revision": "hodi-evidence-endpoint-00054-swn",
     "note": "Both directions rose (~712 -> ~1675 permitted, ~455 -> ~1591 denied) for the same reason as the cascade: the work-scoping check reads `works`, which now lives in hodi-identity behind the rights-custodian workload. The denial is no longer the fast path \u2014 it pays the same hop before it can refuse, which is the correct order: you cannot decide a request about a work without first establishing the work."
+  },
+  "live_boundary_proof": {
+    "measurement_surface": "deployed-over-network",
+    "command": "make demo-live",
+    "measured_at_utc": "2026-08-25T15:35:00Z",
+    "warm_runs_s": [
+      8.62,
+      8.91,
+      9.35
+    ],
+    "warm_avg_s": 8.96,
+    "note": "Six HTTP 403s across three parts. The recording script had carried '~2.2 s warm' from before the domain split; it is ~9 s now, which still fits its 20 s beat but not the budget a presenter would have planned around. Measured rather than assumed because the script forbids editing around a wall clock."
   }
 }

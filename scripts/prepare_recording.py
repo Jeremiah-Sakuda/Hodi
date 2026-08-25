@@ -32,6 +32,7 @@ append-only and the whole history remains visible.
 """
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -189,6 +190,23 @@ def sweep_credentials(db) -> tuple:
     return deactivated, other_active
 
 
+def _measured_warm_cascade_s() -> tuple[float, str]:
+    """The warm one-grant cascade median, in seconds, from docs/metrics.json.
+
+    Raises rather than falling back to a literal. A default here would be the
+    same defect the caller's comment describes: a number that keeps printing
+    confidently after the thing it measured has changed.
+    """
+    path = Path(__file__).resolve().parents[1] / "docs" / "metrics.json"
+    entry = json.loads(path.read_text())["h6_revocation_cascade_real_corpus_scale"]
+    runs = sorted(float(x) for x in entry["warm_runs_ms"])
+    if not runs:
+        raise SystemExit(f"{path} records no warm cascade runs; run `make metrics`")
+    mid = len(runs) // 2
+    median_ms = runs[mid] if len(runs) % 2 else (runs[mid - 1] + runs[mid]) / 2
+    return median_ms / 1000.0, entry.get("revision", "unknown")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -270,14 +288,17 @@ def main() -> int:
     if len(affected) != expected:
         failures.append(f"affected set is {len(affected)}, expected {expected}")
 
-    # Warm 1-grant base ~0.55 s (create-only runtime SA, measured 2026-08-10);
-    # each uncached notice adds one ~4.7 s live Gemini call.
-    # Base is the measured warm one-grant cascade (median ~2.47 s on rev
-    # 00056-7c5, after the revocation-route cutover put the cascade itself in
-    # the propagator's own workload);
-    # each uncached notice adds one live Gemini call (~4.7 s).
-    predicted = "~2.5 s" if uncached == 0 else f"~{2.47 + 4.7 * uncached:.1f} s"
+    # The base is the MEASURED warm one-grant cascade, read from docs/metrics.json
+    # rather than typed here. It was typed here, twice, in two comments that
+    # disagreed with each other and with the deployed service: this line printed
+    # "~2.5 s" to the presenter as a prediction, and a prediction stated in a
+    # literal stops being a measurement the first time the architecture moves.
+    # Each uncached notice adds one live Gemini call (~4.7 s).
+    base_s, base_rev = _measured_warm_cascade_s()
+    predicted = (f"~{base_s:.1f} s" if uncached == 0
+                 else f"~{base_s + 4.7 * uncached:.1f} s")
     print(f"\n{INFO}PREDICTED cascade round-trip: {predicted} "
+          f"[base: measured median on rev {base_rev}] "
           f"({len(affected)} affected, {uncached} uncached notice call(s))")
     print(f"{INFO}log depth for {HERO_WORK}: {len(events)} events "
           f"(append-only; grows two per take, which is expected and visible)")
