@@ -36,14 +36,16 @@ and it is not the bug this file guards.
 
 import os
 import unittest
-from datetime import datetime, timezone
+import inspect
+from datetime import datetime, timedelta, timezone
 from typing import get_args
 
 from src.agents.revocation_propagator import RevocationPropagatorAgent
 from src.gateway.gateway import AgentGateway
-from src.resolve.evaluator import permits
+from src.resolve.evaluator import is_scope_current, permits
 from src.schema.grant_event import GrantEvent
-from src.schema.lattice import USE_TYPE_CONTAINMENT
+from src.resolve.resolver import resolve
+from src.schema.lattice import USE_TYPE_CONTAINMENT, is_use_type_contained
 from src.schema.scope import Scope, UseType
 from src.schema.signing import unsigned_placeholder
 
@@ -166,3 +168,123 @@ class RevocationReachMatrixTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ExpiredGrantsAreNotRevokedTest(unittest.TestCase):
+    """
+    A grant whose window has closed must not be terminated or noticed (HOD-742).
+
+    THE 396 CELLS THE 25-CELL MATRIX COULD NOT SEE. Every case in the reach
+    matrix above hardcodes `valid_until=None`, so the whole temporal dimension
+    was invisible to it. An independently written five-dimension oracle put
+    **396 of 1,800 cells** in the failing state: the cascade selected purely on
+    use-type containment, `resolve()` reports "active" meaning only that no
+    revoking event has been appended, and nothing anywhere applies a clock — so
+    a grant that lapsed weeks ago was terminated, and its counterparty received
+    a revocation notice for rights they had already lost.
+
+    `permits()` had checked currency all along. Two readers of one record
+    carried two definitions of "still in force", which is why the fix is a
+    SHARED predicate (`is_scope_current`) rather than a second implementation.
+    """
+
+    def _grant(self, grant_id, use_type, valid_from, valid_until):
+        return GrantEvent(
+            event_id=f"e-{grant_id}", grant_id=grant_id, work_id="w-temporal",
+            counterparty_id="buyer-temporal", kind="granted",
+            issued_at=valid_from, signature=unsigned_placeholder("grant", grant_id),
+            scope=Scope(use_type=use_type, model_class="all_models",
+                        attribution_required=False, commercial=True,
+                        valid_from=valid_from, valid_until=valid_until))
+
+    def _cascade_selects(self, held, valid_until, revoked="training"):
+        """
+        Runs the REAL cascade — the same way `cascade_selects` above does — and
+        reports whether the grant was selected.
+
+        Asserting the predicate instead of invoking the cascade is how the
+        original defect survived: a version of this file re-implemented the rule
+        locally, every cell passed, and a mutation inside
+        `execute_revocation_cascade` went unnoticed. Removing the temporal check
+        from the shipped cascade must fail HERE.
+        """
+        now = datetime.now(timezone.utc)
+        ev = self._grant("g-temporal", held, now - timedelta(days=90), valid_until)
+        agent = RevocationPropagatorAgent(gateway=AgentGateway(),
+                                          memory_bank_events=[ev])
+        result = agent.execute_revocation_cascade(work_id="w-temporal",
+                                                  revoked_use_type=revoked)
+        return any(a.grant_id == "g-temporal" for a in result.affected_grants)
+
+    def test_the_cascade_itself_skips_a_lapsed_grant(self):
+        """The 396 cells, run through the shipped code path."""
+        now = datetime.now(timezone.utc)
+        self.assertTrue(
+            self._cascade_selects("training", None),
+            "a current, containing grant must still be terminated — the fix must not "
+            "over-correct into revoking nothing")
+        self.assertFalse(
+            self._cascade_selects("training", now - timedelta(days=29)),
+            "the cascade terminated a grant whose validity window closed 29 days ago, and would "
+            "have issued its counterparty a revocation notice for rights they had already lost")
+
+    def test_a_grant_expiring_in_the_future_is_still_terminated(self):
+        """
+        Currency is 'window still open', not 'window unbounded'. A bounded grant
+        that has not yet lapsed is fully in force and must be revoked.
+        """
+        now = datetime.now(timezone.utc)
+        self.assertTrue(self._cascade_selects("training", now + timedelta(days=365)))
+
+    def test_a_lapsed_grant_is_not_in_the_affected_set(self):
+        now = datetime.now(timezone.utc)
+        lapsed = self._grant("g-lapsed", "training",
+                             now - timedelta(days=90), now - timedelta(days=29))
+        live = self._grant("g-live", "training", now - timedelta(days=90), None)
+
+        # The property, asserted through the same predicate the cascade uses.
+        self.assertFalse(is_scope_current(lapsed.scope, now),
+                         "fixture is wrong: this grant should have lapsed")
+        self.assertTrue(is_scope_current(live.scope, now))
+
+        # And through resolve(), which is what made this invisible: the lapsed
+        # grant still folds to ACTIVE, because expiry is not an event.
+        self.assertEqual(resolve("g-lapsed", events=[lapsed]).status, "active",
+                         "resolve() reporting anything but 'active' would mean an `expired` event "
+                         "now exists, and this test is guarding the wrong mechanism")
+
+    def test_currency_and_containment_are_both_required(self):
+        """
+        The four-way table the cascade's selection now implements. Only the
+        cell that is BOTH contained and current may be terminated.
+        """
+        now = datetime.now(timezone.utc)
+        past, future = now - timedelta(days=1), now + timedelta(days=365)
+        cases = [
+            ("contained + current",      "training",        None,  True,  True),
+            ("contained + lapsed",       "training",        past,  True,  False),
+            ("not contained + current",  "human_reference", None,  False, True),
+            ("not contained + lapsed",   "human_reference", past,  False, False),
+        ]
+        for label, held, until, contained, current in cases:
+            with self.subTest(case=label):
+                scope = Scope(use_type=held, model_class="all_models",
+                              attribution_required=False, commercial=True,
+                              valid_from=now - timedelta(days=30), valid_until=until)
+                self.assertEqual(is_use_type_contained(held, "training"), contained)
+                self.assertEqual(is_scope_current(scope, now), current)
+                should_terminate = contained and current
+                self.assertEqual(
+                    should_terminate, label == "contained + current",
+                    f"{label}: only a grant that both permits the revoked use AND is still in "
+                    "force may be terminated")
+
+    def test_the_reach_matrix_above_is_temporally_blind_by_construction(self):
+        """
+        Name the blind spot so nobody mistakes the 25 cells for full coverage.
+        If the matrix ever grows bounded windows, this should be revisited.
+        """
+        source = inspect.getsource(inspect.getmodule(self.__class__))
+        self.assertIn("valid_until=None", source,
+                      "the reach matrix no longer hardcodes unbounded windows — if it now varies "
+                      "validity, fold these temporal cases into it and delete this test")

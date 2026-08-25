@@ -11,6 +11,9 @@ from src.schema.lattice import (
     USE_TYPE_CONTAINMENT, MODEL_CLASS_CONTAINMENT, use_type_derivation_chain,
     is_use_type_contained,
 )
+from src.resolve.evaluator import (  # noqa: E402
+    is_scope_current,
+)
 from src.resolve.resolver import resolve
 from src.schema.iam_policy import AGENT_SA_MAP
 from src.gateway.gateway import AgentGateway, DocumentAlreadyExists
@@ -150,13 +153,41 @@ class RevocationPropagatorAgent:
         # fact, never two facts a crash can split. A retry of the same
         # operation derives the same ids and collides on create() — the
         # collision IS the idempotency signal, and it is skipped, not errored.
+        # ONE instant for the whole cascade. Selection and the appended events
+        # must agree about when this revocation happened: taking a fresh clock
+        # per grant would let a grant expire *between* being selected and being
+        # terminated, and the notice would then carry a different moment than
+        # the decision that produced it.
+        cascade_at = datetime.now(timezone.utc)
+
         for gid in sorted(unique_grant_ids):
             state = resolve(gid, events=events)
             if state.status == "active" and state.active_scope:
-                # Affected iff the grant PERMITS the revoked use: the held type
-                # contains it. Same predicate permits() uses, so a grant is
-                # terminated exactly when it could have exercised the revoked use.
-                if is_use_type_contained(state.active_scope.use_type, revoked_use_type):
+                # Affected iff the grant PERMITS the revoked use RIGHT NOW —
+                # which is two conditions, and for a long time this checked only
+                # the first.
+                #
+                # (1) the held use type contains the revoked one, and
+                # (2) the grant's own validity window is still open.
+                #
+                # `resolve()` reports "active" meaning no revoking or superseding
+                # event has been appended. It never emits an `expired` event,
+                # because expiry is not something that happens to an append-only
+                # log — it is a property you evaluate against a clock. So a grant
+                # whose window lapsed weeks ago still folds to active, and
+                # without (2) it was terminated and its counterparty was sent a
+                # revocation notice for rights they had already lost. An
+                # independently written five-dimension oracle found 396 of 1,800
+                # cells in exactly that state, all of it temporal. `permits()`
+                # had always applied the clock; the cascade had not, and the
+                # 25-cell reach matrix could not see the gap because every cell
+                # in it hardcodes valid_until=None.
+                #
+                # is_scope_current() is the SAME function permits() calls, for
+                # the reason this defect exists: two readers of one record must
+                # not carry two definitions of "still in force".
+                if (is_use_type_contained(state.active_scope.use_type, revoked_use_type)
+                        and is_scope_current(state.active_scope, cascade_at)):
                     affected_grants.append(AffectedGrant(
                         grant_id=gid,
                         counterparty_id=state.counterparty_id,

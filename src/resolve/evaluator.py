@@ -4,6 +4,33 @@ from src.schema.scope import Scope, ScopeEvaluationResult
 from src.schema.grant_event import GrantEvent
 from src.schema.lattice import is_use_type_contained, is_model_class_contained
 
+def is_scope_current(scope, at=None) -> bool:
+    """
+    Is this grant's own validity window open at `at`? (HOD-742)
+
+    Extracted so `permits()` and the revocation cascade cannot disagree about
+    what "still in force" means — they did. `permits()` has always checked
+    currency (dimension 5a below); the cascade selected purely on use-type
+    containment, so a grant whose window lapsed weeks ago still folded to
+    `status: "active"`, was terminated, and had a revocation notice issued to
+    its counterparty. An independently written five-dimension oracle put 396 of
+    1,800 cells in that state, all of it temporal.
+
+    "Active" and "current" are different facts. `resolve()` reports the first —
+    no revoking or superseding event has been appended — and never emits an
+    `expired` event, because expiry is not something that HAPPENS to the log; it
+    is a property you evaluate against a clock. That is the right design for an
+    append-only record, and it is exactly why every reader of that record has to
+    apply the clock itself.
+    """
+    at = at or datetime.now(timezone.utc)
+    if at < scope.valid_from:
+        return False
+    if scope.valid_until and at > scope.valid_until:
+        return False
+    return True
+
+
 def permits(
     active_grants: List[GrantEvent],
     requested_scope: Scope,
@@ -62,9 +89,9 @@ def permits(
         g_scope = grant.scope
 
         # Dimension 5a: the grant is current at the evaluation instant.
-        if eval_time < g_scope.valid_from:
-            continue
-        if g_scope.valid_until and eval_time > g_scope.valid_until:
+        # Shared with the revocation cascade via is_scope_current() so the two
+        # cannot drift apart again.
+        if not is_scope_current(g_scope, eval_time):
             continue
 
         # Dimension 5b: the requested window is contained by the grant window.
