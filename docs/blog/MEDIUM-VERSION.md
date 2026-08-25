@@ -87,7 +87,7 @@ I had fixed the reported route. I had not asserted the property across the route
 
 ## The one where my own infrastructure lied for me
 
-Hodi's first empirical headline was a negative result: *I published machine-readable consent terms at a discoverable endpoint and no crawler asked.* A later audit corrected it: one self-identifying crawler fetched `/robots.txt` but did not follow the linked machine-readable consent document. The earlier zero was a detector bug, not evidence of absence.
+Hodi's first empirical headline was a negative result: *I published machine-readable consent terms at a discoverable endpoint and no crawler asked.* Two later audits corrected it, in the same direction: self-identifying crawlers did come — 16 visits from two of them at the 2026-08-25 count — and every one fetched `/robots.txt` while none followed the linked machine-readable consent document. The earlier zero was a detector bug, not evidence of absence.
 
 Its entire value depends on the third-party count being real.
 
@@ -103,7 +103,7 @@ And then it happened a third time. The final verification pass, days later, foun
 
 There's a coda. After fixing the list, ten non-self records remained. I nearly wrote them up as third-party hits. Then I looked: nine arrived within a single second, from cloud IPs, and one of them requested `/api/v1/debug/compromised_agent_read` — a path no sitemap advertises and no crawler would care about. That's someone inspecting the service. Not a crawler.
 
-Reporting those ten as crawler access would have been exactly the fabricated finding the project exists to refuse, arrived at from the opposite direction. So the metric changed shape: `known_crawler_ua_matches` is the only number this project describes as crawler access, while every other non-self request stays *unattributed*. The later detector correction found one matching user agent; it fetched `/robots.txt` and did not fetch the linked consent document. That is attribution, not authentication, and the current count remains sourced from `docs/metrics.json` rather than frozen into this article.
+Reporting those ten as crawler access would have been exactly the fabricated finding the project exists to refuse, arrived at from the opposite direction. So the metric changed shape: `known_crawler_ua_matches` is the only number this project describes as crawler access, while every other non-self request stays *unattributed*. The later detector correction found matching user agents after all — **16 visits** as of the 2026-08-25 audit, from two distinct self-identifying crawlers. Every one fetched `/robots.txt`; not one fetched the linked consent document. That is attribution, not authentication, and the current count remains sourced from `docs/metrics.json` rather than frozen into this article.
 
 ---
 
@@ -223,7 +223,13 @@ An illustrator cannot currently say *this series may be trained on, that one may
 > Upload from: `docs/architecture/diagram_b_what_hodi_will_not_say.png` · or drag from https://raw.githubusercontent.com/Jeremiah-Sakuda/Hodi/main/docs/architecture/diagram_b_what_hodi_will_not_say.png
 > Caption: *The fifth column is the one that matters. There is no enum value for it, so the schema cannot express the claim.*
 
-And the finding I did not expect to be the most interesting one: I published machine-readable consent terms at a discoverable endpoint, with a `robots.txt` pointing at them, and **nothing identifying itself as a crawler has asked.** Across every access the endpoint has logged, zero match any crawler signature. A handful of unattributed browser-like agents show up — mostly bursts from cloud IPs that also hit a debug route, which is inspection, not crawling — and those are reported as unattributed rather than promoted into the finding. The absence is the evidence. Hodi is the knock — it turns out the harder problem may not be building the door.
+And the finding I did not expect to be the most interesting one — which has now been wrong twice, in opposite directions, which is the eighth way and the reason this section is dated.
+
+I published machine-readable consent terms at a discoverable endpoint, with a `robots.txt` pointing at them. For a week I wrote that **nothing identifying itself as a crawler had asked** — *the absence is the evidence* — and it was a good line built on a broken regex, which required a word boundary before `bot` and so could not see the commonest crawler-naming shape there is. Then it read one. As of the **2026-08-25** audit it reads **16 visits from two distinct self-identifying crawlers, between August 11th and August 25th**.
+
+And the finding survived being corrected, which is the part worth keeping: **every one of those 16 fetched `/robots.txt`. Not one fetched `/.well-known/hodi.json`** — one request away, named in the very file they did read. They asked whether they were allowed to crawl. Over fifteen days, none of them asked what they were allowed to *do with the work*, because until recently there was nowhere to ask it.
+
+That is stronger than the absence I nearly published, and I only have it because the number was checked against a mechanism instead of a memory. The live count is sourced from `docs/metrics.json`; if it disagrees with this paragraph, the metrics file is right and a build step will say so. Hodi is the knock — the door exists now. It turns out the harder problem is getting anyone to knock.
 
 ---
 

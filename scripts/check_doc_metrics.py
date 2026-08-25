@@ -487,6 +487,48 @@ def main() -> int:
         failures.append(
             f"devpost-description.md does not carry the current audit date '{audit_date}'.")
 
+    # The published essay is the one document a judge is linked to directly and
+    # the one nobody regenerates. Its crawler figure said "zero" for nine days
+    # after the detector was fixed — in the essay about deceiving yourself with
+    # stale numbers, which at one point carried three different values for the
+    # same figure in a single document.
+    crawler_matches = accrual["known_crawler_ua_matches"]
+    words = {0: "zero", 1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six",
+             7: "seven", 8: "eight", 9: "nine", 10: "ten"}
+    # The figure is LIVING — it went 0 -> 1 -> 9 -> 16 in three weeks — so the
+    # essay cites a numeral with the audit date rather than a spelled word, and
+    # this asserts the numeral is the current one. A word form is still rejected
+    # if it names a different count, because that is how "zero" survived.
+    for blog in (ROOT / "docs" / "blog" / "seven-ways-to-lie-to-yourself-in-code.md",
+                 ROOT / "docs" / "blog" / "MEDIUM-VERSION.md"):
+        text = blog.read_text()
+        low = text.lower()
+        stale_words = [w for n, w in words.items()
+                       if n != crawler_matches and f"{w} match any crawler signature" in low]
+        if stale_words:
+            failures.append(
+                f"{blog.name} states '{stale_words[0]} match any crawler signature'; metrics.json "
+                f"says {crawler_matches}. The published essay is linked from the Devpost text.")
+        # Anchor on the NOUN, not on the bare numeral. Checking only that the
+        # digits appear anywhere passed a mutation that changed "16 visits" to
+        # "nine visits", because 16 also occurs elsewhere in the essay — a guard
+        # that cannot fail is the defect class this whole file exists for.
+        visit_counts = {int(n) for n in re.findall(r"\*?\*?(\d+)\*?\*?\s+visits\b", text)}
+        visit_counts |= {NUMBER_WORDS[w] for w in re.findall(r"\b([a-z]+)\s+visits\b", text, re.I)
+                         if w.lower() in NUMBER_WORDS}
+        if not visit_counts:
+            failures.append(
+                f"{blog.name} states no '<n> visits' crawler figure at all; the guard cannot "
+                "confirm the published essay carries the current count.")
+        elif visit_counts != {crawler_matches}:
+            failures.append(
+                f"{blog.name} states crawler visits {sorted(visit_counts)}; metrics.json says "
+                f"{crawler_matches}. The published essay is linked directly to judges.")
+        if audit_date not in text:
+            failures.append(
+                f"{blog.name} does not carry the current audit date '{audit_date}' beside its "
+                "crawler figure — a living count cited without a date is a claim that cannot age.")
+
     check_defect_ledger(metrics, failures)
     check_derived_counts(failures)
     check_arithmetic_claims(metrics, failures)

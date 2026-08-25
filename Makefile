@@ -47,11 +47,29 @@ deployment-status:
 deployment-status-check:
 	python3 scripts/deployment_status.py --check
 
+# Generated artifacts must be REGENERATED, not remembered (HOD-741). Four
+# separate files in this repo were marked GENERATED, drifted from their source,
+# and were caught by a reader rather than a build step: the conflict matrix, the
+# README deployment table, the recording script's predicted timing, and the
+# diagram renders the README embeds and the video holds full-screen.
+check-generated:
+	python3 -m unittest tests.test_generated_artifacts_are_current -v
+
+# Re-render every Mermaid diagram from its source. The renders are committed
+# because the README embeds them, so this is the command that keeps the image
+# and its .mmd telling the same story.
+diagrams:
+	cd docs/architecture && for f in *.mmd; do \
+	  npx -y @mermaid-js/mermaid-cli@11 -i "$$f" -o "$${f%.mmd}.png" -b white -w 1600; \
+	  npx -y @mermaid-js/mermaid-cli@11 -i "$$f" -o "$${f%.mmd}.svg" -b white -w 1600; \
+	done
+
 compliance:
 	python3 scripts/compliance.py
 	python3 scripts/count_defect_ledger.py --check
 	python3 scripts/deployment_status.py --check
 	python3 scripts/check_doc_metrics.py
+	python3 -m unittest tests.test_generated_artifacts_are_current tests.test_submission_exposure
 
 ledger-count:
 	python3 scripts/count_defect_ledger.py --write-metrics

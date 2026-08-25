@@ -1,30 +1,30 @@
 {
-  "timestamp": "2026-08-21T05:02:43Z",
+  "timestamp": "2026-08-25T14:58:45Z",
   "daily_crawler_accrual_metrics": {
-    "audit_date_utc": "2026-08-21",
-    "total_accrued_records": 3291,
-    "self_originated_count": 3217,
-    "non_self_originated_requests_count": 74,
-    "known_crawler_ua_matches": 9,
+    "audit_date_utc": "2026-08-25",
+    "total_accrued_records": 4430,
+    "self_originated_count": 4333,
+    "non_self_originated_requests_count": 97,
+    "known_crawler_ua_matches": 16,
     "known_crawler_user_agent_counts": {
-      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36; c\u2026[truncated, 179 chars]": 8,
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36; c\u2026[truncated, 179 chars]": 15,
       "GPTBot": 1
     },
     "known_crawler_user_agents": [
       "GPTBot",
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36; c\u2026[truncated, 179 chars]"
     ],
-    "unattributed_distinct_user_agents_count": 9,
-    "distinct_user_agents_count": 30,
-    "self_originated_user_agents_count": 19,
+    "unattributed_distinct_user_agents_count": 12,
+    "distinct_user_agents_count": 34,
+    "self_originated_user_agents_count": 20,
     "hostname_breakdown": {
-      "hodi-evidence-endpoint-406699565497.us-central1.run.app": 2326,
-      "hodi-evidence-agent-ifd7cg45ja-uc.a.run.app": 942,
-      "hodi-evidence-endpoint-ifd7cg45ja-uc.a.run.app": 16,
+      "hodi-evidence-endpoint-406699565497.us-central1.run.app": 2690,
+      "hodi-evidence-agent-ifd7cg45ja-uc.a.run.app": 1709,
+      "hodi-evidence-endpoint-ifd7cg45ja-uc.a.run.app": 24,
       "hodi-rights-custodian-ifd7cg45ja-uc.a.run.app": 4,
       "hodi-revocation-worker-ifd7cg45ja-uc.a.run.app": 3
     },
-    "claim_limit": "non_self_originated_requests_count counts requests whose user agent does not match this project's own instrumentation signatures. That is NOT the same as 'requests this project did not make' \u2014 it was phrased that way and the phrasing was stronger than the mechanism, which only ever compared user-agent strings and cannot establish who sent anything. It is NOT a crawler count. known_crawler_ua_matches is the only figure this project will describe as crawler access, and only its user agents are published as strings; the rest are counted, not quoted."
+    "claim_limit": "non_self_originated_requests_count counts requests whose user agent does not match this project's own instrumentation signatures. That is NOT the same as 'requests this project did not make' \u2014 it was phrased that way and the phrasing was stronger than the mechanism, which only ever compared user-agent strings and cannot establish who sent anything. It is NOT a crawler count. known_crawler_ua_matches is the only figure this project will describe as crawler access, and only its user agents are published as strings; the rest are counted, not quoted. A recorded user agent is evidence that a request was made and is NOT AN ACCUSATION against the party it names: these strings are self-declared, unauthenticated, and reproduced here as observed data rather than edited to satisfy a prose rule. Every crawler named in this project's PROSE is anonymized; this file is generated evidence and is not."
   },
   "gemma_triage_routing_distribution": {
     "sample_size_total_requests": 11,

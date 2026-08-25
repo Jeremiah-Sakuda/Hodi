@@ -285,7 +285,12 @@ def write_metrics(stats: dict):
                         "user-agent strings and cannot establish who sent anything. It is NOT a "
                         "crawler count. known_crawler_ua_matches is the only figure this project "
                         "will describe as crawler access, and only its user agents are published "
-                        "as strings; the rest are counted, not quoted."),
+                        "as strings; the rest are counted, not quoted. A recorded user agent is "
+                        "evidence that a request was made and is NOT AN ACCUSATION against the "
+                        "party it names: these strings are self-declared, unauthenticated, and "
+                        "reproduced here as observed data rather than edited to satisfy a prose "
+                        "rule. Every crawler named in this project's PROSE is anonymized; this "
+                        "file is generated evidence and is not."),
     }
 
     with open(metrics_path, "w") as f:
