@@ -27,6 +27,12 @@ from src.api.auth import (
 from src.schema.iam_policy import AGENT_SA_MAP
 
 router = APIRouter()
+
+# How many documents the public boundary-proof endpoint will echo. The endpoint
+# is deliberately public so a reviewer can verify the cross-buyer boundary over
+# the network without credentials; the boundary is proven by one permitted read
+# and two refusals, never by the volume returned.
+DEBUG_SAMPLE_LIMIT = 3
 armor = PromptInspector()
 
 # Service accounts are READ FROM THE POLICY, never retyped (HOD-717).
@@ -728,10 +734,25 @@ def debug_compromised_read(req: CompromisedAgentRequest):
                 filters={"counterparty_id": DEMO_SESSION_COUNTERPARTY},
                 session_context={"counterparty_id": DEMO_SESSION_COUNTERPARTY}
             )
+            # The proof is that the SCOPED read succeeds and the two attacks are
+            # refused — it is not the corpus. This returned every document the
+            # demo counterparty holds, anonymously, and that set grows with
+            # every recorded take: 6 documents on 2026-08-08, 16 the next day,
+            # 130 by the time a reviewer counted. A public endpoint that emits
+            # an unbounded, monotonically growing body is a data surface no
+            # matter how carefully it is scoped, so the count stays complete
+            # and the body is capped.
             return {
                 "status": "SUCCESS",
                 "docs_returned": len(docs),
-                "docs": jsonable_encoder(docs),
+                "docs_sample": jsonable_encoder(docs[:DEBUG_SAMPLE_LIMIT]),
+                "docs_sample_limit": DEBUG_SAMPLE_LIMIT,
+                "sample_note": (
+                    f"{len(docs)} documents were permitted by the gateway; the first "
+                    f"{min(len(docs), DEBUG_SAMPLE_LIMIT)} are shown. The full set is not "
+                    "published: what this endpoint demonstrates is that the scoped read is "
+                    "PERMITTED while the unfiltered and cross-counterparty reads are DENIED, "
+                    "and that is provable from the count and the two refusals."),
                 "message": "Gateway permitted properly scoped read."
             }
 

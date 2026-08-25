@@ -567,6 +567,74 @@ SCHEDULER_INVOKER_SA = os.environ.get(
 )
 
 
+def expected_oidc_audiences(request: Request) -> set:
+    """
+    The audiences an inbound OIDC token may legitimately carry (HOD-743).
+
+    WHY AN AUDIENCE CHECK IS NOT OPTIONAL. `verify_oauth2_token(token,
+    Request())` with no audience verifies that Google signed the token and who
+    the caller is — but NOT that the token was minted for THIS service. Any
+    Google-signed ID token the same identity could obtain for any other audience
+    satisfied every check these two routes made.
+    `caller_identity.from_oidc()` has always passed an audience, with a
+    paragraph explaining why; it simply is not on the deployed path, so the
+    explanation lived in the repository and the check did not live in the
+    service.
+
+    WHY A SET, AND NOT `request.base_url`. Callers mint different, equally
+    correct audiences:
+      * Cloud Scheduler mints the FULL TARGET URL INCLUDING PATH
+        (".../internal/accrual_audit") — verified against the live job config.
+      * The front door mints the SERVICE ROOT when calling a domain workload
+        (`fetch_id_token(..., url)` in src/gateway/domain_client.py).
+    Pinning either one alone would have 403'd a caller that was doing exactly
+    the right thing — and the scheduled audit is a capability this project
+    reports as verified, so breaking it to add a security check would have
+    traded one false claim for another.
+
+    And why the canonical URL is included explicitly: the container runs uvicorn
+    without `--proxy-headers`, so `request.base_url` reports the container's own
+    bind address rather than the public host. Deriving the audience purely from
+    the request would compare a public token against a private URL and refuse
+    everything.
+    """
+    allowed = set()
+    override = os.environ.get("HODI_OIDC_AUDIENCE")
+    if override:
+        allowed.add(override.rstrip("/"))
+
+    path = request.url.path
+    for base in {CANONICAL_RUN_DOMAIN, ACTIVE_BASE_URL, str(request.base_url).rstrip("/")}:
+        base = base.rstrip("/")
+        allowed.add(base)
+        allowed.add(f"{base}{path}")
+    return allowed
+
+
+def _verified_oidc_claims(request: Request, token: str) -> dict:
+    """
+    Verify Google's signature, then check the audience OURSELVES.
+
+    `verify_oauth2_token` accepts a single audience; the legitimate callers here
+    use two different ones. So the signature and issuer are verified by the
+    library, and the `aud` claim is compared against the allowed set explicitly
+    — which also makes the refusal legible in the logs rather than a generic
+    library error.
+    """
+    from google.auth.transport import requests as google_requests
+    from google.oauth2 import id_token as google_id_token
+
+    claims = google_id_token.verify_oauth2_token(token, google_requests.Request())
+    allowed = expected_oidc_audiences(request)
+    aud = claims.get("aud", "")
+    if aud not in allowed:
+        logger.warning(
+            f"OIDC audience rejected: token minted for '{aud}', which is not this service. "
+            f"Allowed: {sorted(allowed)}")
+        raise HTTPException(status_code=403, detail="OIDC token verification failed.")
+    return claims
+
+
 def verify_scheduler_oidc(request: Request) -> str:
     """
     Verifies the Google-signed OIDC ID token Cloud Scheduler sends, and returns
@@ -584,7 +652,7 @@ def verify_scheduler_oidc(request: Request) -> str:
     try:
         from google.oauth2 import id_token as google_id_token
         from google.auth.transport import requests as google_requests
-        claims = google_id_token.verify_oauth2_token(token, google_requests.Request())
+        claims = _verified_oidc_claims(request, token)
     except Exception as e:
         logger.warning(f"Accrual audit OIDC verification failed: {e}")
         raise HTTPException(status_code=403, detail="OIDC token verification failed.")
@@ -618,7 +686,7 @@ def verify_front_door_oidc(request: Request) -> str:
     try:
         from google.oauth2 import id_token as google_id_token
         from google.auth.transport import requests as google_requests
-        claims = google_id_token.verify_oauth2_token(token, google_requests.Request())
+        claims = _verified_oidc_claims(request, token)
     except Exception as e:
         logger.warning(f"Domain-operation OIDC verification failed: {e}")
         raise HTTPException(status_code=403, detail="OIDC token verification failed.")
