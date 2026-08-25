@@ -56,6 +56,12 @@ OWNED_BY = {
     "works": "rights_custodian",
     "crawler_access": "evidence_agent",
     "accrual_audits": "evidence_agent",
+    # Authentication material, moving to its own database so the append-only
+    # role every agent holds on `(default)` — which includes entities.get and
+    # .list — stops granting them every principal's HMAC secret (HOD-745). The
+    # owning role is nominal here: database_for_collection() routes credential
+    # collections by name, not by role.
+    "counterparty_credentials": "rights_custodian",
 }
 
 

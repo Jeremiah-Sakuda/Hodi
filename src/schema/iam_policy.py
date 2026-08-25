@@ -107,6 +107,27 @@ def database_for_role(agent_role: str) -> str:
     return CONFLICT_DOMAIN_DATABASE.get(info["conflict_domain"], "(default)")
 
 
+# Authentication material lives in its OWN database, reachable by the front door
+# and by NOTHING ELSE (HOD-745).
+#
+# `counterparty_credentials` holds each principal's HMAC secret in plaintext —
+# it has to, because verifying an HMAC requires reconstructing it, so a hash
+# cannot stand in. That is acceptable; what was not is WHERE it sat. It was in
+# `(default)` alongside the shared grant log, and the append-only custom role
+# every agent identity holds on `(default)` grants `datastore.entities.get` and
+# `.list` — Firestore IAM is database-scoped, so all six service accounts could
+# read every buyer's authentication secret. Under this project's own
+# compromised-agent threat model, one container compromise yielded every
+# counterparty's terms AND the credentials to impersonate them. The role is
+# named "…GrantWriter".
+#
+# Moving the collection is the fix rather than narrowing the role, because the
+# role's read permissions are legitimately needed for the grant log. Only the
+# front door authenticates, so only the front door gets a grant here.
+CREDENTIAL_DATABASE = "hodi-credentials"
+CREDENTIAL_COLLECTIONS = frozenset({"counterparty_credentials"})
+
+
 # Collections that live in `(default)` NO MATTER WHICH ROLE READS THEM.
 #
 # The domain split is per-domain data; these are the things every domain
@@ -129,7 +150,6 @@ DEFAULT_DATABASE_COLLECTIONS = frozenset({
     "revocation_outbox",
     "leases",
     "agent_registry_events",
-    "counterparty_credentials",
     "e2e_memory_bank_events",
 })
 
@@ -151,6 +171,8 @@ def database_for_collection(agent_role: str, collection_name: str) -> str:
     worker deploy for the same reason; this is the consumer they lacked.
     """
     root = (collection_name or "").split("/")[0]
+    if root in CREDENTIAL_COLLECTIONS:
+        return CREDENTIAL_DATABASE
     if root in DEFAULT_DATABASE_COLLECTIONS:
         return "(default)"
     return database_for_role(agent_role)

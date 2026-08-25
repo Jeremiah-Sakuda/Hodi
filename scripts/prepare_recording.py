@@ -146,10 +146,36 @@ def regrant_rival(db) -> str:
     return ev.event_id
 
 
+def credential_client(project_id: str = "hodi-2026"):
+    """
+    Credentials live in their own database now (HOD-745), not `(default)`.
+
+    This script holds ONE client for grants; using it for the credential sweep
+    would have swept an empty collection and reported "no active throwaway
+    credentials" while every throwaway key stayed live — a pre-flight that
+    passes by looking in the wrong place.
+    """
+    from src.schema.iam_policy import database_for_collection
+    database = database_for_collection("front_door", CREDENTIAL_COLLECTION)
+    if database == "(default)":
+        return build_client(project_id)
+    from google.cloud import firestore as _fs
+    try:
+        return _fs.Client(project=project_id, database=database)
+    except Exception:
+        import subprocess as _sp
+        from google.oauth2 import credentials as _oc
+        token = _sp.check_output(["gcloud", "auth", "print-access-token"],
+                                 stderr=_sp.DEVNULL).decode().strip()
+        return _fs.Client(project=project_id, database=database,
+                          credentials=_oc.Credentials(token))
+
+
 def sweep_credentials(db) -> tuple:
     """Deactivate throwaway keys; return (deactivated, other_active) — never guess
     about a credential this script did not create."""
     deactivated, other_active = [], []
+    db = credential_client()
     for doc in db.collection(CREDENTIAL_COLLECTION).stream():
         rec = doc.to_dict()
         active = rec.get("active", False)

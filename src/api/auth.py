@@ -76,18 +76,34 @@ class CredentialStore:
         self._db = None
 
     def _client(self):
+        """
+        The client for the CREDENTIALS database, which is not `(default)`.
+
+        Authentication material sat in `(default)` beside the shared grant log,
+        and the append-only custom role every agent identity holds there grants
+        `datastore.entities.get`/`.list`. Firestore IAM is database-scoped, so
+        all six service accounts could read every principal's HMAC secret —
+        stored in plaintext, as verifying an HMAC requires. One compromised
+        container yielded every counterparty's terms and the credentials to
+        impersonate them. The database is derived from the policy so this
+        module and the IAM grants cannot disagree about where secrets live.
+        """
         if self._db is None:
             from google.cloud import firestore
+            from src.schema.iam_policy import database_for_collection
+            database = database_for_collection("front_door", CREDENTIAL_COLLECTION)
+            kwargs = {"project": self.project_id}
+            if database and database != "(default)":
+                kwargs["database"] = database
             try:
-                self._db = firestore.Client(project=self.project_id)
+                self._db = firestore.Client(**kwargs)
             except Exception:
                 token = subprocess.check_output(
                     ["gcloud", "auth", "print-access-token"], stderr=subprocess.DEVNULL
                 ).decode("utf-8").strip()
                 from google.oauth2 import credentials as oauth2_credentials
                 self._db = firestore.Client(
-                    project=self.project_id,
-                    credentials=oauth2_credentials.Credentials(token)
+                    credentials=oauth2_credentials.Credentials(token), **kwargs
                 )
         return self._db
 

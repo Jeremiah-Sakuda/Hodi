@@ -34,16 +34,28 @@ from google.cloud import firestore
 from src.api.auth import CREDENTIAL_COLLECTION
 
 
+def credential_database() -> str:
+    """Where credentials live, derived from the policy (HOD-745)."""
+    from src.schema.iam_policy import database_for_collection
+    return database_for_collection("front_door", CREDENTIAL_COLLECTION)
+
+
 def build_client(project_id: str) -> firestore.Client:
     try:
-        return firestore.Client(project=project_id)
+        db = credential_database()
+        return (firestore.Client(project=project_id) if db == "(default)"
+                else firestore.Client(project=project_id, database=db))
     except Exception:
         token = subprocess.check_output(
             ["gcloud", "auth", "print-access-token"], stderr=subprocess.DEVNULL
         ).decode("utf-8").strip()
         from google.oauth2 import credentials as oauth2_credentials
-        return firestore.Client(project=project_id,
-                                credentials=oauth2_credentials.Credentials(token))
+        db = credential_database()
+        kwargs = {"project": project_id,
+                  "credentials": oauth2_credentials.Credentials(token)}
+        if db != "(default)":
+            kwargs["database"] = db
+        return firestore.Client(**kwargs)
 
 
 def main():

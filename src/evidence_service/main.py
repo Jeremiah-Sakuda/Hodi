@@ -603,9 +603,31 @@ def expected_oidc_audiences(request: Request) -> set:
     if override:
         allowed.add(override.rstrip("/"))
 
+    bases = set()
+
+    # THE HOST HEADER IS THE AUTHORITATIVE ONE, and getting this wrong took the
+    # cascade down with a 403. This image runs FIVE Cloud Run services — the
+    # front door and four domain workloads — and CANONICAL_RUN_DOMAIN is a
+    # literal naming only the front door. On the revocation worker, a token the
+    # front door correctly minted for the WORKER's URL was compared against the
+    # FRONT DOOR's URL and refused, so /api/v1/revoke returned 503 with "private
+    # revocation worker refused with HTTP 403". A service must derive its own
+    # identity from the request it received, not from a constant that names a
+    # sibling.
+    host = request.headers.get("host", "").strip()
+    if host:
+        bases.add(f"https://{host}")
+        bases.add(f"http://{host}")
+
+    bases.add(CANONICAL_RUN_DOMAIN)
+    bases.add(ACTIVE_BASE_URL)
+    bases.add(str(request.base_url))
+
     path = request.url.path
-    for base in {CANONICAL_RUN_DOMAIN, ACTIVE_BASE_URL, str(request.base_url).rstrip("/")}:
-        base = base.rstrip("/")
+    for base in bases:
+        base = (base or "").rstrip("/")
+        if not base:
+            continue
         allowed.add(base)
         allowed.add(f"{base}{path}")
     return allowed

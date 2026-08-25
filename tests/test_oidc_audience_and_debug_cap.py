@@ -37,9 +37,10 @@ class _FakeURL:
 
 
 class _FakeRequest:
-    def __init__(self, path, base="http://0.0.0.0:8080/"):
+    def __init__(self, path, base="http://0.0.0.0:8080/", host=None):
         self.url = _FakeURL(path)
         self.base_url = base
+        self.headers = {"host": host} if host else {}
 
 
 class OidcAudienceIsCheckedTest(unittest.TestCase):
@@ -110,6 +111,29 @@ class OidcAudienceIsCheckedTest(unittest.TestCase):
             claims = self.main._verified_oidc_claims(
                 _FakeRequest("/internal/accrual_audit"), "any-token")
         self.assertEqual(claims["aud"], good["aud"])
+
+    def test_a_sibling_service_accepts_a_token_minted_for_ITSELF(self):
+        """
+        The 503 this caused. ONE image runs five Cloud Run services, and
+        CANONICAL_RUN_DOMAIN is a literal naming only the front door. On the
+        revocation worker, a token the front door had correctly minted for the
+        WORKER's URL was compared against the FRONT DOOR's URL and refused, so
+        /api/v1/revoke returned "private revocation worker refused with HTTP
+        403" and the hero beat died. A service must derive its own identity
+        from the request it received, not from a constant naming a sibling.
+        """
+        worker = "hodi-revocation-worker-ifd7cg45ja-uc.a.run.app"
+        allowed = self.main.expected_oidc_audiences(
+            _FakeRequest("/internal/revocation/execute", host=worker))
+        self.assertIn(f"https://{worker}", allowed)
+        self.assertIn(f"https://{worker}/internal/revocation/execute", allowed)
+
+    def test_a_sibling_host_does_not_widen_another_services_audience(self):
+        """Deriving from Host must not accept an arbitrary attacker-set host."""
+        allowed = self.main.expected_oidc_audiences(
+            _FakeRequest("/internal/domain/read", host="hodi-evidence-agent-x.a.run.app"))
+        self.assertNotIn("https://attacker.example", allowed)
+        self.assertNotIn("https://attacker.example/internal/domain/read", allowed)
 
     def test_both_deployed_verifiers_go_through_the_audience_check(self):
         import inspect

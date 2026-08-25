@@ -249,3 +249,73 @@ class TestFrontDoorCannotReachDomainDatabases(unittest.TestCase):
         front_door = f"hodi-runtime-sa@{project}.iam.gserviceaccount.com"
         client = self._impersonate_or_skip(front_door, "(default)")
         list(client.collection("grants").limit(1).stream())  # must not raise
+
+
+@unittest.skipUnless(os.environ.get("HODI_E2E") == "1",
+                     "Live IAM assertion (HOD-745): set HODI_E2E=1 with gcloud credentials.")
+class TestOnlyTheFrontDoorReadsAuthenticationSecrets(unittest.TestCase):
+    """
+    HMAC secrets are stored in plaintext — verifying an HMAC requires
+    reconstructing it, so a hash cannot stand in — and they sat in `(default)`,
+    beside the shared grant log. The append-only custom role every agent
+    identity holds there includes `datastore.entities.get` and `.list`, and
+    Firestore IAM is database-scoped. So all six service accounts could read
+    every principal's authentication secret: under this project's own
+    compromised-agent threat model, one compromised container yielded every
+    counterparty's terms AND the credentials to impersonate them.
+
+    Moving the collection is the fix rather than narrowing the role, because
+    those read permissions are legitimately needed for the grant log.
+    """
+
+    CREDENTIAL_DB = "hodi-credentials"
+
+    def _client_or_skip(self, sa_email):
+        from google.cloud import firestore
+        from google.auth import impersonated_credentials
+        import google.auth
+
+        project = os.environ.get("GCP_PROJECT_ID", "hodi-2026")
+        try:
+            source, _ = google.auth.default(
+                scopes=["https://www.googleapis.com/auth/cloud-platform"])
+        except google.auth.exceptions.DefaultCredentialsError:
+            import subprocess
+            from google.oauth2 import credentials as oauth2_credentials
+            token = subprocess.check_output(
+                ["gcloud", "auth", "print-access-token"],
+                stderr=subprocess.DEVNULL).decode().strip()
+            source = oauth2_credentials.Credentials(token)
+        try:
+            creds = impersonated_credentials.Credentials(
+                source_credentials=source, target_principal=sa_email,
+                target_scopes=["https://www.googleapis.com/auth/cloud-platform"])
+            from google.auth.transport.requests import Request as _AuthRequest
+            creds.refresh(_AuthRequest())
+        except Exception as e:  # noqa: BLE001
+            self.skipTest(f"cannot impersonate {sa_email} from this runner: {e}")
+        return firestore.Client(project=project, credentials=creds,
+                                database=self.CREDENTIAL_DB)
+
+    def test_a_domain_agent_cannot_read_the_credential_store(self):
+        from google.api_core import exceptions as gexc
+        project = os.environ.get("GCP_PROJECT_ID", "hodi-2026")
+        for role in ("evidence_agent", "rights_custodian", "licensing_negotiator",
+                     "consent_arbiter", "revocation_propagator"):
+            sa = AGENT_SA_MAP[role]["sa_email"]
+            with self.subTest(role=role):
+                client = self._client_or_skip(sa)
+                with self.assertRaises(
+                        (gexc.PermissionDenied, gexc.Forbidden),
+                        msg=(f"{role} can read counterparty_credentials — every principal's HMAC "
+                             "secret is exposed to a compromised domain workload")):
+                    list(client.collection("counterparty_credentials").limit(1).stream())
+
+    def test_the_front_door_CAN_still_read_it(self):
+        """
+        The other half. A lockdown that also broke authentication would pass the
+        test above and leave the service unable to authenticate anyone.
+        """
+        project = os.environ.get("GCP_PROJECT_ID", "hodi-2026")
+        client = self._client_or_skip(f"hodi-runtime-sa@{project}.iam.gserviceaccount.com")
+        list(client.collection("counterparty_credentials").limit(1).stream())  # must not raise
