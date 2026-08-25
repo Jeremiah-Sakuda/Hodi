@@ -21,14 +21,16 @@ the path to PUBLIC_MUTATING_ROUTES below, in the diff, where a reviewer sees it.
 import inspect
 import unittest
 
-from src.api.buyer_api import router
+from src.api.buyer_api import router  # noqa: F401 - kept for the router/app parity check
+from src.evidence_service.main import app
 
 MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
 # The authenticator (or a name that provably delegates to it) must appear in the
 # endpoint's source. Kept as names rather than call-graph analysis so the check
 # stays obvious and cheap.
-AUTH_MARKERS = ("_authenticate_or_403", "verify_scheduler_oidc")
+AUTH_MARKERS = ("_authenticate_or_403", "verify_scheduler_oidc", "verify_front_door_oidc",
+                "_domain_service_or_404")
 
 # Deliberately public mutating routes, each with the reason it is safe.
 # Adding to this set is a visible, reviewable act.
@@ -41,17 +43,85 @@ PUBLIC_MUTATING_ROUTES = {
 }
 
 
+def _walk(routes, prefix=""):
+    """
+    Every route reachable on the app, recursing into included routers.
+
+    THIS RECURSION IS THE WHOLE FIX, AND IT IS NOT COSMETIC. On this FastAPI
+    version `app.include_router(...)` does NOT flatten the router's routes into
+    `app.routes` — it stores a single `_IncludedRouter` entry holding them. A
+    naive iteration over `app.routes` therefore yields the deployed module's own
+    routes and NONE of the buyer API's, while `TestClient` happily serves both.
+    A guard written that way would have reported success over an enumeration
+    missing every route that has ever actually broken in this project.
+    """
+    for route in routes:
+        # An included router is reached through `original_router` on this
+        # FastAPI version; `route.routes` on the wrapper is a plain string, so
+        # a duck-typed `getattr(route, "routes")` walk silently finds nothing.
+        inner = getattr(route, "original_router", None)
+        sub = getattr(inner, "routes", None) if inner is not None else None
+        if sub is None:
+            candidate = getattr(route, "routes", None)
+            sub = candidate if isinstance(candidate, (list, tuple)) else None
+        if sub:
+            yield from _walk(sub, prefix)
+            continue
+        path = getattr(route, "path", None)
+        endpoint = getattr(route, "endpoint", None)
+        if path is None or endpoint is None:
+            continue
+        yield prefix + path, getattr(route, "methods", set()) or set(), endpoint
+
+
 def mutating_routes():
-    for route in router.routes:
-        methods = getattr(route, "methods", set()) or set()
-        if methods & MUTATING_METHODS:
-            yield route.path, sorted(methods & MUTATING_METHODS), route.endpoint
+    """
+    Every mutating route on the APPLICATION THE DOCKERFILE SERVES.
+
+    THE HOLE THIS CLOSES. This enumerated `buyer_api.router` alone. An external
+    reviewer added an unauthenticated mutating POST directly to
+    `src/evidence_service/main.py` — the module Cloud Run actually runs — and
+    ALL SIX CI TARGETS PASSED, including this one. The README cites this guard
+    as the reason two historical auth holes "would have been caught on first
+    commit"; it could not have caught them on the module that serves them.
+
+    Four such routes already existed when the hole was found — the three
+    `/internal/domain/*` operations and `/internal/revocation/execute` — all of
+    them authenticated, so nothing was exposed. The guard simply could not have
+    known either way.
+    """
+    seen = set()
+    for path, methods, endpoint in _walk(app.routes):
+        mutating = methods & MUTATING_METHODS
+        if not mutating:
+            continue
+        key = (path, tuple(sorted(mutating)))
+        if key in seen:
+            continue
+        seen.add(key)
+        yield path, sorted(mutating), endpoint
 
 
 class TestEveryMutatingRouteAuthenticates(unittest.TestCase):
-    def test_the_router_actually_exposes_mutating_routes(self):
+    def test_the_app_actually_exposes_mutating_routes(self):
         """Guard the guard: if this returns nothing, the check below is vacuous."""
         self.assertGreaterEqual(len(list(mutating_routes())), 3)
+
+    def test_the_app_covers_strictly_more_than_the_router(self):
+        """
+        The regression that mattered. If this ever reports equality again,
+        someone has narrowed the enumeration back to the router and the
+        deployed module's own routes are unguarded once more.
+        """
+        app_paths = {p for p, _, _ in mutating_routes()}
+        router_paths = {r.path for r in router.routes
+                        if getattr(r, "methods", set()) & MUTATING_METHODS}
+        self.assertTrue(router_paths <= app_paths,
+                        "the app enumeration lost routes the router exposes")
+        self.assertGreater(
+            len(app_paths - router_paths), 0,
+            "the deployed app exposes no mutating route outside the buyer router. If that is "
+            "genuinely true now, this guard has stopped covering the module that broke.")
 
     def test_every_mutating_route_authenticates_or_is_explicitly_public(self):
         unauthenticated = []
