@@ -30,6 +30,12 @@ class AffectedGrant(BaseModel):
     grant_id: str
     counterparty_id: str
     original_scope: Scope
+    # What THIS grant loses. Terminating a grant terminates the whole grant, so
+    # it is the containment closure of the GRANT's use type — not of the revoked
+    # one. Revoking `human_reference` against a `training` grant ends training,
+    # fine-tuning, RAG retrieval and human reference; the notice used to say it
+    # ended human reference.
+    terminated_scopes: List[str] = []
 
 class CascadeResult(BaseModel):
     # The operation's idempotency key (HOD-708): retrying with the SAME
@@ -39,6 +45,9 @@ class CascadeResult(BaseModel):
     operation_id: str
     revoked_use_type: str
     derived_scopes: List[str]
+    # The union of every affected grant's terminated_scopes: what this operation
+    # actually ended, as opposed to what was asked for.
+    terminated_scopes: List[str] = []
     structured_derivation: List[DerivedScope]
     affected_grants: List[AffectedGrant]
     issued_notices: List[RevocationReceipt]
@@ -112,10 +121,21 @@ class RevocationPropagatorAgent:
         # from it; a fresh call without one is a fresh operation.
         operation_id = operation_id or f"revop-{uuid.uuid4()}"
 
-        # `derived_scopes` describes what a terminated grant LOSES: the revoked
-        # use and every narrower use it implies. It is the containment closure of
-        # the revoked type — correct as the withdrawal description, and unrelated
-        # to grant SELECTION, which was the bug. sorted() for stable rendering.
+        # The closure of the REVOKED type: the uses the artist withdrew. This is
+        # the right description of the request, and it was the wrong description
+        # of the effect.
+        #
+        # Revocation does not narrow a grant, it TERMINATES it. So a grant held
+        # at `training`, revoked against `human_reference`, loses all four uses —
+        # while this list said `["human_reference"]`, and that list is what the
+        # notice and the receipt reported to the counterparty. The withdrawal was
+        # correct and its description understated it, which over a legal artifact
+        # is the direction that matters: the counterparty is told they lost less
+        # than they lost.
+        #
+        # Per-grant truth is on AffectedGrant.terminated_scopes; this stays the
+        # request-level closure, and `terminated_scopes` below is their union —
+        # what this operation actually ended.
         derived_scopes = sorted(USE_TYPE_CONTAINMENT.get(revoked_use_type, {revoked_use_type}))
         
         # 2. Fetch all grant events for this work from real Firestore
@@ -200,10 +220,13 @@ class RevocationPropagatorAgent:
                 # came from one function answering both.
                 if (is_use_type_contained(state.active_scope.use_type, revoked_use_type)
                         and not scope_window_has_closed(state.active_scope, cascade_at)):
+                    held = state.active_scope.use_type
                     affected_grants.append(AffectedGrant(
                         grant_id=gid,
                         counterparty_id=state.counterparty_id,
-                        original_scope=state.active_scope
+                        original_scope=state.active_scope,
+                        terminated_scopes=sorted(
+                            USE_TYPE_CONTAINMENT.get(held, {held})),
                     ))
 
                     # Notice text is Gemini-drafted and gated by RevocationLint;
@@ -272,6 +295,7 @@ class RevocationPropagatorAgent:
             operation_id=operation_id,
             revoked_use_type=revoked_use_type,
             derived_scopes=derived_scopes,
+            terminated_scopes=sorted({t for a in affected_grants for t in a.terminated_scopes}),
             structured_derivation=structured_derivation,
             affected_grants=affected_grants,
             issued_notices=issued_notices,

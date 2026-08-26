@@ -85,7 +85,7 @@
     },
     "split_revocation_worker": {
       "status": "verified",
-      "detail": "A private hodi-revocation-worker service exists under revocation-propagator-sa@. The checked-in deployment now removes its project-wide Firestore viewer and append bindings, replaces them with (default)-only conditions, grants only the front door run.invoker, pins the worker role from its environment, and preserves KMS signing. This hardened revision and its effective IAM have not yet been verified live, so the capability is provisioned but unverified.",
+      "detail": "A private hodi-revocation-worker service runs under revocation-propagator-sa@. Its project-wide Firestore viewer and append bindings are replaced with (default)-only conditions, only the front door holds run.invoker, the worker pins its role from its environment, and KMS signing is preserved. This hardened revision and its effective IAM were verified live on 2026-08-25.",
       "evidence_source": "scripts/deploy_revocation_worker.sh re-executed 2026-08-25: deployed identity read back from Cloud Run as revocation-propagator-sa, authenticated invocation 200 and anonymous 403, and the worker now serves the production revocation path rather than standing beside it.",
       "last_verified_utc": "2026-08-25T15:52:00Z",
       "revision": null,
@@ -95,7 +95,7 @@
     },
     "revocation_route_worker_cutover": {
       "status": "verified",
-      "detail": "POST /api/v1/revoke delegates to the private worker when HODI_REVOCATION_WORKER_URL is configured, requires an explicit private-worker execution marker, and returns 503 without local fallback on worker failure. scripts/deploy.sh now requires and configures that worker. The cutover has passed offline tests but has not been deployed or observed over the network.",
+      "detail": "POST /api/v1/revoke delegates to the private worker when HODI_REVOCATION_WORKER_URL is configured, requires an explicit private-worker execution marker, and returns 503 without local fallback on worker failure. scripts/deploy.sh requires and configures that worker. The cutover was executed and observed over the network on 2026-08-25.",
       "evidence_source": "Live 2026-08-25 on hodi-evidence-endpoint-00059-z55: POST /api/v1/revoke executed end to end THROUGH the private worker — HTTP 200, one affected grant, all four derived scopes, a real KMS-ECDSA-P256-SHA256 notice signature. The no-fallback property was proven by its own failure first: while the worker was refusing the front door's OIDC token, /api/v1/revoke returned 503 'Revocation worker unavailable; no effects were initiated' rather than quietly executing the cascade locally. A fail-open would have returned 200 and nobody would have known. Warm round-trip re-measured across 7 runs: median 2389 ms.",
       "last_verified_utc": "2026-08-25T15:55:00Z",
       "revision": "hodi-evidence-endpoint-00059-z55",

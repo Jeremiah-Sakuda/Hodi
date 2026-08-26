@@ -44,9 +44,9 @@ I built a system whose entire premise is refusing to assert what it cannot verif
 
 The project is called Hodi — *hodi* is what you call at someone's door before entering. It's a governed fleet of agents that administers creative consent: registering works with proof of control, expressing machine-readable licensing terms, negotiating with buyers under confidentiality, propagating revocations. Four agents separated by conflict of interest, an append-only event log, and a set of honesty invariants that are supposed to be enforced by structure rather than by good intentions.
 
-Over about seventy-two hours it produced fifty-four real defects. They sort into nine classes. **Four of those classes recurred after being fixed once** — which is the actually interesting part, because a bug you fix twice is telling you something a bug you fix once is not.
+Over about seventy-two hours it produced sixty-three real defects. They sort into nine classes. **Four of those classes recurred after being fixed once** — which is the actually interesting part, because a bug you fix twice is telling you something a bug you fix once is not.
 
-The title says seven. The ledger says nine, and it says fifty-four rather than the fifteen this piece was published with — because the count is now generated from an enumerated ledger instead of typed into seven documents by hand, and the enumeration found more than the prose had been carrying. The old number had already drifted: fifteen here, fourteen everywhere else. **A number repeated in seven places and derived in none is not a measurement**, and it is the same defect class as two others in the ledger below. So the title stays as a record of what I thought the shape was, and the number moves, because that one is checked by a build step now.
+The title says seven. The ledger says nine, and it says sixty-three rather than the fifteen this piece was published with — because the count is now generated from an enumerated ledger instead of typed into seven documents by hand, and the enumeration found more than the prose had been carrying. The old number had already drifted: fifteen here, fourteen everywhere else. **A number repeated in seven places and derived in none is not a measurement**, and it is the same defect class as two others in the ledger below. So the title stays as a record of what I thought the shape was, and the number moves, because that one is checked by a build step now.
 
 Before the ledger, the one idea worth understanding, because most of what follows only lands if you have it.
 
@@ -87,7 +87,7 @@ I had fixed the reported route. I had not asserted the property across the route
 
 ## The one where my own infrastructure lied for me
 
-Hodi's first empirical headline was a negative result: *I published machine-readable consent terms at a discoverable endpoint and no crawler asked.* Two later audits corrected it, in the same direction: self-identifying crawlers did come — 16 visits from two of them at the 2026-08-25 count — and every one fetched `/robots.txt` while none followed the linked machine-readable consent document. The earlier zero was a detector bug, not evidence of absence.
+Hodi's first empirical headline was a negative result: *I published machine-readable consent terms at a discoverable endpoint and no crawler asked.* Two later audits corrected it, in the same direction: self-identifying crawlers did come — 17 visits from two of them at the 2026-08-26 count — and every one fetched `/robots.txt` while none followed the linked machine-readable consent document. The earlier zero was a detector bug, not evidence of absence.
 
 Its entire value depends on the third-party count being real.
 
@@ -103,7 +103,7 @@ And then it happened a third time. The final verification pass, days later, foun
 
 There's a coda. After fixing the list, ten non-self records remained. I nearly wrote them up as third-party hits. Then I looked: nine arrived within a single second, from cloud IPs, and one of them requested `/api/v1/debug/compromised_agent_read` — a path no sitemap advertises and no crawler would care about. That's someone inspecting the service. Not a crawler.
 
-Reporting those ten as crawler access would have been exactly the fabricated finding the project exists to refuse, arrived at from the opposite direction. So the metric changed shape: `known_crawler_ua_matches` is the only number this project describes as crawler access, while every other non-self request stays *unattributed*. The later detector correction found matching user agents after all — **16 visits** as of the 2026-08-25 audit, from two distinct self-identifying crawlers. Every one fetched `/robots.txt`; not one fetched the linked consent document. That is attribution, not authentication, and the current count remains sourced from `docs/metrics.json` rather than frozen into this article.
+Reporting those ten as crawler access would have been exactly the fabricated finding the project exists to refuse, arrived at from the opposite direction. So the metric changed shape: `known_crawler_ua_matches` is the only number this project describes as crawler access, while every other non-self request stays *unattributed*. The later detector correction found matching user agents after all — **17 visits** as of the 2026-08-26 audit, from two distinct self-identifying crawlers. Every one fetched `/robots.txt`; not one fetched the linked consent document. That is attribution, not authentication, and the current count remains sourced from `docs/metrics.json` rather than frozen into this article.
 
 ---
 
@@ -189,7 +189,7 @@ Everywhere I hadn't built that wire, things drifted.
 
 Worth saying plainly: much of this was built with agentic assistance, and several classes in this ledger are that practice's characteristic failure modes — infrastructure reported done without an observed execution, tests that assert what they were just constructed to assert, transcripts written rather than captured. The speed is real and so is that failure surface. The guards are the answer to it specifically: **a mechanism that fails loudly is the only thing that distinguishes work verified from work reported as verified.** Reading more carefully does not scale; a build that goes red does.
 
-So the fixes that matter aren't the fifty-four patches. They're the four guards:
+So the fixes that matter aren't the sixty-three patches. They're the four guards:
 
 - **One list, two consumers.** The self-traffic user agents live in one module now, imported by both the audit script and the triage engine. The duplication that caused the same defect twice is gone.
 - **Docs must equal the tool.** A check fails the build if any *accrual* number — the ones that carry the honesty finding — disagrees between the regenerated metrics file and the README, the honesty diagram, or the submission text. Named figures, not every integer in the repo; the ones where drift would change what a reader believes.
@@ -225,7 +225,7 @@ An illustrator cannot currently say *this series may be trained on, that one may
 
 And the finding I did not expect to be the most interesting one — which has now been wrong twice, in opposite directions, which is the eighth way and the reason this section is dated.
 
-I published machine-readable consent terms at a discoverable endpoint, with a `robots.txt` pointing at them. For a week I wrote that **nothing identifying itself as a crawler had asked** — *the absence is the evidence* — and it was a good line built on a broken regex, which required a word boundary before `bot` and so could not see the commonest crawler-naming shape there is. Then it read one. As of the **2026-08-25** audit it reads **16 visits from two distinct self-identifying crawlers, between August 11th and August 25th**.
+I published machine-readable consent terms at a discoverable endpoint, with a `robots.txt` pointing at them. For a week I wrote that **nothing identifying itself as a crawler had asked** — *the absence is the evidence* — and it was a good line built on a broken regex, which required a word boundary before `bot` and so could not see the commonest crawler-naming shape there is. Then it read one. As of the **2026-08-26** audit it reads **17 visits from two distinct crawler-signature user agents, between August 11th and August 26th**.
 
 And the finding survived being corrected, which is the part worth keeping: **every one of those 16 fetched `/robots.txt`. Not one fetched `/.well-known/hodi.json`** — one request away, named in the very file they did read. They asked whether they were allowed to crawl. Over fifteen days, none of them asked what they were allowed to *do with the work*, because until recently there was nowhere to ask it.
 

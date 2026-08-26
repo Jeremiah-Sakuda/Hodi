@@ -977,3 +977,84 @@ HOD-733, HOD-742, HOD-746, HOD-747, HOD-748, HOD-749
 **Not done, deliberately:** the old commit `799eafc6…` still resolves on GitHub — unreachable objects
 are not collected immediately — so the downgrade rests on the commit being **unsigned**, which was
 true before the rewrite and is the actual defect, rather than on a broken link.
+
+---
+
+### 2026-08-26 — Round 14: A Verified Tier Anyone Could Mint, Two Guards Blind by One Clause, and the Robots Finding Made Derivable
+
+**Prompt (summary):** a ten-judge panel found `verified_control` mintable from three arbitrary
+strings on HEAD with no mutation, a route-auth guard blind to an entire path shape, an HMAC backdoor
+that survived CI, and documentation drift concentrated exactly where no guard's file list reached.
+
+**Outcome.**
+
+**1. `verified_control` was taken from the request body.** `POST /api/v1/works` set the tier to
+`verified_control` whenever the caller's `control_proof` field merely **parsed** — a method name, a
+date, and a URI pointing at `not-a-real-domain.invalid` were sufficient. Underneath it, **no verifier
+in `src/schema/verification.py` was called from any production path at all**; all four were reachable
+only from tests, and HOD-748 had hardened exactly one of them. The other three still returned
+`status: "verified"` after checking that their arguments were non-empty, with three tests asserting
+that as correct — including one that registered against `example.invalid`, a domain reserved by
+RFC 2606 precisely so it can never resolve.
+
+This is **ownership taken from attacker-controlled input**, which is the same defect class this file
+already records two fixes for on `counterparty_id`. It arrived a third time on the field that says
+who owns the work.
+
+The tier is now derived from `substantiate()`, which calls the verifier for the method. `dns`,
+`well_known_file` and `platform_oauth` refuse, because nothing in this build resolves a TXT record,
+fetches a token, or exchanges an OAuth code. **An unverifiable proof is not an error**: the work still
+registers, the proof is still stored, and the tier stays `asserted` with the reason returned to the
+caller. Wiring those three is real work; claiming them was not.
+
+**2. Two guards were blind by one clause each.**
+
+- The route-auth effect test carried `or "{" in path: continue`, so **no parameterised route was ever
+  probed**. An anonymous `POST /api/v1/pwn/{victim}` running the full revocation cascade passed all
+  eight CI targets, while the identical route without a path parameter was caught — the exemption was
+  the entire difference. Path parameters are substituted and probed now; the two genuinely public
+  parameterised routes are explicit exemptions with written reasons.
+- **No test asserted that no signature value is privileged.** 535 tests checked that a *wrong* HMAC is
+  refused, which is a different property, so `if signature != "MASTERKEY" and not
+  hmac.compare_digest(...)` — a nine-character diff in the one function between an anonymous request
+  and every counterparty's grants — passed every target.
+
+**3. The documentation drift sat exactly where the guards' file lists ended.** Diagram A, the first
+image under `## Architecture`, labelled the flagship capability `NOT YET VERIFIED LIVE` while
+`deployment_status.json` marked it verified and the README said so nine lines below the image —
+`.mmd` sources were in no guard's list. `deployment_status.json` contradicted itself field-by-field
+because the phrase guard held `"not deployed"` and the text said `"not been deployed"` — **it missed
+by one word**. The README named a first commit that the 2026-08-25 rewrite had removed, under the
+heading "Provenance", with the rewrite undisclosed. And the Devpost text said "nine" crawler matches
+twice and 16 once — inside the section about number drift — because the crawler checks were anchored
+on two exact phrasings.
+
+**4. The headline empirical finding was prose in five documents and derived in none.** *Every known
+crawler fetched `/robots.txt` and not one fetched the consent document named in it* was measured once
+by hand and then restated across two revisions of the count. `scripts/daily_accrual_check.py` now
+derives `known_crawler_paths`, `known_crawler_consent_doc_fetches` and the observed date range.
+Re-measured live: **17 known-crawler records, all 17 to `/robots.txt`, zero to
+`/.well-known/hodi.json`, 2026-08-11 → 2026-08-26.** The claim survives contact with its own
+mechanism, which is the first time it has been asked to.
+
+**5. `derived_scopes` understated what a counterparty lost.** Revocation terminates a grant rather
+than narrowing it, but the field reported the containment closure of the **revoked** use type instead
+of the **grant's**. A `training` grant revoked against `human_reference` ends training, fine-tuning,
+RAG retrieval and human reference — and the notice told the counterparty they had lost human
+reference. The effect was correct; its description understated it, which over a legal artifact is the
+direction that matters. `AffectedGrant.terminated_scopes` now carries per-grant truth and
+`CascadeResult.terminated_scopes` their union, while `derived_scopes` stays what was *asked for*.
+
+**Key decisions:**
+1. **Refuse to mint, rather than refuse to register.** An unverifiable proof downgrades the tier and
+   keeps the registration. Rejecting the request would push artists away from recording a claim at
+   all, and the tier system exists precisely so an unproven claim can be stated honestly.
+2. **List the near-misses that actually occurred.** A phrase guard is only as good as its next
+   inflection, so `"has not been deployed"` and its siblings are enumerated rather than trusted to a
+   stem.
+3. **Derive the finding, not just the count.** The number was guarded; the sentence around it was not.
+
+**Requirements touched:** HOD-105, HOD-311, HOD-350, HOD-360, HOD-620, HOD-718, HOD-748, HOD-750,
+HOD-751
+
+**Ledger:** 63 defects across nine classes, four of which have recurred.

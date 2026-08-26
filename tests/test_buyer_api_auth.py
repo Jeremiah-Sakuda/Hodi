@@ -27,7 +27,7 @@ from fastapi.testclient import TestClient
 from src.api import buyer_api
 from src.gateway.gateway import AgentGateway
 from src.api.auth import (
-    InMemoryCredentialStore, compute_signature,
+    InMemoryCredentialStore, compute_signature, RequestAuthenticationError,
     HEADER_KEY_ID, HEADER_TIMESTAMP, HEADER_SIGNATURE,
 )
 import json
@@ -380,6 +380,65 @@ class TestIamPolicyMatching(unittest.TestCase):
             agent.get_other_buyer_terms("buyer-session-rival-corp")
         with self.assertRaises(PermissionError):
             agent.get_unfiltered_buyer_terms()
+
+
+class NoSignatureValueIsSpecialTest(unittest.TestCase):
+    """A magic signature value must never authenticate (HOD-750).
+
+    535 tests asserted that a WRONG signature is refused, and not one asserted
+    that no PARTICULAR value is privileged. So an added clause of the form
+
+        if signature != "MASTERKEY" and not hmac.compare_digest(expected, signature):
+
+    passed every CI target — a backdoor whose diff is nine characters, in the
+    one function standing between an anonymous request and every counterparty's
+    grants. "Rejects a bad signature" and "has no accepted constant" are
+    different properties; the suite only had the first.
+
+    The sweep below is deliberately broad and cheap: real credentials are the
+    only thing that authenticates, so every value that is not the computed HMAC
+    must fail, including the ones a backdoor would plausibly choose.
+    """
+
+    KEY_ID = "key-backdoor-probe"
+    SECRET = "a-real-registered-secret"
+
+    def setUp(self):
+        self.store = InMemoryCredentialStore({
+            self.KEY_ID: {"secret": self.SECRET, "counterparty_id": "buyer-probe",
+                          "principal_type": "buyer", "active": True},
+        })
+        self.body = b'{"probe":true}'
+        self.issued_at = datetime.now(timezone.utc).isoformat()
+
+    def _authenticate(self, signature):
+        from src.api.auth import authenticate
+        return authenticate(key_id=self.KEY_ID, issued_at=self.issued_at,
+                            signature=signature, body=self.body, store=self.store)
+
+    def test_the_real_signature_still_authenticates(self):
+        """Guard the guard: if this fails, every case below passes vacuously."""
+        good = compute_signature(self.SECRET, self.KEY_ID, self.issued_at, self.body)
+        self.assertEqual(self._authenticate(good).counterparty_id, "buyer-probe")
+
+    def test_no_magic_value_authenticates(self):
+        candidates = [
+            "MASTERKEY", "masterkey", "DEBUG", "debug", "TEST", "test",
+            "BYPASS", "bypass", "ADMIN", "admin", "root", "*", "true", "1",
+            "0" * 64, "f" * 64, "-", "null", "None", "undefined",
+            compute_signature("the-wrong-secret", self.KEY_ID, self.issued_at, self.body),
+        ]
+        for value in candidates:
+            with self.subTest(signature=value):
+                with self.assertRaises(RequestAuthenticationError):
+                    self._authenticate(value)
+
+    def test_a_signature_valid_for_a_different_body_is_refused(self):
+        """The other shape of the same mistake: comparing against something the
+        caller can influence."""
+        other = compute_signature(self.SECRET, self.KEY_ID, self.issued_at, b'{"probe":false}')
+        with self.assertRaises(RequestAuthenticationError):
+            self._authenticate(other)
 
 
 if __name__ == "__main__":

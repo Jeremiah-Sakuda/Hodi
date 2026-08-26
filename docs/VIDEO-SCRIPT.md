@@ -559,8 +559,8 @@ because it is not determinable, there is no enum value for it, and the schema ph
 express the claim. Revocation terminates a grant. It does not un-train a model.
 
 Then the measured finding — **re-measured 2026-08-25; these are the numbers on the screen behind you,
-so say these and no others**: 4430 accrued access records. **Sixteen** match a crawler signature —
-two distinct crawler user agents, sixteen visits between August 11th and August 25th. Every single
+so say these and no others**: 6002 accrued access records. **Seventeen** match a crawler signature —
+two distinct crawler user agents, seventeen visits between August 11th and August 26th. Every single
 one fetched `/robots.txt`. **Not one** fetched `/.well-known/hodi.json` — one request away, named in
 that very `robots.txt`, where the machine-readable terms are served. They asked whether they were
 allowed to crawl. Not one asked what they were allowed to *do with the work*.
@@ -571,7 +571,7 @@ allowed to crawl. Not one asked what they were allowed to *do with the work*.
 > it — the same guard the README and the Devpost draft are already held to, extended to the one
 > document whose numbers are spoken out loud.
 >
-> This is the thesis in sixteen records, and it beats both prior versions ("nobody came", then "one
+> This is the thesis in seventeen records, and it beats both prior versions ("nobody came", then "one
 > crawler came"). Do not name the vendors on camera — they did nothing wrong, and the point is not
 > who they are. The correction line still lands if you want it: the count read zero for a week
 > because the detector's pattern required a word boundary before `bot`, so a vendor prefix glued

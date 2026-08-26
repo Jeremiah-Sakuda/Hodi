@@ -449,9 +449,26 @@ async def register_work(req: RegisterWorkRequest, request: Request):
             proof = ControlProof(**req.control_proof)
         except Exception as e:
             raise HTTPException(status_code=422, detail=f"Malformed control_proof: {e}")
-        tier = "verified_control"
-        reason = (f"Control proof accepted (method: {proof.method}, evidence: "
-                  f"{proof.evidence_uri}), so ownership is VERIFIED.")
+
+        # THE TIER IS DERIVED FROM VERIFICATION PERFORMED, NEVER FROM THE BODY.
+        #
+        # This used to read `tier = "verified_control"` right here, on the sole
+        # condition that the caller's control_proof PARSED. Three arbitrary
+        # strings — a method name, a date, a URI pointing at nothing — bought a
+        # verified ownership tier over someone else's work. That is identity
+        # taken from attacker-controlled input, the same defect this file
+        # already carries two fixes for on counterparty_id, arriving a third
+        # time on the field that says who owns the work.
+        #
+        # `substantiate()` calls the verifier for the method. Only signed_commit
+        # has one; dns, well_known_file and platform_oauth refuse, because
+        # nothing in this build resolves a TXT record, fetches a token, or
+        # exchanges an OAuth code. An unsubstantiated proof is NOT an error —
+        # the work still registers, the proof is still stored, and the tier
+        # simply stays `asserted`, with the reason returned to the caller.
+        from src.schema.verification import substantiate
+        verified, reason = substantiate(req.control_proof)
+        tier = "verified_control" if verified else "asserted"
 
     # Uniform 403 on a work that already exists, whoever owns it: a caller
     # must not learn which work_ids are taken by probing this route.

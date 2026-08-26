@@ -21,6 +21,11 @@
           "id": "accrual-audit-public",
           "summary": "GET /internal/accrual_audit shipped public and appended a document on every call while its docstring claimed idempotence.",
           "source": "docs/BUILD-LOG.md correction note #6"
+        },
+        {
+          "id": "verified-control-mintable-from-the-request-body",
+          "summary": "POST /api/v1/works set control_tier='verified_control' whenever the request body's control_proof merely PARSED. Three arbitrary strings — a method name, a date, a URI pointing at a reserved non-resolving domain — bought a verified ownership tier. No verifier in src/schema/verification.py was called from any production path; all four were reachable only from tests, and three of them minted status:'verified' from non-empty arguments. Ownership taken from attacker-controlled input, the same class already fixed twice for counterparty_id.",
+          "source": "src/api/buyer_api.py — the tier is derived from substantiate(); dns, well_known_file and platform_oauth refuse"
         }
       ]
     },
@@ -147,6 +152,21 @@
           "id": "render-guard-vacuous-in-shallow-clone",
           "summary": "The generated-artifact staleness guard used git commit times specifically to avoid the fresh-clone mtime trap, and then hit the identical trap one level up: actions/checkout@v4 clones at depth 1, so every file reports the same commit epoch, nothing is older than anything, and the comparison could not fail. It ran that way in CI.",
           "source": "tests/test_generated_artifacts_are_current.py asserts the clone is not shallow; .github/workflows/verify.yml sets fetch-depth: 0"
+        },
+        {
+          "id": "route-auth-guard-skipped-parameterised-paths",
+          "summary": "The route-authentication effect test carried `or \"{\" in path: continue`, so no parameterised route was ever probed. An anonymous POST /api/v1/pwn/{victim} running the revocation cascade passed all eight CI targets, while the identical route without a path parameter was caught — the exemption was the entire difference. The guard is narrated in the video as 'CI fails if any mutating route forgets to authenticate'.",
+          "source": "tests/test_route_auth_coverage.py — path parameters are substituted and probed; the two real parameterised routes are explicit, reasoned exemptions"
+        },
+        {
+          "id": "no-test-that-a-magic-signature-is-rejected",
+          "summary": "535 tests asserted that a WRONG HMAC signature is refused and none asserted that no particular value is privileged, so adding `if signature != \"MASTERKEY\" and not hmac.compare_digest(...)` to src/api/auth.py passed every CI target. 'Rejects a bad signature' and 'has no accepted constant' are different properties; the suite only had the first.",
+          "source": "tests/test_buyer_api_auth.py — NoSignatureValueIsSpecialTest sweeps plausible backdoor constants"
+        },
+        {
+          "id": "three-tests-asserted-unwired-verifiers-as-correct",
+          "summary": "verify_dns_txt, verify_well_known_file and verify_platform_oauth each returned a ControlProof carrying status:'verified' after checking only that their arguments were non-empty, and three tests asserted that as correct — including one that registered a work against example.invalid, a domain reserved so it can never resolve, and asserted verified_control.",
+          "source": "tests/test_work_verification.py, tests/test_work_registration.py — rewritten to assert refusal"
         }
       ]
     },
@@ -290,6 +310,11 @@
           "id": "signature-failed-over-the-document-as-served",
           "summary": "Signing canonicalized timestamps as rendered by Pydantic JSON mode ('...Z'); a document read back from Firestore re-serialises as '...+00:00'. Same instant, different canonical bytes, so a signature verified over the signed form and failed over the document as served — a third party following the published procedure got 'signature invalid' on an untampered stored grant. Inline receipts never left the process, so CI never saw it.",
           "source": "src/schema/signing.py — timestamps normalised inside canonicalization, with a legacy fallback"
+        },
+        {
+          "id": "derived-scopes-understated-what-a-grant-lost",
+          "summary": "Revocation terminates a grant rather than narrowing it, but derived_scopes reported the containment closure of the REVOKED use type instead of the GRANT's. Revoking human_reference against a training grant ended training, fine_tuning, rag_retrieval and human_reference while the notice and receipt told the counterparty they had lost human_reference. The effect was correct and its description understated it.",
+          "source": "src/agents/revocation_propagator.py — AffectedGrant.terminated_scopes, and CascadeResult.terminated_scopes as their union"
         }
       ]
     },
@@ -332,6 +357,26 @@
           "id": "readme-contradicted-its-own-table-and-its-own-status-file",
           "summary": "README prose said the conflict_domain_separation row reads 'in-process only and not verified' while the table four rows down read 'verified'; four 'awaits live verification' disclaimers survived the verification; the boundary test was quoted at ~2 s against a measured 8.96 s; and the red-team drill was described as five attacks where the code runs six, omitting role spoofing. Separately, 'Those 9 are the finding' sat in the same clause as '16 match a crawler signature'.",
           "source": "README.md, docs/devpost-description.md — corrected against docs/metrics.json and docs/deployment_status.json"
+        },
+        {
+          "id": "diagram-sources-were-in-no-guard-file-list",
+          "summary": "Diagram A — the first image under ## Architecture and the attachment on the launch post — labelled the private revocation worker 'NOT YET VERIFIED LIVE' while deployment_status.json marked it verified and the README said so nine lines below the image. The .mmd sources were in no guard's file list.",
+          "source": "docs/architecture/diagram_a_the_fleet.mmd re-rendered; the accrual guard now covers Diagram B's date"
+        },
+        {
+          "id": "not-executed-phrase-guard-missed-by-one-word",
+          "summary": "deployment_status.json carried status:'verified' beside detail text reading 'has not been deployed or observed over the network'. The guard's NOT_EXECUTED_PHRASES contained 'not deployed' and the text said 'not been deployed', so a capability contradicted itself field-by-field and the build stayed green.",
+          "source": "scripts/check_doc_metrics.py — the near-miss inflections are listed explicitly"
+        },
+        {
+          "id": "readme-named-a-first-commit-not-in-the-published-history",
+          "summary": "Under the heading 'Provenance', the README named a first commit that no longer existed after the 2026-08-25 history rewrite, and the rewrite itself was undisclosed. Falsifiable in one command by anyone who cloned the repository.",
+          "source": "README.md — corrected to the real root commit, with the rewrite disclosed"
+        },
+        {
+          "id": "crawler-count-guard-anchored-on-exact-phrasings",
+          "summary": "The Devpost text said 'nine' crawler matches in two sentences and 16 in a third — inside the section about number drift — because check_doc_metrics.py anchored its crawler checks on two exact phrasings. Separately, the headline robots.txt finding ('every one fetched /robots.txt, not one fetched the consent document') existed only in prose across five documents and was never derived.",
+          "source": "scripts/check_doc_metrics.py sweeps every quantifier attached to a crawler noun; scripts/daily_accrual_check.py derives known_crawler_paths and the date range"
         }
       ]
     }

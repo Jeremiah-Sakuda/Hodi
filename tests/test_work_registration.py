@@ -93,12 +93,47 @@ class TestWorkRegistration(unittest.TestCase):
         self.assertEqual(r.json()["control_tier"], "asserted")
         self.assertIn("ASSERTED", r.json()["control_tier_reason"])
 
-    def test_registration_with_a_proof_reaches_verified_control(self):
+    def test_a_proof_that_merely_PARSES_does_not_reach_verified_control(self):
+        """THIS TEST USED TO ASSERT THE HOLE (HOD-750).
+
+        It posted a well_known_file proof pointing at `example.invalid` — a
+        domain reserved by RFC 2606 precisely so it can never resolve — and
+        asserted the work came back `verified_control`. It did, because the
+        route promoted the tier whenever `control_proof` parsed. Three arbitrary
+        strings bought a verified ownership claim, and the test called that
+        correct.
+
+        The tier is derived from verification performed now. Registration still
+        succeeds and the proof is still stored; it is simply not called
+        verified, and the caller is told why.
+        """
         r = self._post(_body(work_id="work-new-002", control_proof={
             "method": "well_known_file", "verified_at": "2026-08-14T00:00:00Z",
             "evidence_uri": "https://example.invalid/.well-known/hodi-proof.txt"}))
+        self.assertEqual(r.status_code, 201, "an unverifiable proof must not refuse the registration")
+        self.assertEqual(r.json()["control_tier"], "asserted")
+        self.assertIn("ASSERTED", r.json()["control_tier_reason"])
+
+    def test_the_exact_payload_that_minted_a_verified_tier_is_refused(self):
+        """Judge E's reproduction, pinned verbatim."""
+        r = self._post(_body(work_id="work-new-002b", control_proof={
+            "method": "dns", "verified_at": "1999-01-01",
+            "evidence_uri": "https://not-a-real-domain.invalid/whatever"}))
         self.assertEqual(r.status_code, 201)
-        self.assertEqual(r.json()["control_tier"], "verified_control")
+        self.assertEqual(r.json()["control_tier"], "asserted")
+
+    def test_no_control_proof_method_can_currently_reach_verified_control(self):
+        """Every method in the schema, swept. If a verifier is wired later this
+        fails and must be updated deliberately — which is the point."""
+        for method in ("dns", "well_known_file", "platform_oauth", "signed_commit"):
+            with self.subTest(method):
+                r = self._post(_body(work_id=f"work-sweep-{method}", control_proof={
+                    "method": method, "verified_at": "2026-08-26T00:00:00Z",
+                    "evidence_uri": "https://example.invalid/x"}))
+                self.assertEqual(r.status_code, 201)
+                self.assertEqual(
+                    r.json()["control_tier"], "asserted",
+                    f"{method} minted verified_control from a body-supplied proof")
 
     def test_the_body_cannot_ask_for_verified_control(self):
         """The tier is DERIVED. Passing it is not a way in — the field is not

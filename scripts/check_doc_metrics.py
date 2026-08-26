@@ -45,6 +45,14 @@ NOT_EXECUTED_PHRASES = (
     "scripted, never run", "scripted but not executed", "scripted_not_executed",
     "not been built", "has not been built", "remains outstanding",
     "designed and scripted, not", "designed-only", "not deployed",
+    # The guard missed a verified capability's self-contradicting detail text by
+    # ONE WORD: it held "not deployed" while the string said "not been
+    # deployed". A phrase list is only ever as good as its next inflection, so
+    # the near-misses that actually occurred are listed explicitly.
+    "has not been deployed", "have not been deployed", "not been deployed",
+    "has not yet been verified live", "have not yet been verified live",
+    "not yet been verified live", "provisioned but unverified",
+    "not yet verified live", "but unverified",
 )
 
 # Every document that states a defect-ledger figure in prose. The count lived in
@@ -536,6 +544,30 @@ def main() -> int:
     if audit_date not in devpost:
         failures.append(
             f"devpost-description.md does not carry the current audit date '{audit_date}'.")
+
+    # PHRASING-INDEPENDENT crawler-count check across every judge-facing document.
+    #
+    # The per-document checks above are anchored on exact sentences, so the
+    # Devpost text drifted to "nine" in two places the patterns did not cover —
+    # inside the section about number drift, while a third sentence in the same
+    # file said 16. This finds EVERY quantifier attached to a crawler noun,
+    # numeral or word, and requires them all to equal the source.
+    crawler_nouns = (r"(?:generic\s+)?crawler-signature matches", r"at the current audit",
+                     r"match a crawler user-agent signature", r"crawler(?:-signature)? user agents")
+    quantifier = r"(\d+|[a-z]+(?:-[a-z]+)?)\s+(?:of them\s+)?"
+    for path in (README, DEVPOST, VIDEO_SCRIPT, DOCS_INDEX):
+        if not path.exists():
+            continue
+        text = path.read_text()
+        for noun in crawler_nouns:
+            for match in re.finditer(quantifier + noun, text, re.I):
+                value = _as_int(match.group(1))
+                if value is None or value == total:
+                    continue  # not a number, or the accrual total rather than the match count
+                if value != accrual["known_crawler_ua_matches"]:
+                    failures.append(
+                        f"{path.relative_to(ROOT)}: '{match.group(0).strip()}' states {value}; "
+                        f"metrics.json says {accrual['known_crawler_ua_matches']} known-crawler matches.")
 
     # THE RECORDING SCRIPT. The one document whose numbers are spoken out loud,
     # over a diagram showing the same numbers — and the only prose artifact that

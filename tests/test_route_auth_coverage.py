@@ -83,6 +83,12 @@ PUBLIC_ROUTES = {
     # The PUBLIC half of an asymmetric keypair. Anyone must be able to fetch
     # it; that is what makes a signature independently verifiable.
     "/verification-key",
+    # Per-work views of the same public manifest as /works, and the stored
+    # control proof for one work. Read-only, no counterparty data, and the
+    # proof is exactly the artifact a third party needs in order to check an
+    # ownership claim without asking anyone's permission.
+    "/works/{work_id}",
+    "/works/{work_id}/proof",
     # Reads only, under a hardcoded session context, against policy-permitted
     # collections; structurally cannot return another counterparty's data and
     # writes nothing. Exists so a reviewer can verify the boundary without
@@ -267,6 +273,23 @@ def _probe_body(endpoint):
 
 REFUSAL_CODES = {401, 403}
 
+# Parameterised routes were SKIPPED, not probed: the loop carried
+# `or "{" in path: continue`. An anonymous POST /api/v1/pwn/{victim} running the
+# full revocation cascade therefore passed every CI target, while the identical
+# route without a path parameter was caught — the exemption was the whole
+# difference. A guard narrated in Beat 5 as "CI fails if any mutating route
+# forgets to authenticate" was blind to an entire path shape.
+#
+# Path parameters are filled with a benign literal instead. The value never
+# needs to identify a real resource: authentication is checked before the
+# resource is looked up, and if a route were to 404 on the placeholder first,
+# that is itself reported below rather than counted as a refusal.
+_PATH_PARAM = re.compile(r"\{[^}]+\}")
+
+
+def _concrete(path: str) -> str:
+    return _PATH_PARAM.sub("probe", path)
+
 # The four /internal/* routes call _domain_service_or_404 BEFORE authenticating,
 # so with HODI_SERVICE_ROLE unset they return 404 to everyone and the
 # authenticator underneath is never exercised. Probing them in that state would
@@ -323,11 +346,11 @@ class TestEveryMutatingRouteAuthenticates(unittest.TestCase):
         client = TestClient(app, raise_server_exceptions=False)
         failures = []
         for path, methods, endpoint in mutating_routes():
-            if path in PUBLIC_ROUTES or path in FRAMEWORK_ROUTES or "{" in path:
+            if path in PUBLIC_ROUTES or path in FRAMEWORK_ROUTES:
                 continue
             body = _probe_body(endpoint)
             for method in methods:
-                response = _probe(client, method, path, body)
+                response = _probe(client, method, _concrete(path), body)
                 if response.status_code in REFUSAL_CODES:
                     continue
                 if response.status_code == 422:
@@ -360,10 +383,10 @@ class TestEveryMutatingRouteAuthenticates(unittest.TestCase):
         client = TestClient(app, raise_server_exceptions=False)
         refusals = 0
         for path, methods, endpoint in mutating_routes():
-            if path in PUBLIC_ROUTES or path in FRAMEWORK_ROUTES or "{" in path:
+            if path in PUBLIC_ROUTES or path in FRAMEWORK_ROUTES:
                 continue
             for method in methods:
-                r = _probe(client, method, path, _probe_body(endpoint))
+                r = _probe(client, method, _concrete(path), _probe_body(endpoint))
                 if r.status_code in REFUSAL_CODES:
                     refusals += 1
         self.assertGreaterEqual(

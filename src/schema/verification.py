@@ -5,6 +5,23 @@ from datetime import datetime, timezone
 from src.schema.work import ControlProof, ProofMethod
 
 
+class UnverifiableMethodError(ValueError):
+    """Raised when a control-proof method has no working verifier behind it.
+
+    HOD-748 hardened `verify_signed_commit` and left its three siblings minting
+    `status: "verified"` from non-empty arguments. Worse, none of the four was
+    called from any production path at all: `POST /api/v1/works` promoted a work
+    to `verified_control` whenever the request body contained a control_proof
+    that merely PARSED. Three arbitrary strings bought a verified tier —
+    ownership taken from attacker-controlled input, which is the same defect
+    class this project already fixed twice for counterparty_id.
+
+    A method with no verifier now refuses, and the registration route treats a
+    refusal as `asserted` rather than as an error: the artist still registers,
+    the claim is still recorded, and it is simply not called verified.
+    """
+
+
 class UnsignedCommitError(ValueError):
     """Raised when a signed-commit proof is requested for a commit that is not
     signed. A distinct type so a caller can choose to fall back to `asserted`
@@ -43,7 +60,12 @@ def verify_dns_txt(
     if not domain or not expected_token:
         raise ValueError("DNS verification requires domain and expected_token.")
     
-    verified_at = datetime.now(timezone.utc).isoformat()
+    raise UnverifiableMethodError(
+        "dns control proofs are not verifiable by this build: nothing here performs "
+        "a DNS TXT lookup, so a proof issued now would only restate the caller's "
+        "own claim. Register at control_tier='asserted' until a resolver is wired.")
+
+    verified_at = datetime.now(timezone.utc).isoformat()  # noqa: F841 - unreachable, kept for the wiring
     return ControlProof(
         method="dns",
         verified_at=verified_at,
@@ -67,7 +89,13 @@ def verify_well_known_file(
     if not target_url or not expected_token:
         raise ValueError("Well-known file verification requires target_url and expected_token.")
 
-    verified_at = datetime.now(timezone.utc).isoformat()
+    raise UnverifiableMethodError(
+        "well_known_file control proofs are not verifiable by this build: nothing "
+        "here fetches the target URL and compares the token, so a proof issued now "
+        "would only restate the caller's own claim. Register at "
+        "control_tier='asserted' until the fetch is wired.")
+
+    verified_at = datetime.now(timezone.utc).isoformat()  # noqa: F841 - unreachable, kept for the wiring
     return ControlProof(
         method="well_known_file",
         verified_at=verified_at,
@@ -139,7 +167,13 @@ def verify_platform_oauth(
     if not platform or not account_id:
         raise ValueError("Platform OAuth verification requires platform and account_id.")
 
-    verified_at = datetime.now(timezone.utc).isoformat()
+    raise UnverifiableMethodError(
+        "platform_oauth control proofs are not verifiable by this build: no OAuth "
+        "token is presented, exchanged or validated here, so a proof issued now "
+        "would only restate the caller's own claim. Register at "
+        "control_tier='asserted' until the exchange is wired.")
+
+    verified_at = datetime.now(timezone.utc).isoformat()  # noqa: F841 - unreachable, kept for the wiring
     return ControlProof(
         method="platform_oauth",
         verified_at=verified_at,
@@ -151,3 +185,51 @@ def verify_platform_oauth(
             "status": "verified"
         }
     )
+
+
+# --- the dispatcher production code actually calls ---------------------------
+
+VERIFIERS = {
+    "signed_commit": lambda p: verify_signed_commit(
+        repo_uri=(p.get("metadata") or {}).get("repo_uri") or p.get("evidence_uri") or "",
+        commit_sha=(p.get("metadata") or {}).get("commit_sha") or "",
+        author_identity=(p.get("metadata") or {}).get("author_identity") or ""),
+    "dns": lambda p: verify_dns_txt(
+        domain=(p.get("metadata") or {}).get("domain") or "",
+        record_name=(p.get("metadata") or {}).get("record_name") or "",
+        expected_token=(p.get("metadata") or {}).get("expected_token") or ""),
+    "well_known_file": lambda p: verify_well_known_file(
+        target_url=(p.get("metadata") or {}).get("target_url") or p.get("evidence_uri") or "",
+        expected_token=(p.get("metadata") or {}).get("expected_token") or ""),
+    "platform_oauth": lambda p: verify_platform_oauth(
+        platform=(p.get("metadata") or {}).get("platform") or "",
+        account_id=(p.get("metadata") or {}).get("account_id") or "",
+        account_handle=(p.get("metadata") or {}).get("account_handle") or ""),
+}
+
+
+def substantiate(proof: Dict[str, Any]) -> Tuple[bool, str]:
+    """Can this control proof be SUBSTANTIATED, as opposed to merely parsed?
+
+    Returns (verified, reason). Never raises for an unverifiable proof — the
+    registration is still accepted, at the tier the evidence supports.
+
+    This function is the wire that was missing. Every verifier in this module
+    was reachable only from tests; the registration route decided the tier by
+    asking whether the caller's `control_proof` field was non-empty and parsed.
+    """
+    method = (proof or {}).get("method")
+    verifier = VERIFIERS.get(method)
+    if verifier is None:
+        return False, (f"Unknown control-proof method {method!r}; ownership is ASSERTED, "
+                       "not verified.")
+    try:
+        verifier(proof)
+    except UnverifiableMethodError as exc:
+        return False, f"Ownership is ASSERTED, not verified: {exc}"
+    except UnsignedCommitError as exc:
+        return False, f"Ownership is ASSERTED, not verified: {exc}"
+    except Exception as exc:  # malformed metadata for an otherwise-wired method
+        return False, (f"Ownership is ASSERTED, not verified: the {method} proof could not "
+                       f"be checked ({exc}).")
+    return True, f"Control proof VERIFIED by {method}."

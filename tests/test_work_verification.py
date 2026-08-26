@@ -1,7 +1,8 @@
 import unittest
 from src.schema.work import create_work, Work, ControlProof
 import subprocess
-from src.schema.verification import UnsignedCommitError
+from src.schema.verification import (UnsignedCommitError, UnverifiableMethodError,
+                                     substantiate)
 from src.schema.verification import (
     verify_dns_txt,
     verify_well_known_file,
@@ -45,48 +46,44 @@ class TestWorkVerification(unittest.TestCase):
         self.assertEqual(work.control_tier, "asserted")
         self.assertIsNone(work.control_proof)
 
-    def test_dns_txt_verification_proof(self):
-        proof = verify_dns_txt(
-            domain="hodi.dev",
-            record_name="_hodi-challenge",
-            expected_token="token-dns-12345"
-        )
-        self.assertEqual(proof.method, "dns")
-        work = create_work(
-            work_id="work-dns-01",
-            artist_id="artist-jeremiah",
-            medium="prose",
-            uri="https://hodi.dev/essay/consent-rails",
-            content_hash="a1b2c3d4e5f60123456789abcdef0123456789abcdef0123456789abcdef0123",
-            control_tier="verified_control",
-            title="Consent Rails Essay",
-            description="Essay on creative consent",
-            published_at="2026-08-03T00:00:00Z",
-            control_proof=proof
-        )
-        self.assertEqual(work.control_tier, "verified_control")
-        self.assertEqual(work.control_proof.method, "dns")
 
-    def test_well_known_file_verification_proof(self):
-        proof = verify_well_known_file(
-            target_url="https://github.com/Jeremiah-Sakuda/Hodi/.well-known/hodi-proof.json",
-            expected_token="token-wellknown-67890"
+
+    def test_the_three_unwired_methods_refuse_rather_than_mint(self):
+        """HOD-748 hardened one verifier of four; these are the other three.
+
+        `verify_dns_txt`, `verify_well_known_file` and `verify_platform_oauth`
+        each validated that their arguments were non-empty and then returned a
+        ControlProof carrying `status: "verified"`. Nothing resolved a TXT
+        record, fetched a token, or exchanged an OAuth code — and three tests in
+        this file asserted that behaviour as correct.
+
+        They refuse now. Wiring them is real work; claiming them was not.
+        """
+        cases = (
+            (verify_dns_txt, dict(domain="example.com", record_name="_hodi",
+                                  expected_token="tok")),
+            (verify_well_known_file, dict(target_url="https://example.com/.well-known/hodi-proof.json",
+                                          expected_token="tok")),
+            (verify_platform_oauth, dict(platform="github", account_id="1",
+                                         account_handle="someone")),
         )
-        self.assertEqual(proof.method, "well_known_file")
-        work = create_work(
-            work_id="work-wk-01",
-            artist_id="artist-jeremiah",
-            medium="code",
-            uri="https://github.com/Jeremiah-Sakuda/Hodi",
-            content_hash="b2c3d4e5f60123456789abcdef0123456789abcdef0123456789abcdef0123a1",
-            control_tier="verified_control",
-            title="Hodi Core Repo",
-            description="Hodi source repository",
-            published_at="2026-08-04T00:00:00Z",
-            control_proof=proof
-        )
-        self.assertEqual(work.control_tier, "verified_control")
-        self.assertEqual(work.control_proof.method, "well_known_file")
+        for fn, kwargs in cases:
+            with self.subTest(fn.__name__):
+                with self.assertRaises(UnverifiableMethodError):
+                    fn(**kwargs)
+
+    def test_substantiate_never_promotes_a_proof_it_cannot_check(self):
+        """The dispatcher production code calls. Judge E's exact payload."""
+        verified, reason = substantiate({
+            "method": "dns", "verified_at": "1999-01-01",
+            "evidence_uri": "https://not-a-real-domain.invalid/whatever"})
+        self.assertFalse(verified)
+        self.assertIn("ASSERTED", reason)
+
+        for method in ("well_known_file", "platform_oauth", "signed_commit", "nonsense"):
+            with self.subTest(method):
+                ok, _ = substantiate({"method": method, "evidence_uri": "https://x.invalid"})
+                self.assertFalse(ok, f"{method} minted a verified tier from bare arguments")
 
     def test_signed_commit_proof_is_refused_for_an_unsigned_commit(self):
         """THIS TEST USED TO ASSERT THE BUG (HOD-748).
@@ -168,26 +165,3 @@ class TestWorkVerification(unittest.TestCase):
                     f"{work['work_id']} claims verified_control by signed commit, and no "
                     "commit in this repository is signed")
 
-    def test_platform_oauth_verification_proof(self):
-        proof = verify_platform_oauth(
-            platform="github",
-            account_id="github-user-123456",
-            account_handle="Jeremiah-Sakuda"
-        )
-        self.assertEqual(proof.method, "platform_oauth")
-        work = create_work(
-            work_id="work-oauth-01",
-            artist_id="artist-jeremiah",
-            medium="audio",
-            uri="https://github.com/Jeremiah-Sakuda/Hodi/works/audio-001",
-            content_hash="d4e5f60123456789abcdef0123456789abcdef0123456789abcdef0123a1b2c3",
-            control_tier="verified_control",
-            title="Bass Recordings Manifest",
-            description="Audio stems verified via GitHub OAuth",
-            published_at="2026-08-06T00:00:00Z",
-            control_proof=proof
-        )
-        self.assertEqual(work.control_tier, "verified_control")
-
-if __name__ == "__main__":
-    unittest.main()

@@ -249,6 +249,32 @@ class ExpiredGrantsAreNotRevokedTest(unittest.TestCase):
         now = datetime.now(timezone.utc)
         self.assertTrue(self._cascade_selects("training", now + timedelta(days=365)))
 
+    def test_a_terminated_grant_reports_everything_it_loses(self):
+        """Revocation TERMINATES a grant; it does not narrow it (HOD-751).
+
+        A grant held at `training`, revoked against `human_reference`, ends
+        training, fine-tuning, RAG retrieval and human reference. The cascade
+        reported `derived_scopes: ["human_reference"]` — the closure of the
+        REVOKED type rather than of the GRANT's — and that list is what the
+        notice and the receipt told the counterparty. The effect was right; its
+        description understated it, which over a legal artifact is the direction
+        that matters.
+        """
+        now = datetime.now(timezone.utc)
+        event = self._grant("g-wide", "training", now - timedelta(days=1), None)
+        agent = RevocationPropagatorAgent(gateway=AgentGateway(), memory_bank_events=[event])
+        result = agent.execute_revocation_cascade(
+            work_id="w-temporal", revoked_use_type="human_reference")
+
+        self.assertEqual(len(result.affected_grants), 1, "fixture is wrong: nothing was affected")
+        expected = ["fine_tuning", "human_reference", "rag_retrieval", "training"]
+        self.assertEqual(result.affected_grants[0].terminated_scopes, expected)
+        self.assertEqual(result.terminated_scopes, expected)
+
+        # The request-level closure stays what was ASKED for; the two are
+        # different facts and both are reported.
+        self.assertEqual(result.derived_scopes, ["human_reference"])
+
     def test_a_future_dated_grant_is_still_terminated(self):
         """The 528 cells, run through the shipped code path (HOD-746).
 

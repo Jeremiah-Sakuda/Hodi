@@ -164,6 +164,13 @@ def audit_firestore_crawler_access() -> dict:
     known_crawler_count = 0
     non_self_user_agents = {}
     distinct_user_agents = set()
+    # The headline finding — every known crawler fetched /robots.txt and NOT ONE
+    # fetched the consent document named in it — lived only in prose. It was
+    # measured once by hand and then restated in five documents across two
+    # revisions of the count, which is the exact shape this file exists to stop.
+    # It is derived now.
+    crawler_paths = {}
+    crawler_dates = []
 
     for doc in docs:
         data = doc.to_dict()
@@ -185,6 +192,11 @@ def audit_firestore_crawler_access() -> dict:
         # else non-self is reported as unattributed, not promoted to a finding.
         if any(re.search(p, ua.lower()) for p in GemmaTriageEngine.THIRD_PARTY_BOT_USER_AGENTS):
             known_crawler_count += 1
+            path = data.get("path", "unknown")
+            crawler_paths[path] = crawler_paths.get(path, 0) + 1
+            stamp = data.get("timestamp") or data.get("accessed_at") or data.get("created_at")
+            if stamp:
+                crawler_dates.append(str(stamp)[:10])
 
     return {
         "audit_timestamp_utc": datetime.now(timezone.utc).isoformat(),
@@ -192,6 +204,10 @@ def audit_firestore_crawler_access() -> dict:
         "self_originated_count": self_originated_count,
         "non_self_originated_count": non_self_count,
         "known_crawler_ua_matches": known_crawler_count,
+        "known_crawler_paths": dict(sorted(crawler_paths.items())),
+        "known_crawler_consent_doc_fetches": crawler_paths.get("/.well-known/hodi.json", 0),
+        "known_crawler_first_seen": min(crawler_dates) if crawler_dates else None,
+        "known_crawler_last_seen": max(crawler_dates) if crawler_dates else None,
         "non_self_user_agents": non_self_user_agents,
         # Only NON-self user agents are enumerated. The self-originated ones are
         # this project's own tooling calling its own endpoint — they are noise,
@@ -271,6 +287,10 @@ def write_metrics(stats: dict):
         "self_originated_count": stats["self_originated_count"],
         "non_self_originated_requests_count": stats["non_self_originated_count"],
         "known_crawler_ua_matches": stats["known_crawler_ua_matches"],
+        "known_crawler_paths": stats["known_crawler_paths"],
+        "known_crawler_consent_doc_fetches": stats["known_crawler_consent_doc_fetches"],
+        "known_crawler_first_seen": stats["known_crawler_first_seen"],
+        "known_crawler_last_seen": stats["known_crawler_last_seen"],
         "known_crawler_user_agent_counts": stats["non_self_user_agents"],
         "known_crawler_user_agents": stats["known_crawler_user_agents"],
         "unattributed_distinct_user_agents_count": stats["unattributed_distinct_user_agents_count"],
