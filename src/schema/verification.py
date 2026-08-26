@@ -1,6 +1,6 @@
 import hashlib
 import subprocess
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 from datetime import datetime, timezone
 from src.schema.work import ControlProof, ProofMethod
 
