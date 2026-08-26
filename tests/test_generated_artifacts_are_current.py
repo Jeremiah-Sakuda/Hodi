@@ -76,11 +76,20 @@ class RendersAreNotOlderThanTheirSourceTest(unittest.TestCase):
             "comparison below cannot fail and proves nothing. Set `fetch-depth: 0` on "
             "actions/checkout.")
 
-        epochs = {git_commit_epoch(p) for p in sorted(ARCH.glob("*.mmd"))}
+        # Sampled across the REPOSITORY, not across the mermaid sources.
+        #
+        # This originally compared the .mmd files' commit times to each other and
+        # required them to differ. That is not the property: re-rendering every
+        # diagram in one commit legitimately gives them all the same timestamp,
+        # and the check failed on a correct tree. What it is actually asking is
+        # whether git history is present deeply enough for a staleness
+        # comparison to be able to fail at all.
+        sample = [ARCH, ROOT / "README.md", ROOT / "Makefile", ROOT / "src"]
+        epochs = {git_commit_epoch(p) for p in sample if p.exists()}
         self.assertGreater(
             len(epochs), 1,
-            "every mermaid source reports an identical commit time, which means the "
-            "history is not really here even though git does not call the clone shallow")
+            "every path in the repository reports the same commit time, so no file can be "
+            "older than any other and the staleness comparison below cannot fail")
 
     def test_every_mermaid_source_has_renders(self):
         sources = sorted(ARCH.glob("*.mmd"))
