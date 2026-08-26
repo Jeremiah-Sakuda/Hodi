@@ -7,12 +7,12 @@
     "non_self_originated_requests_count": 97,
     "known_crawler_ua_matches": 16,
     "known_crawler_user_agent_counts": {
-      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36; c\u2026[truncated, 179 chars]": 15,
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36; c…[truncated, 179 chars]": 15,
       "GPTBot": 1
     },
     "known_crawler_user_agents": [
       "GPTBot",
-      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36; c\u2026[truncated, 179 chars]"
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36; c…[truncated, 179 chars]"
     ],
     "unattributed_distinct_user_agents_count": 12,
     "distinct_user_agents_count": 34,
@@ -24,7 +24,7 @@
       "hodi-rights-custodian-ifd7cg45ja-uc.a.run.app": 4,
       "hodi-revocation-worker-ifd7cg45ja-uc.a.run.app": 3
     },
-    "claim_limit": "non_self_originated_requests_count counts requests whose user agent does not match this project's own instrumentation signatures. That is NOT the same as 'requests this project did not make' \u2014 it was phrased that way and the phrasing was stronger than the mechanism, which only ever compared user-agent strings and cannot establish who sent anything. It is NOT a crawler count. known_crawler_ua_matches is the only figure this project will describe as crawler access, and only its user agents are published as strings; the rest are counted, not quoted. A recorded user agent is evidence that a request was made and is NOT AN ACCUSATION against the party it names: these strings are self-declared, unauthenticated, and reproduced here as observed data rather than edited to satisfy a prose rule. Every crawler named in this project's PROSE is anonymized; this file is generated evidence and is not."
+    "claim_limit": "non_self_originated_requests_count counts requests whose user agent does not match this project's own instrumentation signatures. That is NOT the same as 'requests this project did not make' — it was phrased that way and the phrasing was stronger than the mechanism, which only ever compared user-agent strings and cannot establish who sent anything. It is NOT a crawler count. known_crawler_ua_matches is the only figure this project will describe as crawler access, and only its user agents are published as strings; the rest are counted, not quoted. A recorded user agent is evidence that a request was made and is NOT AN ACCUSATION against the party it names: these strings are self-declared, unauthenticated, and reproduced here as observed data rather than edited to satisfy a prose rule. Every crawler named in this project's PROSE is anonymized; this file is generated evidence and is not."
   },
   "gemma_triage_routing_distribution": {
     "sample_size_total_requests": 11,
@@ -80,7 +80,7 @@
     "measured_at_utc": "2026-08-25T15:50:00Z",
     "runtime_identity": "hodi-runtime-sa (append+read only; conditioned to (default) alone)",
     "cold_start_ms": 19874.0,
-    "cold_start_note": "Front door, rights-custodian AND revocation-worker all cold. The chain is three services deep now, so the pre-flight has to warm more than the front door \u2014 a cold hero beat is twenty seconds, not two.",
+    "cold_start_note": "Front door, rights-custodian AND revocation-worker all cold. The chain is three services deep now, so the pre-flight has to warm more than the front door — a cold hero beat is twenty seconds, not two.",
     "warm_runs_ms": [
       2334.0,
       2345.0,
@@ -92,8 +92,10 @@
     ],
     "warm_avg_ms": 2562.7,
     "revision": "hodi-evidence-endpoint-00059-z55",
-    "note": "Re-measured 2026-08-25 with /api/v1/revoke executing THROUGH the private revocation worker rather than in-process. Median 2389 ms, mean 2563 ms over 7 runs \u2014 statistically unchanged from the ~2466 ms measured before the cutover, because the worker is warm and the hop is cheap relative to the KMS signing and Firestore appends already on the path. The full arc: ~519 ms in-process, ~737 ms with an execution lease and idempotency outbox, ~1896 ms once the work-ownership check crossed into the rights-custodian workload, ~2389 ms now that the cascade itself runs under the propagator's own identity. Every increase bought a boundary that used to be a promise.",
-    "warm_median_ms": 2389.0
+    "note": "Re-measured 2026-08-25 with /api/v1/revoke executing THROUGH the private revocation worker rather than in-process. Median 2389 ms, mean 2563 ms over 7 runs — statistically unchanged from the ~2466 ms measured before the cutover, because the worker is warm and the hop is cheap relative to the KMS signing and Firestore appends already on the path. The full arc: ~519 ms in-process, ~737 ms with an execution lease and idempotency outbox, ~1896 ms once the work-ownership check crossed into the rights-custodian workload, ~2389 ms now that the cascade itself runs under the propagator's own identity. Every increase bought a boundary that used to be a promise.",
+    "warm_median_ms": 2389.0,
+    "deployed_revision_now": "hodi-evidence-endpoint-00061-jwh",
+    "remeasurement_note": "MEASURED ON hodi-evidence-endpoint-00059-z55. The service has since been redeployed twice (00060-lwp, 00061-jwh) carrying the HOD-746 cascade-selection change (scope_window_has_closed instead of is_scope_current). That change swaps one comparison for another on the same code path and is not expected to move the timing, but IT HAS NOT BEEN RE-MEASURED: timing the cascade requires the artist's HMAC credential, which is held by the operator and is not in this repository or in CI. Re-run the measurement before recording; `make recording-prep` reports the predicted figure from this entry."
   },
   "natural_language_license_path": {
     "measurement_surface": "deployed-over-network",
@@ -191,7 +193,7 @@
     "permitted_warm_avg_ms": 1675.0,
     "denied_warm_ms": 1591.0,
     "revision": "hodi-evidence-endpoint-00054-swn",
-    "note": "Both directions rose (~712 -> ~1675 permitted, ~455 -> ~1591 denied) for the same reason as the cascade: the work-scoping check reads `works`, which now lives in hodi-identity behind the rights-custodian workload. The denial is no longer the fast path \u2014 it pays the same hop before it can refuse, which is the correct order: you cannot decide a request about a work without first establishing the work."
+    "note": "Both directions rose (~712 -> ~1675 permitted, ~455 -> ~1591 denied) for the same reason as the cascade: the work-scoping check reads `works`, which now lives in hodi-identity behind the rights-custodian workload. The denial is no longer the fast path — it pays the same hop before it can refuse, which is the correct order: you cannot decide a request about a work without first establishing the work."
   },
   "live_boundary_proof": {
     "measurement_surface": "deployed-over-network",

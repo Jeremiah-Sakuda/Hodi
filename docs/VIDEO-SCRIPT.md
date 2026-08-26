@@ -7,7 +7,13 @@
 > `/api/v1/revoke` was cut over to the private revocation worker; the natural-language licence and the
 > signature verification are from **2026-08-14 against `00054-swn`**, on code paths the cutover did not
 > touch. Where a figure carries a date, that date is the one to believe. `docs/metrics.json` is the
-> source; `make metrics` regenerates it. The earlier stale-banner warning is retired because the thing it
+> source; `make metrics` regenerates it.
+>
+> **Re-measure the cascade before you record.** The deployed revision is now `00061-jwh`; the
+> cascade figures below were measured on `00059-z55`, before the HOD-746 selection change. That
+> change swaps one comparison for another and should not move the clock, but nobody has timed it
+> since — and timing it needs the artist credential, which lives with you and not in the repo or
+> CI. Do not narrate a number nobody has observed on the revision you are filming. The earlier stale-banner warning is retired because the thing it
 > warned about was fixed rather than restated — see the two paragraphs immediately below, which record
 > what was wrong, because the same defect will recur if only the symptom is remembered.
 >
