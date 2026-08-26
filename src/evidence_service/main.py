@@ -296,7 +296,39 @@ def get_registered_works() -> List[Dict[str, Any]]:
         # they did not. The provenance of every borrowed field is named.
         if supplemented:
             merged[wid]["seed_supplemented_fields"] = supplemented
-    return list(merged.values())
+    return [_tier_the_evidence_supports(w) for w in merged.values()]
+
+
+def _tier_the_evidence_supports(work: Dict[str, Any]) -> Dict[str, Any]:
+    """Never serve `verified_control` without a stored proof (HOD-748).
+
+    `create_work()` makes that state unconstructible, and the invariant is
+    checked on the way IN. Nothing checked it on the way back OUT. The manifest
+    is a merge of a persisted registry row with the committed seed, and the
+    persisted row for `work-repo-001` carries `control_tier` while the seed
+    carried the `control_proof` — so removing the proof from the seed left the
+    live manifest serving a `verified_control` work with no proof at all, which
+    is precisely the state the schema exists to forbid.
+
+    The proof it used to carry was a `signed_commit` proof over a commit that is
+    not signed; this repository has no signed commits. So the honest tier is
+    `asserted`, and it is computed here rather than corrected in storage,
+    because the runtime identity is deliberately create-only and cannot rewrite
+    what an artist registered. The row is not hidden and not deleted — it is
+    served at the tier its evidence supports, with the reason attached.
+    """
+    if work.get("control_tier") != "verified_control":
+        return work
+    if work.get("control_proof"):
+        return work
+    return {**work,
+            "control_tier": "asserted",
+            "control_tier_downgraded_from": "verified_control",
+            "control_tier_downgraded_reason": (
+                "registered as verified_control with no stored control_proof. The schema "
+                "makes that unconstructible on write; this is the same rule applied on read. "
+                "The prior proof was a signed-commit proof over an unsigned commit."),
+            }
 
 
 def extract_client_ip(request: Request) -> str:

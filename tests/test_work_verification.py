@@ -125,6 +125,31 @@ class TestWorkVerification(unittest.TestCase):
             )
         self.assertIn("no good signature", str(caught.exception))
 
+    def test_a_verified_tier_without_a_stored_proof_is_downgraded_on_READ(self):
+        """The schema forbids constructing it; nothing checked it on read.
+
+        The manifest merges a persisted registry row with the committed seed.
+        The registry row for `work-repo-001` carried `control_tier`; the seed
+        carried the `control_proof`. Removing the unearned proof from the seed
+        therefore left the LIVE manifest serving a `verified_control` work with
+        no proof at all — the exact state `create_work()` exists to make
+        unconstructible, reached by reading rather than writing.
+        """
+        from src.evidence_service.main import _tier_the_evidence_supports
+
+        row = {"work_id": "w-x", "control_tier": "verified_control"}
+        served = _tier_the_evidence_supports(row)
+        self.assertEqual(served["control_tier"], "asserted")
+        self.assertEqual(served["control_tier_downgraded_from"], "verified_control")
+        self.assertIn("no stored control_proof", served["control_tier_downgraded_reason"])
+
+        # A row that DOES carry a proof is untouched — the check must not
+        # flatten every tier to `asserted` and call that honesty.
+        with_proof = {"work_id": "w-y", "control_tier": "verified_control",
+                      "control_proof": {"method": "dns", "verified_at": "2026-08-25T00:00:00Z"}}
+        self.assertEqual(_tier_the_evidence_supports(with_proof)["control_tier"],
+                         "verified_control")
+
     def test_the_served_manifest_claims_no_unearned_verified_tier(self):
         """The seed the deployed service returns must not out-claim the proof
         it can produce. `work-repo-001` sat at `verified_control` on this
