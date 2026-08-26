@@ -36,6 +36,8 @@ signature-looking string nothing can verify.
 
 import base64
 import json
+import re
+from datetime import datetime, timezone
 import os
 from typing import Any, Dict, Optional, Tuple
 
@@ -90,11 +92,55 @@ def canonical_json_bytes(doc: Dict[str, Any]) -> bytes:
     return json.dumps(doc, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
 
 
-def signable_bytes(model_dump: Dict[str, Any], exclude: Tuple[str, ...] = ("signature",)) -> bytes:
+# An RFC 3339 timestamp, which is the only string shape normalised below.
+_ISO_TIMESTAMP = re.compile(
+    r"^(\d{4}-\d{2}-\d{2})[Tt ](\d{2}:\d{2}:\d{2}(?:\.\d+)?)"
+    r"(Z|z|[+-]\d{2}:?\d{2})$")
+
+
+def _normalize_timestamps(value):
+    """Render every RFC 3339 timestamp in a document one way (HOD-749).
+
+    THE SAME INSTANT HAD TWO SPELLINGS AND THEY SIGNED DIFFERENTLY.
+
+    Pydantic's JSON mode emits UTC as `2026-08-25T12:00:00Z`. A document read
+    back out of Firestore carries real datetime objects, and re-serialising them
+    gives `2026-08-25T12:00:00+00:00`. Same instant, different bytes, different
+    canonical JSON — so a signature made at write time verified over the bytes
+    that were signed and FAILED over the document as served. A third party
+    following the published verification procedure against a stored grant got
+    `signature invalid` on an untampered document, which is the worst possible
+    answer: it is indistinguishable from tampering.
+
+    Inline receipts never left the process, so they never picked up the second
+    spelling, which is why every test passed.
+
+    Normalising here means signer and verifier agree regardless of which
+    representation they were handed. Only strings matching a strict RFC 3339
+    pattern are touched; anything else is passed through untouched, so this
+    cannot quietly rewrite ordinary data.
+    """
+    if isinstance(value, dict):
+        return {k: _normalize_timestamps(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_normalize_timestamps(v) for v in value]
+    if isinstance(value, str):
+        match = _ISO_TIMESTAMP.match(value)
+        if match:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00").replace("z", "+00:00"))
+            return parsed.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    return value
+
+
+def signable_bytes(model_dump: Dict[str, Any], exclude: Tuple[str, ...] = ("signature",),
+                   normalize: bool = True) -> bytes:
     """Canonical bytes of a document WITHOUT its signature field(s) — what the
-    signature is over. `model_dump` must be JSON-mode (strings, not datetimes)."""
+    signature is over. `model_dump` must be JSON-mode (strings, not datetimes).
+
+    `normalize=False` reproduces the pre-2026-08-25 canonicalization, and exists
+    only so signatures written before this fix still verify."""
     doc = {k: v for k, v in model_dump.items() if k not in exclude}
-    return canonical_json_bytes(doc)
+    return canonical_json_bytes(_normalize_timestamps(doc) if normalize else doc)
 
 
 class EphemeralEd25519Signer:
@@ -246,4 +292,9 @@ def verify_document(doc: Dict[str, Any], public_key_pem: str) -> bool:
     envelope = doc.get("signature", "")
     if not is_signature_envelope(envelope):
         return False
-    return verify_envelope(envelope, signable_bytes(doc), public_key_pem)
+    # Normalised form first; then the legacy byte form, so documents signed
+    # before the timestamp-canonicalization fix still verify rather than
+    # reporting as tampered.
+    if verify_envelope(envelope, signable_bytes(doc), public_key_pem):
+        return True
+    return verify_envelope(envelope, signable_bytes(doc, normalize=False), public_key_pem)

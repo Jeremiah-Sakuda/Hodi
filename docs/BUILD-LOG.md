@@ -858,3 +858,122 @@ the last cuttable position.
 
 **Deployment:** `revocation_route_worker_cutover` and `split_revocation_worker` verified live against
 rev `00059-z55`. `docs/deployment_status.json` now reports **12 verified, zero unproven**.
+
+---
+
+### 2026-08-25 (later) — Round 13: Public-History Scrub, the Mirror of the Temporal Fix, and Four Guards That Were Not Guarding
+
+**Prompt (summary):** a ten-judge panel found three submission-exposure blockers, a convergent
+temporal defect in the revocation cascade, the flagship honesty defect still live behind a test that
+accepted it, four guards with holes, and six narrative contradictions.
+
+**Outcome.**
+
+**1. The exposure blockers were real, and the scrub had been a commit rather than a removal.**
+Content the repository had already decided must not be public was removed from the working tree and
+left everywhere else: reachable in 51 commits of `main`, current at the head of a second public
+branch, and re-quoted inside the scrub commit's own message. The stale branch was deleted and
+`main`'s history rewritten over `docs/BUILD-LOG.md`, `docs/PRD.md` and the earlier `hodi-prd-v1.1.md`
+— which the first pass missed, because it targeted the two filenames the finding named rather than
+every path the content had ever lived at. Verified from a **fresh clone**: 99 commits, zero
+occurrences across files and messages.
+
+**And one exposure the panel did not find.** It checked commit *trailers* and correctly reported zero
+on `main`. The **author and committer identity fields** are separate, and 18 of 99 commits carried an
+AI-assistant identity — which GitHub renders on every commit page and in the contributors graph, a
+more visible surface than the trailers that were checked. Rewritten to the repository owner.
+
+**2. The temporal fix had a mirror, and the fix for the mirror is a second predicate.** HOD-742
+correctly stopped the cascade terminating *lapsed* grants by selecting on `is_scope_current`. That
+predicate is also false for a grant whose window has **not yet opened** — and unlike a lapsed grant,
+that one goes live later with the revoked use still permitted and nothing scheduled to revisit it.
+528 of 4,200 cells. Reachable through one second of clock skew, because `clamp_to_policy()` passes a
+buyer's `valid_from` through unclamped.
+
+The cascade now selects on `scope_window_has_closed`, and `permits()` keeps `is_scope_current`. They
+are different questions — "can this ever permit again" versus "does it permit now" — and **both
+defects came from one function answering both**. The reach matrix hardcoded `valid_from` 90 days in
+the past, so no cell in it could describe the state; it is a parameter now.
+
+**3. The signature defect the project markets as its signature story was still live, behind a test
+that graded both answers as correct.** `resolve()` sorts on `.astimezone(timezone.utc)`, which does
+not raise on a naive datetime — it assumes server-local time. Measured on one identical log:
+`TZ=America/Los_Angeles` → **active**; `TZ=UTC` → **revoked**. The guarding test was titled "must
+not… silently sort as though it were UTC-adjacent" and then asserted
+`assertIn(status, {"revoked", "active"})` — the complete set of answers the fold can return, so it
+could not fail. Naive timestamps are now refused at the schema boundary rather than defaulted to UTC:
+a default would make the fold deterministic while leaving the record wrong, and the log is the
+artifact a counterparty is held to.
+
+**4. Four guards had holes, and two of them were the same hole one level up.**
+
+- **Route auth.** `MUTATING_METHODS` omitted `GET`, on the assumption that method tells you whether a
+  handler writes. `/internal/accrual_audit` is a GET that appends. And `AUTH_MARKERS` was a substring
+  search over source, so a handler whose entire authentication was `# TODO: wire
+  _authenticate_or_403()` passed — while `_domain_service_or_404`, which authenticates nobody, was
+  listed as an auth marker. The guard is now an **effect test**: it calls every route with no
+  credentials and requires a refusal. It sends a *valid* body, because FastAPI validates before the
+  handler runs and accepting 422 would mean accepting "rejects malformed input" as evidence of
+  "requires credentials"; and it sets `HODI_SERVICE_ROLE` so the four `/internal/*` routes are live
+  rather than returning 404 to everyone. Verified against the panel's own demonstration — an
+  anonymous GET running the full revocation cascade, which previously passed all seven CI targets.
+- **Generated artifacts.** Using git commit times instead of mtimes fixed the fresh-clone problem and
+  left the identical one: `actions/checkout@v4` clones at depth 1, so every file reports the same
+  commit time, nothing is older than anything, and the guard could not fail. `fetch-depth: 0` is set,
+  and the test now asserts the clone is not shallow — proven by running it in a `--depth 1` clone,
+  where it fails.
+- **Doc metrics** did not cover `docs/VIDEO-SCRIPT.md`, the one document whose numbers are spoken
+  aloud. It now does.
+- **`verify_signed_commit()` verified nothing.** It checked that its arguments were non-empty and
+  restated them as a `ControlProof`. The repository has **0 signed commits out of 99**. The test
+  guarding it passed a SHA that is not a commit in any repository — the canary string with hex glued
+  on — and asserted that a `verified_control` work came back. So the strongest ownership claim in the
+  system was minted by a function whose name is a verification verb and guarded by a test that fed it
+  a fiction. The function now demands a good signature from git and raises `UnsignedCommitError`
+  otherwise, and `work-repo-001` is **downgraded to `asserted`**: the corpus now has **zero**
+  `verified_control` works, which is what the evidence supports. Restoring the tier is the owner's
+  action — sign a commit — not a code change.
+
+**5. Signed documents did not verify in the form the service serves them.** Pydantic's JSON mode
+renders UTC as `…T12:00:00Z`; a document read back out of Firestore re-serialises as
+`…T12:00:00+00:00`. Same instant, different canonical bytes, so a signature verified over what was
+signed and **failed over the document as served** — a third party following the published procedure
+against a stored grant got "signature invalid" on an untampered document, which is indistinguishable
+from tampering. Inline receipts never left the process and so never acquired the second spelling,
+which is why every test passed. Timestamps are normalised inside the canonicalization, with a legacy
+fallback so previously-stored signatures still verify, and a test asserts that a *shifted* instant
+still fails — the obvious way to break this fix is to normalise so hard that tampering normalises
+away too.
+
+**6. Six narrative contradictions, including one on camera.** Beat 7 — marked "never cut" — narrated
+"3291 accrued access records" and "**Nine** match a crawler signature" while Diagram B filled the
+screen behind it with 4430 and 16. README and the Devpost draft said "16 match… Those 9 are the
+finding" in a single clause. The README's `▣ in-process only` sentence contradicted its own table
+four rows down, four "awaits live verification" disclaimers survived the verification they were
+waiting for, the boundary test was still quoted at "about 2 seconds warm" against a measured 8.96 s,
+and the red-team drill was described as five attacks where the code runs six — the missing one being
+role spoofing, the most on-thesis attack in the set.
+
+**One claim was narrowed rather than corrected.** The crawler paragraph said "two distinct
+self-identifying **AI** crawlers". `metrics.json` records two distinct user agents matching a crawler
+signature; the detector matches generic patterns (`bot\b`, `crawler`, `spider`), not vendor
+identities, and only one of the two is unambiguously an AI crawler. The prose now says what the
+source supports.
+
+**Key decisions:**
+1. **Two questions get two predicates.** The temporal defect recurred because one function was asked
+   both "is it current" and "can it ever permit again". Naming each for what it asks is the fix; a
+   shared helper with a boolean flag would have been the same defect with a parameter.
+2. **Refuse ambiguous input rather than defaulting it.** A naive timestamp defaulted to UTC makes the
+   fold deterministic and the record wrong.
+3. **Test effects, not source text.** Three guards this round read source and could not distinguish
+   code from a comment about code. The replacements call the thing and look at what comes back.
+4. **Price the claim to the evidence.** `verified_control` went to zero rather than being re-pointed
+   at another commit, because no commit in this repository is signed.
+
+**Requirements touched:** HOD-105, HOD-107, HOD-311, HOD-350, HOD-360, HOD-620, HOD-706, HOD-730,
+HOD-733, HOD-742, HOD-746, HOD-747, HOD-748, HOD-749
+
+**Not done, deliberately:** the old commit `799eafc6…` still resolves on GitHub — unreachable objects
+are not collected immediately — so the downgrade rests on the commit being **unsigned**, which was
+true before the rewrite and is the actual defect, rather than on a broken link.

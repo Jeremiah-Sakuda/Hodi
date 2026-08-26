@@ -29,6 +29,7 @@ README = ROOT / "README.md"
 DEVPOST = ROOT / "docs" / "devpost-description.md"
 DIAGRAM_B = ROOT / "docs" / "architecture" / "diagram_b_what_hodi_will_not_say.mmd"
 DOCS_INDEX = ROOT / "docs" / "index.md"
+VIDEO_SCRIPT = ROOT / "docs" / "VIDEO-SCRIPT.md"
 # Checked as a DOCUMENT as well as a data file: its own free-text keys are prose
 # and drifted exactly like prose — the currency note named live release
 # verification as outstanding while the capability below it read verified.
@@ -535,6 +536,63 @@ def main() -> int:
     if audit_date not in devpost:
         failures.append(
             f"devpost-description.md does not carry the current audit date '{audit_date}'.")
+
+    # THE RECORDING SCRIPT. The one document whose numbers are spoken out loud,
+    # over a diagram showing the same numbers — and the only prose artifact that
+    # was not checked here.
+    #
+    # Beat 7 is marked "never cut". It narrated "3291 accrued access records" and
+    # "Nine match a crawler signature" while Diagram B filled the screen behind
+    # it with 4430 and 16. A viewer sees the contradiction; the build did not,
+    # because this file was not in the list. This module's own docstring names
+    # the failure mode — a figure repeated in prose and derived nowhere — and it
+    # then committed it in the highest-stakes place available.
+    script = VIDEO_SCRIPT.read_text()
+    for label, pattern, expected in (
+        ("accrued records", r"(\d+) accrued access records", total),
+        ("known-crawler matches", r"\*\*(\w+)\*\* match(?:es)? a crawler signature",
+         accrual["known_crawler_ua_matches"]),
+    ):
+        found = re.search(pattern, script)
+        if not found:
+            failures.append(
+                f"VIDEO-SCRIPT.md: could not find the '{label}' claim to check "
+                f"(pattern {pattern!r}). If the narration was reworded, update the "
+                "pattern — do not delete the check.")
+            continue
+        value = _as_int(found.group(1))
+        if value is None:
+            failures.append(f"VIDEO-SCRIPT.md: '{found.group(0)}' is not a number.")
+        elif value != expected:
+            failures.append(
+                f"VIDEO-SCRIPT.md narrates {label}={value}; metrics.json says {expected}. "
+                "The presenter would be reading this over a diagram showing the other number.")
+
+    # The cascade figure the presenter reads off a wall clock.
+    cascade = metrics.get("h6_revocation_cascade_real_corpus_scale")
+    if cascade and cascade.get("warm_runs_ms"):
+        runs = sorted(float(x) for x in cascade["warm_runs_ms"])
+        mid = len(runs) // 2
+        median = int(runs[mid] if len(runs) % 2 else (runs[mid - 1] + runs[mid]) / 2)
+        # Anchored on the NOUN, not a bare substring search. A first version
+        # asked only whether "2389" appeared anywhere in the file and passed a
+        # mutation that changed the stated median, because the number also
+        # occurs in other rows. That is the same too-weak guard this script
+        # already had to fix once, for the blog's crawler count.
+        stated = {int(m) for m in re.findall(r"median \*\*(\d+)\s*ms\*\*", script)}
+        stated |= {int(m) for m in re.findall(r"median \*\*(\d+)\*\*\s*ms", script)}
+        if not stated:
+            failures.append(
+                "VIDEO-SCRIPT.md states no cascade median at all (expected a "
+                f"'median **{median} ms**' claim). The wall clock on camera is the proof.")
+        elif stated != {median}:
+            failures.append(
+                f"VIDEO-SCRIPT.md states cascade median(s) {sorted(stated)}; metrics.json "
+                f"says {median} ms. The presenter reads this off a wall clock on camera.")
+        revision = cascade.get("revision", "")
+        if revision and revision.split("-")[-1] not in script:
+            failures.append(
+                f"VIDEO-SCRIPT.md does not name the revision the timings came from ({revision}).")
 
     # The published essay is the one document a judge is linked to directly and
     # the one nobody regenerates. Its crawler figure said "zero" for nine days

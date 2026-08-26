@@ -166,13 +166,24 @@ def seed_corpus_works() -> List[Dict[str, Any]]:
             "uri": "https://github.com/Jeremiah-Sakuda/Hodi",
             "hodi_record_uri": f"{base}/works/work-repo-001",
             "content_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "control_tier": "verified_control",
-            "control_proof": {
-                "method": "signed_commit",
-                "verified_at": "2026-08-07T02:00:00Z",
-                "evidence_uri": "https://github.com/Jeremiah-Sakuda/Hodi/commit/799eafc65104a936fc8b12ab715f126e0f687229",
-                "metadata": {"author_identity": "jeremiahsomoine@gmail.com", "commit_sha": "799eafc65104a936fc8b12ab715f126e0f687229"}
-            },
+            # DOWNGRADED 2026-08-25 (HOD-748), and the reason is the point of
+            # the tier existing.
+            #
+            # This claimed `verified_control` on a `signed_commit` proof. The
+            # repository has never had a signed commit — `git log --format=%G?`
+            # reports `N` for all 99, and GitHub's API reports the referenced
+            # commit as `"verified": false, "reason": "unsigned"`. The proof
+            # object was minted by `verify_signed_commit()`, which checked that
+            # its arguments were non-empty and then restated them. The schema
+            # invariant "verified_control requires a stored proof" held the
+            # whole time, over a proof that asserted itself.
+            #
+            # Restoring the tier is one commit away and is the OWNER's action,
+            # not a code change: sign a commit (`git commit -S`), then set this
+            # back with that commit's sha. `verify_signed_commit()` now refuses
+            # to issue the proof unless git reports a good signature, so this
+            # cannot silently return.
+            "control_tier": "asserted",
             "description": "Governed fleet of institutional agents administering creative consent.",
             "published_at": "2026-08-03T00:00:00Z",
             "canary_string": "HODI-CANARY-20260806-CODE-7639226A1B",

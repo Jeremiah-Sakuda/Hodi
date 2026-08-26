@@ -12,7 +12,7 @@ from src.schema.lattice import (
     is_use_type_contained,
 )
 from src.resolve.evaluator import (  # noqa: E402
-    is_scope_current,
+    scope_window_has_closed,
 )
 from src.resolve.resolver import resolve
 from src.schema.iam_policy import AGENT_SA_MAP
@@ -183,11 +183,23 @@ class RevocationPropagatorAgent:
                 # 25-cell reach matrix could not see the gap because every cell
                 # in it hardcodes valid_until=None.
                 #
-                # is_scope_current() is the SAME function permits() calls, for
-                # the reason this defect exists: two readers of one record must
-                # not carry two definitions of "still in force".
+                # (2) is NOT is_scope_current(). Selecting on currency fixed
+                # the lapsed grant and created its mirror: a grant whose
+                # valid_from is still in the FUTURE is not current either, so it
+                # was skipped — and unlike a lapsed grant it goes live
+                # afterwards, still permitting the use the artist revoked, with
+                # nothing scheduled to revisit it. 528 of 4,200 cascade cells.
+                # One second of clock skew reaches it, because clamp_to_policy()
+                # passes a buyer's valid_from through unclamped.
+                #
+                # The cascade's question is "can this grant ever permit the
+                # revoked use again", which is false only once the window has
+                # CLOSED. permits() keeps is_scope_current() because its
+                # question really is "right now". Two questions, two predicates,
+                # both named for what they ask — the last two defects here both
+                # came from one function answering both.
                 if (is_use_type_contained(state.active_scope.use_type, revoked_use_type)
-                        and is_scope_current(state.active_scope, cascade_at)):
+                        and not scope_window_has_closed(state.active_scope, cascade_at)):
                     affected_grants.append(AffectedGrant(
                         grant_id=gid,
                         counterparty_id=state.counterparty_id,

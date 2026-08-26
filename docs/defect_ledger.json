@@ -127,6 +127,26 @@
           "id": "derived-count-checks-were-unreachable-code",
           "summary": "Adding a new derived-count check to scripts/check_doc_metrics.py inserted its helper function INTO the body of check_derived_counts, splitting that function in two. Everything from the `checks = [...]` list onward — the guards on the correction-note count, the containment truth-table count, the offline-test count and the typed-evidence-class count — became statements after a `return`, unreachable. The script continued to print 'Doc metric check PASSED' naming documents it had stopped reading. Found by mutating README figures and observing that three known-wrong numbers all passed; the check had been green for exactly one edit. Python raises nothing for code after a return, so the only signal available was the mutation.",
           "source": "scripts/check_doc_metrics.py — _count_e2e_gated_tests is now module-level, before its caller"
+        },
+        {
+          "id": "naive-timestamp-test-graded-both-answers",
+          "summary": "NaiveTimestampTest was titled 'must not silently sort as though it were UTC-adjacent' and then asserted assertIn(status, {'revoked','active'}) — the complete set of answers the fold can return, so every outcome was a pass. Underneath it, resolve() sorted a naive datetime as server-local time: TZ=America/Los_Angeles returned active and TZ=UTC returned revoked for one identical event log.",
+          "source": "tests/test_resolver_mixed_offsets.py — each test now asserts exactly one answer; naive timestamps are refused at the schema boundary"
+        },
+        {
+          "id": "signed-commit-test-fed-the-verifier-a-fiction",
+          "summary": "test_signed_commit_verification_proof called verify_signed_commit with a SHA that is not a commit in any repository (the canary string with hex appended) and asserted a verified_control work came back. It did, because the function checked only that its arguments were non-empty and restated them as a proof. The repository has 0 signed commits out of 99.",
+          "source": "tests/test_work_verification.py — the function now raises UnsignedCommitError; work-repo-001 is downgraded to asserted"
+        },
+        {
+          "id": "route-auth-guard-read-source-not-effect",
+          "summary": "The route-authentication guard omitted GET from its mutating-method set (while /internal/accrual_audit is a GET that appends) and tested for authentication by substring-searching the endpoint's source, so a handler whose only auth was the comment '# TODO: wire _authenticate_or_403()' passed. _domain_service_or_404, which authenticates nobody, was listed as an auth marker. An anonymous GET running the full revocation cascade passed all seven CI targets.",
+          "source": "tests/test_route_auth_coverage.py — replaced with an effect test that calls each route unauthenticated and requires a refusal"
+        },
+        {
+          "id": "render-guard-vacuous-in-shallow-clone",
+          "summary": "The generated-artifact staleness guard used git commit times specifically to avoid the fresh-clone mtime trap, and then hit the identical trap one level up: actions/checkout@v4 clones at depth 1, so every file reports the same commit epoch, nothing is older than anything, and the comparison could not fail. It ran that way in CI.",
+          "source": "tests/test_generated_artifacts_are_current.py asserts the clone is not shallow; .github/workflows/verify.yml sets fetch-depth: 0"
         }
       ]
     },
@@ -176,6 +196,11 @@
           "id": "evidence-counts-bypassed-the-gateway",
           "summary": "/evidence-counts read four collections with a raw Firestore client — no gateway, no policy check, no denial event — so nobody noticed the evidence agent was not permitted three of the four evidence collections it reports on. The counts had never been authorised; they had merely never been asked. Surfaced only when the read was routed through the gateway for the domain split.",
           "source": "docs/FINDINGS.md — the conflict boundary became a credential boundary"
+        },
+        {
+          "id": "verify-signed-commit-verified-nothing",
+          "summary": "verify_signed_commit() validated that repo_uri and commit_sha were non-empty and then constructed a ControlProof from its own arguments. create_work() correctly refuses verified_control without a stored proof, so the invariant held perfectly over a proof that asserted itself. GitHub reports the referenced commit as verified:false, reason:unsigned; git reports %G? = N for all 99 commits.",
+          "source": "src/schema/verification.py — raises UnsignedCommitError unless git reports a good signature"
         }
       ]
     },
@@ -255,6 +280,16 @@
           "id": "collection-lived-in-two-databases",
           "summary": "crawler_access migrated to hodi-evidence while four call sites in main.py kept reading and APPENDING to (default). /evidence-counts served 3 against a corpus of 1904 — a live surface confidently reporting a number from the database the data had just left — and 19 records accrued in the wrong place before the sweep caught them.",
           "source": "docs/FINDINGS.md — the conflict boundary became a credential boundary"
+        },
+        {
+          "id": "cascade-skipped-future-dated-grants",
+          "summary": "Selecting the revocation cascade on is_scope_current fixed lapsed grants and created the mirror defect: a grant whose valid_from has not yet arrived is also not current, so it was skipped — and unlike a lapsed grant it becomes live afterwards with the revoked use still permitted and nothing to revisit it. 528 of 4,200 cells, reachable through one second of clock skew because clamp_to_policy() passes a buyer's valid_from through unclamped.",
+          "source": "src/resolve/evaluator.py — scope_window_has_closed(); the cascade and permits() now ask separate questions"
+        },
+        {
+          "id": "signature-failed-over-the-document-as-served",
+          "summary": "Signing canonicalized timestamps as rendered by Pydantic JSON mode ('...Z'); a document read back from Firestore re-serialises as '...+00:00'. Same instant, different canonical bytes, so a signature verified over the signed form and failed over the document as served — a third party following the published procedure got 'signature invalid' on an untampered stored grant. Inline receipts never left the process, so CI never saw it.",
+          "source": "src/schema/signing.py — timestamps normalised inside canonicalization, with a legacy fallback"
         }
       ]
     },
@@ -287,6 +322,16 @@
           "id": "generated-deployment-table-not-generated",
           "summary": "The deployment-status table in README.md is marked GENERATED and says not to hand-edit it. Nothing regenerated it and nothing compared it, so a promotion recorded in deployment_status.json would leave the README showing the old state and the old date. It was already stale by four rows.",
           "source": "docs/FINDINGS.md — a capability recorded as scripted, never run"
+        },
+        {
+          "id": "beat-7-narration-contradicted-the-diagram-behind-it",
+          "summary": "The recording script's Beat 7 — marked 'never cut' — narrated 3291 accrued records and 'Nine' crawler matches while Diagram B filled the screen behind it with 4430 and 16. check_doc_metrics.py covered the README, the Devpost draft and the diagram, but not the one document whose numbers are spoken out loud.",
+          "source": "scripts/check_doc_metrics.py now checks docs/VIDEO-SCRIPT.md"
+        },
+        {
+          "id": "readme-contradicted-its-own-table-and-its-own-status-file",
+          "summary": "README prose said the conflict_domain_separation row reads 'in-process only and not verified' while the table four rows down read 'verified'; four 'awaits live verification' disclaimers survived the verification; the boundary test was quoted at ~2 s against a measured 8.96 s; and the red-team drill was described as five attacks where the code runs six, omitting role spoofing. Separately, 'Those 9 are the finding' sat in the same clause as '16 match a crawler signature'.",
+          "source": "README.md, docs/devpost-description.md — corrected against docs/metrics.json and docs/deployment_status.json"
         }
       ]
     }

@@ -1,5 +1,7 @@
 import unittest
 from src.schema.work import create_work, Work, ControlProof
+import subprocess
+from src.schema.verification import UnsignedCommitError
 from src.schema.verification import (
     verify_dns_txt,
     verify_well_known_file,
@@ -86,26 +88,60 @@ class TestWorkVerification(unittest.TestCase):
         self.assertEqual(work.control_tier, "verified_control")
         self.assertEqual(work.control_proof.method, "well_known_file")
 
-    def test_signed_commit_verification_proof(self):
-        proof = verify_signed_commit(
-            repo_uri="https://github.com/Jeremiah-Sakuda/Hodi",
-            commit_sha="7639226a1b2c3d4e5f60123456789abcdef01234",
-            author_identity="jeremiahsomoine@gmail.com"
-        )
-        self.assertEqual(proof.method, "signed_commit")
-        work = create_work(
-            work_id="work-sc-01",
-            artist_id="artist-jeremiah",
-            medium="code",
-            uri="https://github.com/Jeremiah-Sakuda/Hodi",
-            content_hash="c3d4e5f60123456789abcdef0123456789abcdef0123456789abcdef0123a1b2",
-            control_tier="verified_control",
-            title="Signed Commit Work",
-            description="Verified via GPG/SSH commit signature",
-            published_at="2026-08-05T00:00:00Z",
-            control_proof=proof
-        )
-        self.assertEqual(work.control_tier, "verified_control")
+    def test_signed_commit_proof_is_refused_for_an_unsigned_commit(self):
+        """THIS TEST USED TO ASSERT THE BUG (HOD-748).
+
+        It called `verify_signed_commit` with the SHA
+        `7639226a1b2c3d4e5f60123456789abcdef01234` — which is not a commit in
+        this repository or any other; it is the canary string with hex glued on
+        — and asserted that a `verified_control` work came back. It did, because
+        the function checked only that its arguments were non-empty and then
+        restated them as a proof.
+
+        So the strongest ownership claim in the system was verified by a
+        function that verified nothing, guarded by a test that fed it a
+        fictitious commit and called the result proof. The repository has never
+        had a signed commit: `git log --format=%G?` reports `N` for all 99.
+        """
+        with self.assertRaises(UnsignedCommitError):
+            verify_signed_commit(
+                repo_uri="https://github.com/Jeremiah-Sakuda/Hodi",
+                commit_sha="7639226a1b2c3d4e5f60123456789abcdef01234",
+                author_identity="jeremiahsomoine@gmail.com",
+            )
+
+    def test_a_real_but_unsigned_commit_is_also_refused(self):
+        """The fictitious SHA above could be refused merely for not existing.
+        This one exists in this repository and is unsigned, which is the state
+        that actually shipped."""
+        head = subprocess.run(["git", "rev-parse", "HEAD"],
+                              capture_output=True, text=True).stdout.strip()
+        self.assertTrue(head, "could not read HEAD; this guard would be vacuous")
+        with self.assertRaises(UnsignedCommitError) as caught:
+            verify_signed_commit(
+                repo_uri="https://github.com/Jeremiah-Sakuda/Hodi",
+                commit_sha=head,
+                author_identity="jeremiahsomoine@gmail.com",
+            )
+        self.assertIn("no good signature", str(caught.exception))
+
+    def test_the_served_manifest_claims_no_unearned_verified_tier(self):
+        """The seed the deployed service returns must not out-claim the proof
+        it can produce. `work-repo-001` sat at `verified_control` on this
+        function's output until 2026-08-25."""
+        from fastapi.testclient import TestClient
+        from src.evidence_service.main import app
+
+        payload = TestClient(app, raise_server_exceptions=False).get("/works").json()
+        works = payload.get("works", payload if isinstance(payload, list) else [])
+        self.assertTrue(works, "the manifest served no works; this guard would be vacuous")
+        for work in works:
+            if work.get("control_tier") == "verified_control":
+                proof = work.get("control_proof") or {}
+                self.assertNotEqual(
+                    proof.get("method"), "signed_commit",
+                    f"{work['work_id']} claims verified_control by signed commit, and no "
+                    "commit in this repository is signed")
 
     def test_platform_oauth_verification_proof(self):
         proof = verify_platform_oauth(

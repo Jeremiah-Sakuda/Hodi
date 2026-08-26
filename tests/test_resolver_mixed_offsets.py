@@ -22,11 +22,14 @@ fix with no test is a fix that survives at the mercy of the next refactor.
 Each test below FAILS if the sort key reverts to `.isoformat()`.
 """
 
+import os
+import time
 import unittest
 from datetime import datetime, timedelta, timezone
 
 from src.resolve.resolver import resolve, active_grant_events
 from src.resolve.evaluator import permits
+from pydantic import ValidationError
 from src.schema.grant_event import GrantEvent
 from src.schema.scope import Scope
 
@@ -97,20 +100,70 @@ class MixedOffsetFoldTest(unittest.TestCase):
 
 
 class NaiveTimestampTest(unittest.TestCase):
-    """A naive (tz-less) timestamp must not crash the fold or silently sort as
-    though it were UTC-adjacent. Firestore normalises to UTC, but every
-    JSON-sourced log — the committed fixture log and the failure-tolerance
-    drill — takes the untrusted path."""
+    """A naive (tz-less) timestamp is refused at the boundary (HOD-747).
 
-    def test_naive_and_aware_events_fold_without_error(self):
+    THIS TEST USED TO ACCEPT THE BUG. It was titled "must not ... silently sort
+    as though it were UTC-adjacent" and then asserted
+    `assertIn(status, {"revoked", "active"})` — the complete set of answers the
+    fold can return. Both were passing grades, so the oracle restated the
+    docstring and verified nothing, and the defect it was written to catch sat
+    underneath it. Measured before the fix, on one identical event log:
+
+        TZ=America/Los_Angeles -> active     (the buyer may train)
+        TZ=UTC                 -> revoked    (the buyer may not)
+
+    That is the project's signature defect — an operation that silently succeeds
+    on input it cannot interpret — returning through the door the earlier fix
+    left open. `resolve()` sorts on `.astimezone(timezone.utc)`, which does not
+    raise on a naive datetime; it assumes server-local time.
+
+    A test that admits both answers cannot fail. Each test below asserts exactly
+    one.
+    """
+
+    NAIVE = datetime(2026, 8, 5, 12, 0, 0)
+
+    def test_a_naive_timestamp_is_refused_rather_than_interpreted(self):
+        with self.assertRaises(ValidationError) as caught:
+            event("granted", self.NAIVE, "evt-granted-naive")
+        self.assertIn("no UTC offset", str(caught.exception))
+
+    def test_a_naive_window_bound_is_refused(self):
+        """Same rule on the Scope, because `is_scope_current` reads it."""
+        with self.assertRaises(ValidationError):
+            Scope(use_type="training", model_class="all_models",
+                  attribution_required=False, commercial=True, valid_from=self.NAIVE)
+
+    def test_the_offset_aware_form_of_the_same_log_folds_identically_everywhere(self):
+        """The property the rejected input made impossible, now assertable.
+
+        Runs the fold under three server timezones. Before the fix this log —
+        with the naive timestamp — returned two different answers. With offsets
+        attached it must return exactly one, whatever the machine's clock says.
+        """
         events = [
-            event("granted", datetime(2026, 8, 5, 12, 0, 0), "evt-granted-naive"),
+            event("granted", self.NAIVE.replace(tzinfo=timezone.utc), "evt-granted"),
             event("revoked", REVOKED_AT, "evt-revoked-aware"),
         ]
-        state = resolve(GRANT, events=events)
-        self.assertIn(state.status, {"revoked", "active"})
-        self.assertEqual(state.status, resolve(GRANT, events=list(reversed(events))).status,
-                         "a mixed naive/aware log must still fold order-independently")
+        answers = set()
+        original = os.environ.get("TZ")
+        try:
+            for tz_name in ("America/Los_Angeles", "UTC", "Asia/Tokyo"):
+                os.environ["TZ"] = tz_name
+                time.tzset()
+                answers.add(resolve(GRANT, events=events).status)
+                answers.add(resolve(GRANT, events=list(reversed(events))).status)
+        finally:
+            if original is None:
+                os.environ.pop("TZ", None)
+            else:
+                os.environ["TZ"] = original
+            time.tzset()
+
+        self.assertEqual(
+            answers, {"revoked"},
+            f"the same log folded to {sorted(answers)} across server timezones; "
+            "an authorization answer must not depend on where the process runs")
 
 
 class RegrantAcrossOffsetsTest(unittest.TestCase):

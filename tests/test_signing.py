@@ -93,6 +93,75 @@ class TestSignedDocuments(unittest.TestCase):
         self.addCleanup(lambda: (os.environ.pop("HODI_SIGNING", None),
                                  setattr(signing, "_active_signer", None)))
 
+    def test_a_document_verifies_in_the_form_FIRESTORE_SERVES_IT(self):
+        """The signature must survive the round trip through storage (HOD-749).
+
+        Pydantic's JSON mode renders UTC as `...T12:00:00Z`. A document read
+        back out of Firestore carries real datetime objects, and re-serialising
+        those gives `...T12:00:00+00:00`. Same instant, different bytes,
+        different canonical JSON — so the signature verified over what was
+        signed and FAILED over the document as served. A third party following
+        the published procedure against a stored grant got "signature invalid"
+        on an untampered document, which is indistinguishable from tampering.
+
+        Every test passed because inline receipts never left the process and so
+        never acquired the second spelling. This one applies it deliberately.
+        """
+        from datetime import datetime, timezone
+        from src.schema.grant_event import GrantEvent
+        from src.schema.scope import Scope
+
+        at = datetime(2026, 8, 25, 12, 0, 0, tzinfo=timezone.utc)
+        event = sign_pydantic(GrantEvent(
+            event_id="e-served", grant_id="g-served", work_id="w-served",
+            counterparty_id="buyer-served", kind="granted", issued_at=at, signature="x",
+            scope=Scope(use_type="training", model_class="all_models",
+                        attribution_required=False, commercial=True, valid_from=at),
+        ), kind="grant", reference="g-served")
+        pem = signing.get_active_signer().public_key_pem
+
+        as_signed = event.model_dump(mode="json")
+        self.assertTrue(verify_document(as_signed, pem))
+
+        # The same document as Firestore hands it back: '+00:00', not 'Z'.
+        as_served = dict(as_signed)
+        as_served["issued_at"] = at.isoformat()
+        as_served["scope"] = dict(as_signed["scope"], valid_from=at.isoformat())
+        self.assertNotEqual(as_served["issued_at"], as_signed["issued_at"],
+                            "fixture is wrong: both spellings are identical, so this "
+                            "test would pass without exercising anything")
+        self.assertTrue(
+            verify_document(as_served, pem),
+            "an untampered stored document failed verification purely because its "
+            "timestamps came back spelled differently")
+
+    def test_normalising_timestamps_does_not_blunt_tamper_detection(self):
+        """The obvious way to break the fix above: normalise so aggressively
+        that a CHANGED instant also normalises to the signed one."""
+        from datetime import datetime, timezone
+        from src.schema.grant_event import GrantEvent
+        from src.schema.scope import Scope
+
+        at = datetime(2026, 8, 25, 12, 0, 0, tzinfo=timezone.utc)
+        event = sign_pydantic(GrantEvent(
+            event_id="e-t", grant_id="g-t", work_id="w-t", counterparty_id="buyer-t",
+            kind="granted", issued_at=at, signature="x",
+            scope=Scope(use_type="training", model_class="all_models",
+                        attribution_required=False, commercial=True, valid_from=at),
+        ), kind="grant", reference="g-t")
+        pem = signing.get_active_signer().public_key_pem
+        doc = event.model_dump(mode="json")
+
+        for label, shifted in (
+            ("one hour later", "2026-08-25T13:00:00+00:00"),
+            ("one second later", "2026-08-25T12:00:01Z"),
+            ("same wall clock, different offset", "2026-08-25T12:00:00+01:00"),
+        ):
+            with self.subTest(label):
+                self.assertFalse(
+                    verify_document(dict(doc, issued_at=shifted), pem),
+                    f"a document whose instant moved ({label}) still verified")
+
     def test_signed_receipt_verifies_and_tampering_is_detected(self):
         receipt = sign_pydantic(_receipt(), kind="receipt", reference="g-1")
         self.assertTrue(is_signature_envelope(receipt.signature))

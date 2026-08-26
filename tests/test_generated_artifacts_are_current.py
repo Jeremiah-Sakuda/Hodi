@@ -47,7 +47,40 @@ def git_commit_epoch(path: Path) -> int:
     return int(out.stdout.strip()) if out.stdout.strip() else 0
 
 
+def repository_is_shallow() -> bool:
+    """Is this a depth-limited clone?"""
+    out = subprocess.run(["git", "rev-parse", "--is-shallow-repository"],
+                         cwd=ROOT, capture_output=True, text=True)
+    return out.stdout.strip() == "true"
+
+
 class RendersAreNotOlderThanTheirSourceTest(unittest.TestCase):
+
+    def test_the_history_this_guard_reads_is_actually_present(self):
+        """The mtime trap, one level up.
+
+        Using commit times instead of mtimes fixed the fresh-clone problem and
+        left a second one exactly like it. `actions/checkout@v4` clones at
+        depth 1 by default, so EVERY file's last-commit time is the single
+        fetched commit's timestamp — all equal, nothing older than anything,
+        guard green, checking nothing. It ran that way in CI.
+
+        `fetch-depth: 0` is set in .github/workflows/verify.yml. This asserts the
+        condition rather than trusting the workflow file, because a guard that
+        depends on a setting elsewhere should fail when that setting is lost —
+        not quietly stop working.
+        """
+        self.assertFalse(
+            repository_is_shallow(),
+            "shallow clone: every file reports the same commit time, so the staleness "
+            "comparison below cannot fail and proves nothing. Set `fetch-depth: 0` on "
+            "actions/checkout.")
+
+        epochs = {git_commit_epoch(p) for p in sorted(ARCH.glob("*.mmd"))}
+        self.assertGreater(
+            len(epochs), 1,
+            "every mermaid source reports an identical commit time, which means the "
+            "history is not really here even though git does not call the clone shallow")
 
     def test_every_mermaid_source_has_renders(self):
         sources = sorted(ARCH.glob("*.mmd"))

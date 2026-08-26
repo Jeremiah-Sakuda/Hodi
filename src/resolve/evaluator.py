@@ -31,6 +31,31 @@ def is_scope_current(scope, at=None) -> bool:
     return True
 
 
+def scope_window_has_closed(scope, at=None) -> bool:
+    """
+    Has this grant's window closed for good at `at`? (HOD-746)
+
+    This is the CASCADE's question, and it is not `is_scope_current`'s question.
+    Revocation asks "can this grant ever permit the revoked use again", which is
+    false only once the window has closed behind it. `is_scope_current` asks
+    "does it permit right now", which is also false BEFORE the window opens.
+
+    Selecting the cascade on currency fixed the lapsed-grant defect and opened
+    the mirror of it. A grant with `valid_from` in the future is not current, so
+    it was skipped — and unlike a lapsed grant it becomes live afterwards, with
+    the revoked use still permitted and nothing scheduled to revisit it. An
+    independent oracle put 528 of 4,200 cascade cells in that state. The reach
+    is not exotic: `clamp_to_policy()` passes a buyer's `valid_from` through
+    unclamped, so ordinary clock skew of one second is already enough.
+
+    So the cascade selects on this predicate and `permits()` keeps
+    `is_scope_current`. They are different questions about the same window, and
+    the previous two defects both came from making one function answer both.
+    """
+    at = at or datetime.now(timezone.utc)
+    return scope.valid_until is not None and at > scope.valid_until
+
+
 def permits(
     active_grants: List[GrantEvent],
     requested_scope: Scope,

@@ -155,19 +155,19 @@
   "defect_ledger": {
     "source": "docs/defect_ledger.json",
     "counting_rule": "one entry per distinct defect with a distinct fix; a recurrence in a new location is a new entry",
-    "total_defects": 45,
+    "total_defects": 54,
     "class_count": 9,
     "recurring_class_count": 4,
     "defects_per_class": {
       "live-boundary-auth": 3,
       "self-instrumentation-contamination": 3,
       "deterministic-wrongness": 1,
-      "tests-that-could-not-fail": 13,
+      "tests-that-could-not-fail": 17,
       "infrastructure-reported-done": 3,
-      "claims-with-no-code": 4,
+      "claims-with-no-code": 5,
       "policy-looser-than-its-text": 3,
-      "semantics-that-disagreed": 10,
-      "narrative-number-drift": 5
+      "semantics-that-disagreed": 12,
+      "narrative-number-drift": 7
     },
     "recurring_classes": [
       "live-boundary-auth",

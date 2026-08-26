@@ -1,6 +1,6 @@
 from typing import Literal, List, Optional
 from datetime import datetime
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 UseType = Literal["training", "fine_tuning", "rag_retrieval", "human_reference", "synthesis"]
 ModelClass = Literal["all_models", "open_weights", "proprietary_frontier"]
@@ -13,6 +13,17 @@ class Scope(BaseModel):
     territory: List[str] = Field(default_factory=lambda: ["WW"])
     valid_from: datetime
     valid_until: Optional[datetime] = None
+
+    @field_validator("valid_from", "valid_until")
+    @classmethod
+    def _window_must_denote_instants(cls, v, info):
+        """The same rule as GrantEvent.issued_at, for the same reason (HOD-747).
+
+        A window bound without an offset makes `is_scope_current` and
+        `scope_window_has_closed` server-local, so whether a licence is in force
+        would depend on which machine asked."""
+        from src.schema.grant_event import reject_naive
+        return reject_naive(v, f"Scope.{info.field_name}")
 
     @model_validator(mode="after")
     def _interval_must_be_well_formed(self) -> "Scope":

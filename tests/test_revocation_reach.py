@@ -42,7 +42,7 @@ from typing import get_args
 
 from src.agents.revocation_propagator import RevocationPropagatorAgent
 from src.gateway.gateway import AgentGateway
-from src.resolve.evaluator import is_scope_current, permits
+from src.resolve.evaluator import is_scope_current, permits, scope_window_has_closed
 from src.schema.grant_event import GrantEvent
 from src.resolve.resolver import resolve
 from src.schema.lattice import USE_TYPE_CONTAINMENT, is_use_type_contained
@@ -188,16 +188,24 @@ class ExpiredGrantsAreNotRevokedTest(unittest.TestCase):
     SHARED predicate (`is_scope_current`) rather than a second implementation.
     """
 
-    def _grant(self, grant_id, use_type, valid_from, valid_until):
+    def _grant(self, grant_id, use_type, valid_from, valid_until, issued_at=None):
+        # issued_at defaulted to valid_from, which is wrong for a future-dated
+        # grant and is not what the service does: both write paths in
+        # buyer_api.py stamp issued_at server-side at `now`, so a caller cannot
+        # place it in the future. A fixture that future-dates issuance as well as
+        # the window tests a state the API cannot produce — and it hides the real
+        # one, because the revoked event then sorts BEFORE the grant it revokes
+        # and the fold returns it to active.
         return GrantEvent(
             event_id=f"e-{grant_id}", grant_id=grant_id, work_id="w-temporal",
             counterparty_id="buyer-temporal", kind="granted",
-            issued_at=valid_from, signature=unsigned_placeholder("grant", grant_id),
+            issued_at=issued_at or datetime.now(timezone.utc),
+            signature=unsigned_placeholder("grant", grant_id),
             scope=Scope(use_type=use_type, model_class="all_models",
                         attribution_required=False, commercial=True,
                         valid_from=valid_from, valid_until=valid_until))
 
-    def _cascade_selects(self, held, valid_until, revoked="training"):
+    def _cascade_selects(self, held, valid_until, revoked="training", valid_from=None):
         """
         Runs the REAL cascade — the same way `cascade_selects` above does — and
         reports whether the grant was selected.
@@ -209,7 +217,12 @@ class ExpiredGrantsAreNotRevokedTest(unittest.TestCase):
         from the shipped cascade must fail HERE.
         """
         now = datetime.now(timezone.utc)
-        ev = self._grant("g-temporal", held, now - timedelta(days=90), valid_until)
+        # valid_from was hardcoded 90 days in the past, so no cell in this file
+        # could ever describe a grant whose window had not yet OPENED — the
+        # 528-cell blind spot. It is a parameter now.
+        ev = self._grant("g-temporal", held,
+                         valid_from if valid_from is not None else now - timedelta(days=90),
+                         valid_until)
         agent = RevocationPropagatorAgent(gateway=AgentGateway(),
                                           memory_bank_events=[ev])
         result = agent.execute_revocation_cascade(work_id="w-temporal",
@@ -235,6 +248,45 @@ class ExpiredGrantsAreNotRevokedTest(unittest.TestCase):
         """
         now = datetime.now(timezone.utc)
         self.assertTrue(self._cascade_selects("training", now + timedelta(days=365)))
+
+    def test_a_future_dated_grant_is_still_terminated(self):
+        """The 528 cells, run through the shipped code path (HOD-746).
+
+        A grant whose window opens tomorrow is not current today, so a cascade
+        selecting on currency skipped it — and unlike a lapsed grant, it goes
+        live tomorrow with the revoked use still permitted. Nothing revisits it.
+        The artist revoked `training` and `training` resumed.
+        """
+        now = datetime.now(timezone.utc)
+        for label, opens_at in (
+            ("one second of clock skew", now + timedelta(seconds=1)),
+            ("a grant starting tomorrow", now + timedelta(days=1)),
+            ("a grant starting in 45 days", now + timedelta(days=45)),
+        ):
+            with self.subTest(label):
+                self.assertTrue(
+                    self._cascade_selects("training", None, valid_from=opens_at),
+                    f"the cascade skipped {label}: the grant is not current at the "
+                    "revocation instant, but it becomes live afterwards with the "
+                    "revoked use still permitted")
+
+    def test_a_future_dated_grant_does_not_permit_the_use_after_the_cascade(self):
+        """The property the cell count is a proxy for, asserted end to end.
+
+        This is the assertion that would have failed before the fix: not 'was it
+        selected' but 'can the buyer still train on this work in 45 days'.
+        """
+        now = datetime.now(timezone.utc)
+        opens = now + timedelta(days=45)
+        ev = self._grant("g-future", "training", opens, None)
+        agent = RevocationPropagatorAgent(gateway=AgentGateway(), memory_bank_events=[ev])
+        agent.execute_revocation_cascade(work_id="w-temporal", revoked_use_type="training")
+
+        state = resolve("g-future", events=agent.memory_bank_events)
+        self.assertEqual(
+            state.status, "revoked",
+            "the grant folds to active 45 days after the artist revoked training, "
+            "and permits() will honour it the moment its window opens")
 
     def test_a_lapsed_grant_is_not_in_the_affected_set(self):
         now = datetime.now(timezone.utc)

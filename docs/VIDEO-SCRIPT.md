@@ -280,11 +280,14 @@ print('re-granted grant-seed-2 as', e.event_id)"
 **Burn in the thesis lower-third at 0:08** — *"Your voice is in a product you never agreed to."*
 
 **Say:** the corpus is my own published work. Every registration carries a control tier, and the
-tier is never hidden — one work is `verified_control` with a proof that resolves, four are
+tier is never hidden — **as of 2026-08-25 no work is `verified_control`**; all five are
 `asserted`, and the API says so rather than rounding up.
 
-> Accuracy note: do **not** say "five verified works." One resolves. The README and Devpost both
-> state this precisely; the video must match.
+> Accuracy note: do **not** say "five verified works", and do **not** say "one verified work" —
+> that was true of the script until 2026-08-25 and was never true of the system. The repository work
+> claimed `verified_control` on a signed-commit proof; the repository has never had a signed commit,
+> and the function issuing the proof checked only that its arguments were non-empty. It refuses now.
+> Saying the tier is never hidden is a stronger beat when the honest number is zero.
 
 ---
 
@@ -549,14 +552,20 @@ And a fifth column that does not exist: training-set membership. Not because we 
 because it is not determinable, there is no enum value for it, and the schema physically cannot
 express the claim. Revocation terminates a grant. It does not un-train a model.
 
-Then the measured finding — **it strengthened again on 2026-08-21, so use these words, not the old
-ones**: 3291 accrued access records. **Nine** match a crawler signature — two distinct
-self-identifying AI crawlers, nine visits between August 11th and August 20th. Every single one
-fetched `/robots.txt`. **Not one** fetched `/.well-known/hodi.json` — one request away, named in that
-very `robots.txt`, where the machine-readable terms are served. They asked whether they were allowed
-to crawl. Over ten days, none of them asked what they were allowed to *do with the work*.
+Then the measured finding — **re-measured 2026-08-25; these are the numbers on the screen behind you,
+so say these and no others**: 4430 accrued access records. **Sixteen** match a crawler signature —
+two distinct crawler user agents, sixteen visits between August 11th and August 25th. Every single
+one fetched `/robots.txt`. **Not one** fetched `/.well-known/hodi.json` — one request away, named in
+that very `robots.txt`, where the machine-readable terms are served. They asked whether they were
+allowed to crawl. Not one asked what they were allowed to *do with the work*.
 
-> This is the thesis in nine records, and it beats both prior versions ("nobody came", then "one
+> **The narration said 3291 records and "nine" while Diagram B filled the screen behind it with 4430
+> and 16.** The beat marked "never cut" was the beat that contradicted its own visual. Both halves
+> now come from `docs/metrics.json`, and `make check-docs` fails the build if this file drifts from
+> it — the same guard the README and the Devpost draft are already held to, extended to the one
+> document whose numbers are spoken out loud.
+>
+> This is the thesis in sixteen records, and it beats both prior versions ("nobody came", then "one
 > crawler came"). Do not name the vendors on camera — they did nothing wrong, and the point is not
 > who they are. The correction line still lands if you want it: the count read zero for a week
 > because the detector's pattern required a word boundary before `bot`, so a vendor prefix glued

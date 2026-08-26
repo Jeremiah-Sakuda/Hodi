@@ -31,6 +31,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Default is depth 1, which makes every file report the SAME
+          # last-commit time — so the generated-artifact staleness guard could
+          # not fail and was passing vacuously on every run.
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
