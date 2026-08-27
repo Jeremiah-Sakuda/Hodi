@@ -104,6 +104,7 @@ PUBLIC_ROUTES = {
     "/demo/api/session",            # mints an isolated sandbox; rate-limited per IP
     "/demo/api/{sid}/license",      # pure permits() over the sandbox grant; no writes
     "/demo/api/{sid}/revoke",       # real cascade over demo_* only; sandbox role; signature-capped
+    "/demo/api/fleet-drill",        # real ADK fleet delegation, write-free (reads fixtures, appends nothing)
 }
 
 

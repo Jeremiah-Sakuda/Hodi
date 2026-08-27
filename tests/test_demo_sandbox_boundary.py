@@ -120,5 +120,44 @@ class TheCascadeCannotBeTrickedIntoRealCollectionsTest(unittest.TestCase):
             agent.execute_revocation_cascade(work_id="work-repo-001", revoked_use_type="training")
 
 
+class FleetDrillIsRealAndWriteFreeTest(unittest.TestCase):
+    """The /demo fleet drill runs the real ADK delegation and appends nothing.
+
+    It is exposed unauthenticated, so it must be structurally write-free: it
+    reads fixture events and the quarantine/reroute path issues no notices and
+    appends no events by design. This asserts the shape (six hops, distinct
+    identities, quarantine) and that no demo/real collection was written.
+    """
+
+    def setUp(self):
+        force_offline(self)
+        prior = os.environ.get("HODI_SIGNING")
+        os.environ["HODI_SIGNING"] = "ephemeral"
+        self.addCleanup(lambda: os.environ.__setitem__("HODI_SIGNING", prior)
+                        if prior is not None else os.environ.pop("HODI_SIGNING", None))
+
+    def test_drill_returns_the_real_fleet_and_writes_nothing(self):
+        from fastapi.testclient import TestClient
+        from src.evidence_service.main import app
+        client = TestClient(app, raise_server_exceptions=False)
+        r = client.post("/demo/api/fleet-drill")
+        self.assertEqual(r.status_code, 200)
+        j = r.json()
+        self.assertIn("google.adk", j["framework"])
+        self.assertTrue(j["completed_degraded"])
+        outcomes = [s["outcome"] for s in j["steps"]]
+        self.assertIn("NOT_DISCLOSED", outcomes)   # registry non-disclosure to the buyer's negotiator
+        self.assertIn("ABANDONED", outcomes)        # supervisor deadline fired
+        self.assertIn("QUARANTINED + REROUTED", outcomes)
+        # distinct real service-account identities across the hops
+        sas = {s["sa"] for s in j["steps"] if s["sa"]}
+        self.assertGreaterEqual(len(sas), 3)
+        # write-free: nothing landed in any demo grant collection
+        gw = AgentGateway()
+        rows = gw.read_collection(calling_sa=SANDBOX_SA, calling_role_key=SANDBOX_ROLE,
+                                  target_collection="demo_grants", filters={})
+        self.assertEqual(rows, [])
+
+
 if __name__ == "__main__":
     unittest.main()

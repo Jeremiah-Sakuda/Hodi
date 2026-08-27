@@ -142,6 +142,32 @@
   .colophon b{color:#cfc6ae;} .colophon a{color:#cfc6ae;}
   @media (max-width:640px){ .tallyline .q{width:100%;} .bigstamp{position:static; display:inline-block; margin-bottom:10px;} }
   @media (prefers-reduced-motion: reduce){ html{scroll-behavior:auto} *{transition:none!important; animation:none!important;} .bigstamp.on,.seal.pressed,.grant-chip.on{opacity:1;} }
+
+  .pathrail{margin-top:16px; padding:14px 16px; border:1px solid var(--rule-strong); background:var(--paper-shade); opacity:0; transform:translateY(6px); transition:opacity .5s, transform .5s;}
+  .pathrail.on{opacity:1; transform:none;}
+  .pathrail .cap{font-family:"Courier Prime",monospace; font-size:.62rem; letter-spacing:.24em; text-transform:uppercase; color:var(--ink-soft); margin-bottom:10px;}
+  .hops{display:flex; flex-wrap:wrap; align-items:center; gap:6px 8px; font-family:"Courier Prime",monospace; font-size:.74rem; line-height:1.5;}
+  .hop{border:1px solid var(--rule-strong); border-radius:3px; padding:4px 9px; background:var(--paper); white-space:nowrap;}
+  .hop.kms{border-color:var(--seal); color:var(--seal); font-weight:700;}
+  .hop.gate{border-color:var(--ink); color:var(--ink); font-weight:700;}
+  .hops .ar{color:var(--rule-strong);}
+  .pathstats{margin-top:10px; font-family:"Courier Prime",monospace; font-size:.78rem; font-weight:700; color:var(--ink); letter-spacing:.04em;}
+  .prodnote{margin-top:10px; font-family:"Courier Prime",monospace; font-size:.66rem; line-height:1.6; color:var(--ink-soft);}
+  .prodnote b{color:var(--ink);}
+  .fleet{margin-top:clamp(22px,3.5vw,32px); padding-top:16px; border-top:1px solid var(--rule-strong);}
+  .fleet .cap{font-family:"Courier Prime",monospace; font-size:.68rem; letter-spacing:.24em; text-transform:uppercase; color:var(--ink-soft); margin-bottom:6px;}
+  .fleet .intro{font-size:.98rem; max-width:60ch; margin:0 0 12px;}
+  .fleetbtn{font-family:"Courier Prime",monospace; font-size:.76rem; letter-spacing:.12em; text-transform:uppercase; background:var(--ink); color:var(--paper); border:1px solid var(--ink); padding:9px 15px; cursor:pointer; margin-bottom:14px;}
+  .fleetbtn:disabled{opacity:.4; cursor:not-allowed;}
+  .whop{display:flex; gap:14px; align-items:flex-start; padding:11px 2px 11px 0; border-bottom:1px dotted var(--rule-strong);}
+  .whop .tag{font-family:"Courier Prime",monospace; font-weight:700; font-size:.62rem; letter-spacing:.1em; padding:3px 8px; border:1px solid var(--ink-soft); color:var(--ink-soft); flex:none; width:118px; text-align:center; margin-top:2px;}
+  .whop.good .tag{border-color:var(--seal); color:var(--seal); background:var(--seal-wash);}
+  .whop.stop .tag{border-color:var(--stamp); color:var(--stamp); background:var(--stamp-wash);}
+  .whop .who{font-family:"Fraunces",Georgia,serif; font-weight:500; font-size:1.02rem;}
+  .whop .sa{display:block; font-family:"Courier Prime",monospace; font-size:.64rem; color:var(--ink-soft); margin-top:1px; word-break:break-all;}
+  .whop .det{display:block; font-size:.9rem; color:var(--ink-soft); margin-top:3px;}
+  .fleetmeta{margin-top:12px; font-family:"Courier Prime",monospace; font-size:.7rem; color:var(--ink-soft); line-height:1.7;}
+  .fleetmeta b{color:var(--seal);} .fleetmeta a{color:var(--ink); text-decoration:underline;}
 </style>
 </head>
 <body>
@@ -161,8 +187,8 @@
       <div class="lrow"><span class="no">No. 5</span><span><span class="ti">Live Bass Improvisation Session</span><br><span class="med">bass recording</span></span><span class="tier">asserted</span></div>
     </div>
     <div class="visitor">
-      <div class="cap">Visitor log — the front door, Aug 11 to Aug 26</div>
-      <div class="tallyline"><span class="q">AI crawlers came to the door</span>
+      <div class="cap">Visitor log · compiled by Hodi’s own daily audit — Cloud Scheduler ✓ · most recent Aug 26</div>
+      <div class="tallyline"><span class="q">Visits identifying themselves as AI crawlers</span>
         <span class="tallies"><span class="tgroup full"><i></i><i></i><i></i><i></i></span><span class="tgroup full"><i></i><i></i><i></i><i></i></span><span class="tgroup full"><i></i><i></i><i></i><i></i></span><span class="tgroup"><i></i><i></i></span></span>
         <span class="n" id="crawlN">17</span></div>
       <div class="tallyline"><span class="q">…asked what they may <b>do</b> with the work</span><span class="none">none.</span></div>
@@ -201,6 +227,12 @@
     <div class="apart"><span><span class="ct">Generate new work in my style</span><span class="fine">synthesis — a separate ask, never part of this grant</span></span><span class="st" id="apartSt">not granted here</span></div>
     <div class="actrow"><button class="stampbtn" id="revoke">Stamp · take it back</button><span class="why">Take back the big yes, and everything inside it comes back with it — automatically.</span></div>
     <div class="clockline" id="clock">this runs the real cascade against the live service · watch the wall clock</div>
+    <div class="pathrail" id="pathrail">
+      <div class="cap">how that request actually moved — live, not a diagram</div>
+      <div class="hops"><span class="hop">You</span><span class="ar">→</span><span class="hop">Sandbox agent</span><span class="ar">→</span><span class="hop gate">Agent Gateway · policy</span><span class="ar">→</span><span class="hop">Firestore · append-only</span><span class="ar">→</span><span class="hop kms">Cloud KMS · signed</span></div>
+      <div class="pathstats" id="pathstats"></div>
+      <div class="prodnote">In production, <b>/api/v1/revoke</b> additionally hands the cascade to a separate <b>private revocation-propagator workload</b> under its own service account, and returns 503 rather than fall back locally if that worker is down. This sandbox runs the same cascade in-process so anyone can try it without a credential — and you can watch the four agents cross identities, live, on the certificate page.</div>
+    </div>
     <div class="resub" id="resub"><span class="refstamp">Refused</span><span class="rx">The same request, resubmitted moments later. And the grant above isn't erased — it's struck through. A “no” that pretends the “yes” never happened is its own kind of lie.</span></div>
   </div><footer class="sfoot"><span>notice of revocation</span><span>live · execute_revocation_cascade</span><span>page 3 of 5</span></footer></section>
 
@@ -214,6 +246,16 @@
       <div class="seal" id="seal"><span id="sealText">seal<br>not yet<br>pressed</span></div>
       <p class="sealnote" id="sealnote">Verified in your browser against the published public key — no Hodi server in the loop. Anyone can run this check.</p>
     </div>
+    <div class="fleet">
+      <div class="cap">Is this four agents, or four names in one prompt?</div>
+      <p class="intro">Run one real delegation. It executes on <b>google.adk</b> — real agents under a
+        real runner — each hop under a <b>different service-account identity</b>, and it forces the
+        revocation worker to hang so the supervisor has to recover. Nothing is written; it reads fixtures.</p>
+      <button class="fleetbtn" id="fleetBtn">Run the real fleet delegation, live</button>
+      <div id="fleetWrap"></div>
+      <div class="fleetmeta" id="fleetMeta"></div>
+    </div>
+
     <div class="doorlog">
       <div class="cap">Log of attempted entries — refused at the door</div>
       <p class="intro">On August 7th a real break-in worked against this system: an anonymous request read another artist's deal. <b>We kept that attack.</b> Press below to throw it — and five more — at the <b>live</b> service right now.</p>
@@ -304,6 +346,11 @@
       notice = (res.issued_notices || [])[0] || null;
       $('clock').innerHTML = 'the real cascade ran against the live service in <b>' + (ms/1000).toFixed(1) + ' seconds</b> · notice issued once, Cloud KMS-signed';
       $('bigstamp').classList.add('on');
+      // the live path rail — real numbers from the response
+      const grants = (res.affected_grants || []).length || 1;
+      const scopes = (res.terminated_scopes || []).length || 4;
+      $('pathstats').textContent = (ms/1000).toFixed(1) + ' s  ·  ' + scopes + ' scopes withdrawn  ·  ' + grants + ' grant  ·  Cloud KMS ECDSA P-256 signature';
+      $('pathrail').classList.add('on');
       const terminated = res.terminated_scopes || order;
       const step = reduce ? 0 : 420;
       order.forEach((k,i) => { if(terminated.includes(k)) setTimeout(() => strike(k, i===0?'revoked':'withdrawn'), (reduce?0:200) + i*step); });
@@ -412,6 +459,32 @@
     }
     $('attackPass').textContent = refused + ' of ' + probes.length + ' attempts refused at the door · the boundary holds';
     btn.textContent = 'attacks refused — run again';
+    btn.disabled = false;
+  });
+
+  // ---------- sheet 4: live fleet delegation ----------
+  const OUT_GOOD = new Set(['PERMITTED','INITIATED','DISCOVERED']);
+  const OUT_STOP = new Set(['ABANDONED','QUARANTINED + REROUTED']);
+  $('fleetBtn').addEventListener('click', async () => {
+    const btn = $('fleetBtn'); btn.disabled = true; btn.textContent = 'running the fleet…';
+    const wrap = $('fleetWrap'); wrap.innerHTML = '';
+    try {
+      const j = await (await api('/demo/api/fleet-drill')).json();
+      for(const step of j.steps){
+        const cls = OUT_GOOD.has(step.outcome) ? 'good' : (OUT_STOP.has(step.outcome) ? 'stop' : '');
+        const row = document.createElement('div'); row.className = 'whop ' + cls;
+        row.innerHTML = '<span class="tag">'+step.outcome+'</span><span><span class="who">'+step.agent+'</span>'+
+          (step.sa ? '<span class="sa">'+step.sa+'</span>' : '')+'<span class="det">'+step.detail+'</span></span>';
+        wrap.appendChild(row);
+        await new Promise(r=>setTimeout(r, reduce?0:260));
+      }
+      const trace = j.trace_id ? ('trace <b>'+j.trace_id+'</b>'+(j.trace_exporter==='cloud_trace'?' → Cloud Trace':' (console exporter on this instance)')) : '';
+      $('fleetMeta').innerHTML = 'one correlated run on <b>'+j.framework+'</b> · '+j.elapsed_ms+' ms · request completed <b>degraded</b>, not hung · '+trace;
+      btn.textContent = 'run it again';
+    } catch(e){
+      $('fleetMeta').textContent = 'could not reach the live service — reload and try again.';
+      btn.textContent = 'run the real fleet delegation, live';
+    }
     btn.disabled = false;
   });
 

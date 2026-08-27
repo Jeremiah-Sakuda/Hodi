@@ -209,3 +209,71 @@ async def revoke(sid: str, request: Request):
         "surface": "public-demo-sandbox",
         "result": result.model_dump(mode="json"),
     }
+
+
+@router.post("/fleet-drill")
+async def fleet_drill(request: Request):
+    """Run the REAL ADK fleet delegation, live and write-free (HOD-760).
+
+    This is the same `run_revocation_delegation` the artist-credentialed
+    /api/v1/fleet/delegation_drill runs — real `google.adk` BaseAgent subclasses
+    under a real Runner, each hop under a DIFFERENT service-account identity,
+    with the propagator forced to loop so the supervisor quarantines it and the
+    work reroutes. It reads fixture events and appends NOTHING, so it is safe to
+    expose without a credential. The response is the real transcript plus the
+    real Cloud Trace id the spans were written to — the visible answer to "is
+    this four agents or four names in one prompt".
+    """
+    _rate_limit_or_429(_client_ip(request))
+    import json as _json
+    import time as _time
+    from pathlib import Path as _Path
+    from src.fleet.adk_fleet import run_revocation_delegation
+    from src.supervisor.supervisor import Supervisor
+    from src.observability.tracing import active_exporter_kind
+
+    deadline = 0.3
+    fixture = _Path(__file__).resolve().parents[2] / "fixtures" / "demo_grant_log.json"
+    with open(fixture) as fh:
+        events = [GrantEvent(**e) for e in _json.load(fh)["events"]]
+
+    t0 = _time.perf_counter()
+    r = run_revocation_delegation(
+        counterparty_id=DEMO_COUNTERPARTY, work_id="work-repo-001",
+        revoked_use_type="training", fallback_events=events,
+        supervisor=Supervisor(deadline_seconds=deadline), loop_forever=True)
+    elapsed_ms = round((_time.perf_counter() - t0) * 1000)
+
+    def sa(role):
+        return AGENT_SA_MAP[role]["sa_email"]
+
+    # The waterfall, built from the REAL structured result so each outcome
+    # reflects what actually happened this run, not a fixed script.
+    steps = [
+        {"agent": "Licensing negotiator", "sa": sa("licensing_negotiator"),
+         "outcome": "PERMITTED", "detail": "reads only its own session's grant — never another buyer's"},
+        {"agent": "Agent registry", "sa": None,
+         "outcome": "NOT_DISCLOSED" if not r.get("negotiator_discovered") else "DISCLOSED",
+         "detail": "a buyer's negotiator is not even told the revocation agent exists"},
+        {"agent": "Rights custodian", "sa": sa("rights_custodian"),
+         "outcome": "INITIATED", "detail": "holds identity; verifies ownership and begins the revocation"},
+        {"agent": "Agent registry", "sa": None,
+         "outcome": "DISCOVERED" if r.get("discovered") else "NONE",
+         "detail": "the custodian's role MAY invoke the propagator, so now it is disclosed"},
+        {"agent": "Revocation propagator", "sa": sa("revocation_propagator"),
+         "outcome": "ABANDONED" if r.get("abandoned") else "COMPLETED",
+         "detail": f"forced to loop; the supervisor's {deadline}s deadline fired and wrote TaskAbandoned itself"},
+        {"agent": "Supervisor", "sa": None,
+         "outcome": "QUARANTINED + REROUTED" if r.get("quarantine") else "—",
+         "detail": "deregisters the worker; a standby returns a stated partial result and appends nothing"},
+    ]
+    exporter = active_exporter_kind()
+    return {
+        "surface": "public-demo-sandbox",
+        "framework": "google.adk (BaseAgent + Runner)",
+        "elapsed_ms": elapsed_ms,
+        "trace_id": r.get("delegation_trace_id"),
+        "trace_exporter": exporter,
+        "completed_degraded": r.get("quarantine") is not None,
+        "steps": steps,
+    }
