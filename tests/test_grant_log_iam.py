@@ -91,11 +91,19 @@ class TestAppendOnlyRoleDefinition(unittest.TestCase):
         text = DEPLOY_SCRIPT.read_text()
         self.assertIn("from src.schema.iam_policy import AGENT_SA_MAP", text)
         self.assertIn(ROLE_ID, text)
-        # Five since 2026-08-14: the consent arbiter (HOD-704) joined the four
-        # domain agents. The script iterates AGENT_SA_MAP, so it provisions the
-        # arbiter's SA the same way; this count pins the declared fleet size so
-        # an accidental sixth (or a lost fifth) is caught in review.
-        self.assertEqual(len(AGENT_SA_MAP), 5)
+        # The FLEET is five conflict-domain agents since 2026-08-14: the consent
+        # arbiter (HOD-704) joined the four domain agents. The script iterates
+        # AGENT_SA_MAP, so it provisions each the same way; this pins the fleet
+        # size so an accidental sixth (or a lost fifth) is caught in review.
+        #
+        # `sandbox_agent` (HOD-760) is a SIXTH entry of a different category: an
+        # in-process policy role the public /demo runs as, denied every real
+        # collection. It is excluded from the fleet count and named explicitly,
+        # so an accidental new CONFLICT-DOMAIN agent is still caught while the
+        # sandbox role is acknowledged rather than silently inflating the count.
+        fleet = {k for k in AGENT_SA_MAP if k != "sandbox_agent"}
+        self.assertEqual(len(fleet), 5)
+        self.assertEqual(set(AGENT_SA_MAP) - fleet, {"sandbox_agent"})
 
 
 class TestRuntimeIdentityProvisioning(unittest.TestCase):

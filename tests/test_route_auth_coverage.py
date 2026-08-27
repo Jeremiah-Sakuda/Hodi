@@ -94,6 +94,16 @@ PUBLIC_ROUTES = {
     # writes nothing. Exists so a reviewer can verify the boundary without
     # credentials.
     "/api/v1/debug/compromised_agent_read",
+    # --- the public /demo sandbox (HOD-760) --------------------------------
+    # Unauthenticated BY DESIGN: this is the interactive walkthrough anyone can
+    # try. Its safety is not a credential — it is policy data. Every route runs
+    # as `sandbox_agent`, which the gateway denies every real collection, proven
+    # in tests/test_demo_sandbox_boundary.py. Listing them here is the visible,
+    # reviewed act the guard exists to force.
+    "/demo",                        # the page itself — a public GET
+    "/demo/api/session",            # mints an isolated sandbox; rate-limited per IP
+    "/demo/api/{sid}/license",      # pure permits() over the sandbox grant; no writes
+    "/demo/api/{sid}/revoke",       # real cascade over demo_* only; sandbox role; signature-capped
 }
 
 

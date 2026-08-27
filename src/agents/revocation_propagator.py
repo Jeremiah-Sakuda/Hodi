@@ -65,10 +65,33 @@ class RevocationPropagatorAgent:
     """
     HOD-350: Computes affected grants and delegates revocation notice delivery.
     """
-    def __init__(self, gateway: AgentGateway, memory_bank_events: List[GrantEvent] = None):
+    def __init__(self, gateway: AgentGateway, memory_bank_events: List[GrantEvent] = None,
+                 role_key: str = "revocation_propagator", collection_ns: str = "",
+                 notice_template_only: bool = False):
         self.gateway = gateway
         # Kept for backward compatibility with mock tests, though live path uses gateway
         self.memory_bank_events = memory_bank_events if memory_bank_events is not None else []
+        # The public /demo sandbox constructs this SAME agent with
+        # role_key="sandbox_agent" and collection_ns="demo_" (HOD-760). Nothing
+        # else changes: the cascade, the lease, the outbox, the KMS signing all
+        # run identically. The credential is swapped for one the policy denies
+        # every real collection, and every collection name is namespaced — so a
+        # demo run that reached for `grants` is refused at the gateway, by the
+        # same get_action_permission() the production role passes. Defaults are
+        # the production role and no namespace.
+        self._role = role_key
+        self._sa = AGENT_SA_MAP.get(role_key, {}).get("sa_email", PROPAGATOR_SA)
+        self._ns = collection_ns
+        # The /demo sandbox drafts notices from the LINTED deterministic template
+        # rather than paying a live Gemini call per public click (HOD-760). The
+        # template is a real production path — it is the fallback the cascade
+        # already uses when Gemini is unavailable — so the notice is genuine and
+        # KMS-signed; only its prose is templated, not model-authored.
+        self._notice_template_only = notice_template_only
+
+    def _col(self, name: str) -> str:
+        """Namespace a collection for the sandbox; identity for production."""
+        return f"{self._ns}{name}"
 
     # The conflict-boundary reads below go through the Gateway under this
     # agent's own service account, so the IAM tests exercise the SAME policy
@@ -140,9 +163,9 @@ class RevocationPropagatorAgent:
         
         # 2. Fetch all grant events for this work from real Firestore
         raw_events = self.gateway.read_collection(
-            calling_sa=PROPAGATOR_SA,
-            calling_role_key="revocation_propagator",
-            target_collection="grants",
+            calling_sa=self._sa,
+            calling_role_key=self._role,
+            target_collection=self._col("grants"),
             filters={"work_id": work_id}
         )
         # Parse events. Fallback to self.memory_bank_events if no Firestore DB (in tests).
@@ -235,10 +258,16 @@ class RevocationPropagatorAgent:
                     # Drafted BEFORE commit and stored IN the outbox record, so
                     # a retry delivers the same text that was committed, not a
                     # fresh drafting that might differ.
-                    from src.llm.notice_drafter import NoticeDrafter
-                    notice_text, _notice_source = NoticeDrafter().draft(
-                        grant_id=gid, work_id=work_id, counterparty_id=state.counterparty_id
-                    )
+                    from src.llm.notice_drafter import (
+                        NoticeDrafter, TEMPLATE_NOTICE_TEXT)
+                    from src.evidence.revocation_lint import RevocationLint
+                    if self._notice_template_only:
+                        RevocationLint.check_notice(TEMPLATE_NOTICE_TEXT)
+                        notice_text, _notice_source = TEMPLATE_NOTICE_TEXT, "deterministic_template"
+                    else:
+                        notice_text, _notice_source = NoticeDrafter().draft(
+                            grant_id=gid, work_id=work_id, counterparty_id=state.counterparty_id
+                        )
                     now = datetime.now(timezone.utc)
                     revoked_event_id = revocation_effect_id(operation_id, gid, "revoked_event")
                     outbox_id = revocation_effect_id(operation_id, gid, "outbox")
@@ -264,11 +293,11 @@ class RevocationPropagatorAgent:
                     )
                     try:
                         self.gateway.write_documents_atomic(
-                            calling_sa=PROPAGATOR_SA,
-                            calling_role_key="revocation_propagator",
+                            calling_sa=self._sa,
+                            calling_role_key=self._role,
                             writes=[
-                                ("grants", revoked_event_id, revoked_event.model_dump()),
-                                ("revocation_outbox", outbox_id, outbox_record.model_dump()),
+                                (self._col("grants"), revoked_event_id, revoked_event.model_dump()),
+                                (self._col("revocation_outbox"), outbox_id, outbox_record.model_dump()),
                             ],
                             lease_id=lease_id,
                         )
@@ -314,9 +343,9 @@ class RevocationPropagatorAgent:
         than minting a second.
         """
         outbox_rows = self.gateway.read_collection(
-            calling_sa=PROPAGATOR_SA,
-            calling_role_key="revocation_propagator",
-            target_collection="revocation_outbox",
+            calling_sa=self._sa,
+            calling_role_key=self._role,
+            target_collection=self._col("revocation_outbox"),
             filters={"operation_id": operation_id},
         )
         receipts: List[RevocationReceipt] = []
@@ -331,9 +360,9 @@ class RevocationPropagatorAgent:
             notice_id = revocation_effect_id(operation_id, record.grant_id, "notice")
             try:
                 self.gateway.write_document(
-                    calling_sa=PROPAGATOR_SA,
-                    calling_role_key="revocation_propagator",
-                    target_collection="revocation_notices",
+                    calling_sa=self._sa,
+                    calling_role_key=self._role,
+                    target_collection=self._col("revocation_notices"),
                     doc_id=notice_id,
                     data=notice.model_dump(),
                     lease_id=lease_id,

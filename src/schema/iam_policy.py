@@ -74,6 +74,24 @@ AGENT_SA_MAP: Dict[str, Dict[str, Any]] = {
         "denied_collections": ["artists", "works", "control_proofs", "buyer_terms", "grants",
                                "crawler_access", "canaries", "evidence_records",
                                "revocation_notices", "revocation_outbox", "receipts"]
+    },
+    "sandbox_agent": {
+        "sa_email": "sandbox-agent-sa@hodi-2026.iam.gserviceaccount.com",
+        "role_name": "Sandbox Agent",
+        "description": ("The credential the public /demo endpoints run as (HOD-760). It executes the "
+                        "IDENTICAL revocation cascade the production path runs — same gateway, same "
+                        "propagator logic, same lease and outbox — over demo-only collections, and it "
+                        "is DENIED every real collection. The demo/real boundary is therefore this "
+                        "policy data, enforced by the same get_action_permission() every agent uses, "
+                        "not a work_id string check in a handler. A demo route pointed at a real "
+                        "collection is refused at the gateway, not by convention."),
+        "conflict_domain": "sandbox",
+        "permitted_collections": ["demo_grants", "demo_revocation_notices", "demo_revocation_outbox",
+                                  "demo_works", "demo_leases"],
+        "denied_collections": ["grants", "works", "artists", "control_proofs", "buyer_terms",
+                               "crawler_access", "canaries", "evidence_records",
+                               "revocation_notices", "revocation_outbox", "receipts",
+                               "counterparty_credentials", "leases", "incidents"],
     }
 }
 
@@ -95,6 +113,7 @@ CONFLICT_DOMAIN_DATABASE: Dict[str, str] = {
     "evidence": "hodi-evidence",
     "revocation": "(default)",
     "adjudication": "hodi-adjudication",
+    "sandbox": "(default)",
 }
 
 
@@ -151,6 +170,14 @@ DEFAULT_DATABASE_COLLECTIONS = frozenset({
     "leases",
     "agent_registry_events",
     "e2e_memory_bank_events",
+    # The public /demo sandbox mirrors the grant log's shape in its own
+    # collections (HOD-760). They sit in (default) beside grants — the isolation
+    # that matters is COLLECTION-level and role-enforced, not database-level.
+    "demo_grants",
+    "demo_revocation_notices",
+    "demo_revocation_outbox",
+    "demo_works",
+    "demo_leases",
 })
 
 

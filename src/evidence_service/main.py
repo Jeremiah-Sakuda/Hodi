@@ -4,10 +4,11 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import JSONResponse, PlainTextResponse, Response
+from fastapi.responses import JSONResponse, PlainTextResponse, Response, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from google.cloud import firestore
 from src.api.buyer_api import router as buyer_router
+from src.api.demo_sandbox import router as demo_router
 from src.gateway.gateway import GatewayPolicyDenial
 from src.schema.scope import UseType
 from pydantic import BaseModel
@@ -29,6 +30,7 @@ app = FastAPI(title="Hodi Evidence Endpoint", version="1.3.0")
 
 # Import Buyer API
 app.include_router(buyer_router)
+app.include_router(demo_router)
 
 @app.middleware("http")
 async def flush_spans_before_the_instance_freezes(request: Request, call_next):
@@ -83,6 +85,18 @@ async def gateway_policy_denial_handler(request: Request, exc: GatewayPolicyDeni
 # Mount Artist Console SPA
 console_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "console")
 app.mount("/console", StaticFiles(directory=console_dir, html=True), name="console")
+
+# The public interactive walkthrough (HOD-760). A single static page that drives
+# the /demo/api/* sandbox routes with live fetch() calls — nothing simulated.
+# GET /demo is a page anyone may load; it is listed in the route-auth guard's
+# PUBLIC_ROUTES with that reason.
+_demo_page = os.path.join(os.path.dirname(os.path.dirname(__file__)), "demo", "index.html")
+
+
+@app.get("/demo", response_class=HTMLResponse)
+async def get_demo_page(request: Request):
+    with open(_demo_page, encoding="utf-8") as fh:
+        return HTMLResponse(fh.read())
 
 # Removed mock grants for H7 (uses live Firestore data via AgentGateway)
 

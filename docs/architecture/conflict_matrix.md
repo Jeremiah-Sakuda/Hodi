@@ -16,6 +16,7 @@ This document is **GENERATED** directly from `src/schema/iam_policy.py`. Do not 
 | **Evidence Agent** | `evidence-agent-sa@hodi-2026.iam.gserviceaccount.com` | `evidence` | `crawler_access`<br>`canaries`<br>`evidence_records`<br>`canary_hits`<br>`verbatim_matches`<br>`redistribution_findings`<br>`accrual_audits` | `artists`<br>`buyer_terms`<br>`grants`<br>`revocation_notices`<br>`revocation_outbox` |
 | **Revocation Propagator** | `revocation-propagator-sa@hodi-2026.iam.gserviceaccount.com` | `revocation` | `grants`<br>`revocation_notices`<br>`revocation_outbox` | `artists`<br>`buyer_terms`<br>`crawler_access`<br>`canaries` |
 | **Consent Arbiter** | `consent-arbiter-sa@hodi-2026.iam.gserviceaccount.com` | `adjudication` | `incidents`<br>`incident_assertions`<br>`negotiation_freezes` | `artists`<br>`works`<br>`control_proofs`<br>`buyer_terms`<br>`grants`<br>`crawler_access`<br>`canaries`<br>`evidence_records`<br>`revocation_notices`<br>`revocation_outbox`<br>`receipts` |
+| **Sandbox Agent** | `sandbox-agent-sa@hodi-2026.iam.gserviceaccount.com` | `sandbox` | `demo_grants`<br>`demo_revocation_notices`<br>`demo_revocation_outbox`<br>`demo_works`<br>`demo_leases` | `grants`<br>`works`<br>`artists`<br>`control_proofs`<br>`buyer_terms`<br>`crawler_access`<br>`canaries`<br>`evidence_records`<br>`revocation_notices`<br>`revocation_outbox`<br>`receipts`<br>`counterparty_credentials`<br>`leases`<br>`incidents` |
 
 ---
 
