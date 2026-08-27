@@ -167,6 +167,11 @@
           "id": "three-tests-asserted-unwired-verifiers-as-correct",
           "summary": "verify_dns_txt, verify_well_known_file and verify_platform_oauth each returned a ControlProof carrying status:'verified' after checking only that their arguments were non-empty, and three tests asserted that as correct — including one that registered a work against example.invalid, a domain reserved so it can never resolve, and asserted verified_control.",
           "source": "tests/test_work_verification.py, tests/test_work_registration.py — rewritten to assert refusal"
+        },
+        {
+          "id": "demo-boundary-test-popped-the-offline-flag",
+          "summary": "The new /demo sandbox boundary test (HOD-760) ended its setUp with addCleanup(lambda: os.environ.pop('HODI_OFFLINE', None)) — the exact recurrence test_offline_env_hygiene was written to forbid. Run in the full suite it deleted a variable the rest of the run depends on, and three unrelated durable-state tests errored by trying the live Firestore path. In isolation the test passed, so only the full-suite ordering exposed it. Fixed by using tests/offline_env.force_offline, which saves and restores. The guard caught it; a test that breaks other tests is still a defect.",
+          "source": "tests/test_demo_sandbox_boundary.py — caught by tests/test_offline_env_hygiene.py"
         }
       ]
     },

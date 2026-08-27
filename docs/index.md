@@ -17,7 +17,7 @@ Created for the All Things Agentic Hackathon.
 ## Writing
 
 - **[Seven ways to lie to yourself in code](blog/seven-ways-to-lie-to-yourself-in-code.html)** — the
-  defect ledger: sixty-three defects, nine classes, the four that recurred, and the four structural
+  defect ledger: sixty-four defects, nine classes, the four that recurred, and the four structural
   guards that answer them.
 
 ## Project documents
@@ -33,5 +33,6 @@ Created for the All Things Agentic Hackathon.
 ## Source and live service
 
 - Repository: [github.com/Jeremiah-Sakuda/Hodi](https://github.com/Jeremiah-Sakuda/Hodi)
+- **Interactive walkthrough: [/demo](https://hodi-evidence-endpoint-406699565497.us-central1.run.app/demo)** — click through the whole story against the live service, nothing simulated.
 - Evidence endpoint: [hodi-evidence-endpoint](https://hodi-evidence-endpoint-406699565497.us-central1.run.app/)
 - Machine-readable consent terms: [/.well-known/hodi.json](https://hodi-evidence-endpoint-406699565497.us-central1.run.app/.well-known/hodi.json)

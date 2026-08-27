@@ -10,9 +10,9 @@ I built a system whose entire premise is refusing to assert what it cannot verif
 
 The project is called Hodi — *hodi* is what you call at someone's door before entering. It's a governed fleet of agents that administers creative consent: registering works with proof of control, expressing machine-readable licensing terms, negotiating with buyers under confidentiality, propagating revocations. Four agents separated by conflict of interest, an append-only event log, and a set of honesty invariants that are supposed to be enforced by structure rather than by good intentions.
 
-Over about seventy-two hours it produced sixty-three real defects. They sort into nine classes. **Four of those classes recurred after being fixed once** — which is the actually interesting part, because a bug you fix twice is telling you something a bug you fix once is not.
+Over about seventy-two hours it produced sixty-four real defects. They sort into nine classes. **Four of those classes recurred after being fixed once** — which is the actually interesting part, because a bug you fix twice is telling you something a bug you fix once is not.
 
-The title says seven. The ledger says nine, and it says sixty-three rather than the fifteen this piece was published with — because the count is now generated from an enumerated ledger instead of typed into seven documents by hand, and the enumeration found more than the prose had been carrying. The old number had already drifted: fifteen here, fourteen everywhere else. **A number repeated in seven places and derived in none is not a measurement**, and it is the same defect class as two others in the ledger below. So the title stays as a record of what I thought the shape was, and the number moves, because that one is checked by a build step now.
+The title says seven. The ledger says nine, and it says sixty-four rather than the fifteen this piece was published with — because the count is now generated from an enumerated ledger instead of typed into seven documents by hand, and the enumeration found more than the prose had been carrying. The old number had already drifted: fifteen here, fourteen everywhere else. **A number repeated in seven places and derived in none is not a measurement**, and it is the same defect class as two others in the ledger below. So the title stays as a record of what I thought the shape was, and the number moves, because that one is checked by a build step now.
 
 Before the ledger, the one idea worth understanding, because most of what follows only lands if you have it.
 
@@ -150,7 +150,7 @@ Everywhere I hadn't built that wire, things drifted.
 
 Worth saying plainly: much of this was built with agentic assistance, and several classes in this ledger are that practice's characteristic failure modes — infrastructure reported done without an observed execution, tests that assert what they were just constructed to assert, transcripts written rather than captured. The speed is real and so is that failure surface. The guards are the answer to it specifically: **a mechanism that fails loudly is the only thing that distinguishes work verified from work reported as verified.** Reading more carefully does not scale; a build that goes red does.
 
-So the fixes that matter aren't the sixty-three patches. They're the four guards:
+So the fixes that matter aren't the sixty-four patches. They're the four guards:
 
 - **One list, two consumers.** The self-traffic user agents live in one module now, imported by both the audit script and the triage engine. The duplication that caused the same defect twice is gone.
 - **Docs must equal the tool.** A check fails the build if any *accrual* number — the ones that carry the honesty finding — disagrees between the regenerated metrics file and the README, the honesty diagram, or the submission text. Named figures, not every integer in the repo; the ones where drift would change what a reader believes.
@@ -183,10 +183,10 @@ And the finding I did not expect to be the most interesting one — which has no
 
 I published machine-readable consent terms at a discoverable endpoint, with a `robots.txt` pointing at them. For a week I wrote that **nothing identifying itself as a crawler had asked** — *the absence is the evidence* — and it was a good line built on a broken regex, which required a word boundary before `bot` and so could not see the commonest crawler-naming shape there is. Then it read one. As of the **2026-08-26** audit it reads **17 visits from two distinct crawler-signature user agents, between August 11th and August 26th**.
 
-And the finding survived being corrected, which is the part worth keeping: **every one of those 16 fetched `/robots.txt`. Not one fetched `/.well-known/hodi.json`** — one request away, named in the very file they did read. They asked whether they were allowed to crawl. Over fifteen days, none of them asked what they were allowed to *do with the work*, because until recently there was nowhere to ask it.
+And the finding survived being corrected, which is the part worth keeping: **every one of those 17 fetched `/robots.txt`. Not one fetched `/.well-known/hodi.json`** — one request away, named in the very file they did read. They asked whether they were allowed to crawl. Over fifteen days, none of them asked what they were allowed to *do with the work*, because until recently there was nowhere to ask it.
 
 That is stronger than the absence I nearly published, and I only have it because the number was checked against a mechanism instead of a memory. The live count is sourced from `docs/metrics.json`; if it disagrees with this paragraph, the metrics file is right and a build step will say so. Hodi is the knock — the door exists now. It turns out the harder problem is getting anyone to knock.
 
 ---
 
-*Hodi is open source, with its full build log and findings — including every correction note quoted here. The two named findings above are in `docs/FINDINGS.md` in their complete form, with dates and exact exposure.*
+*Hodi is open source, with its full build log and findings — including every correction note quoted here. The two named findings above are in `docs/FINDINGS.md` in their complete form, with dates and exact exposure. And the thing all this discipline was in service of is [live and clickable](https://hodi-evidence-endpoint-406699565497.us-central1.run.app/demo): grant a licence, take it back, and verify the signed notice in your own browser — nothing simulated.*

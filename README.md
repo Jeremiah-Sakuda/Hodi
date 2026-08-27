@@ -8,6 +8,8 @@ Hodi is a governed fleet of institutional agents that administers creative conse
 
 **Hodi is the knock.**
 
+**▶ Try it live — no install, nothing simulated:** [**the interactive walkthrough**](https://hodi-evidence-endpoint-406699565497.us-central1.run.app/demo). Five documents you click through: register a work, grant a licence, *take it back* (a real revocation cascade runs against the deployed service and returns a Cloud KMS signature), verify that signature **in your own browser** against the published key — then watch it VOID on a single altered byte — and throw six anonymous attacks at the live routes and see all six refused. Every value is produced live by the same code the production routes run; the demo runs in an isolated sandbox whose safety is enforced by the same gateway policy as the rest of the fleet ([HOD-760](docs/BUILD-LOG.md)).
+
 ---
 
 ## The honesty invariants — enforced by structure, not prose
@@ -196,7 +198,7 @@ Build history, findings, and the write-up are first-class artifacts here — inc
 
 - **[docs/BUILD-LOG.md](docs/BUILD-LOG.md)** — every session's verbatim prompt, outcome, and forked decisions, including five dated correction notes where earlier entries overclaimed or reported unbuilt infrastructure as done, and were struck.
 - **[docs/FINDINGS.md](docs/FINDINGS.md)** — daily observations plus two long-form named findings: the live cross-buyer confidentiality breach (dates, exact exposure, why the existing boundary test could not catch it), and the day this project's own Cloud Scheduler job was counted as a third-party crawler, inverting its signature honesty claim.
-- **[Seven ways to lie to yourself in code](https://jeremiah-sakuda.github.io/Hodi/blog/seven-ways-to-lie-to-yourself-in-code.html)** *(published)* — the defect ledger as a write-up: sixty-three defects, nine classes, the four that recurred, the meta-pattern behind all of them, and the four structural guards that answer it. Source: [docs/blog/](docs/blog/seven-ways-to-lie-to-yourself-in-code.md).
+- **[Seven ways to lie to yourself in code](https://jeremiah-sakuda.github.io/Hodi/blog/seven-ways-to-lie-to-yourself-in-code.html)** *(published)* — the defect ledger as a write-up: sixty-four defects, nine classes, the four that recurred, the meta-pattern behind all of them, and the four structural guards that answer it. Source: [docs/blog/](docs/blog/seven-ways-to-lie-to-yourself-in-code.md).
 - **[docs/social-posts.md](docs/social-posts.md)** — the launch posts.
 - **[docs/architecture/conflict_matrix.md](docs/architecture/conflict_matrix.md)** — generated from the policy module the Gateway reads.
 
@@ -243,7 +245,7 @@ This is a finding about the SDK's current headless surface, published rather tha
 
 ## Published writing
 
-- **Blog — [Seven ways to lie to yourself in code](https://jeremiah-sakuda.github.io/Hodi/blog/seven-ways-to-lie-to-yourself-in-code.html)**. The defect ledger: sixty-three defects across nine classes, the four that recurred, the Antigravity SDK assertion that was verified before it was made, and the four structural guards. Created for the All Things Agentic Hackathon.
+- **Blog — [Seven ways to lie to yourself in code](https://jeremiah-sakuda.github.io/Hodi/blog/seven-ways-to-lie-to-yourself-in-code.html)**. The defect ledger: sixty-four defects across nine classes, the four that recurred, the Antigravity SDK assertion that was verified before it was made, and the four structural guards. Created for the All Things Agentic Hackathon.
 - **Project site — [https://jeremiah-sakuda.github.io/Hodi/](https://jeremiah-sakuda.github.io/Hodi/)**, serving the build log, findings, the Antigravity decision, and the generated IAM matrix.
 - **Social posts** — tagged `#AllThingsAgenticHackathon`. Text in [docs/social-posts.md](docs/social-posts.md).
   - LinkedIn: <!-- POSTED-URL-1 --> *(not yet posted)*
@@ -281,6 +283,7 @@ The validator refuses the file itself if a capability is marked `verified` witho
 
 ## Live services
 
+- **Interactive walkthrough: [`/demo`](https://hodi-evidence-endpoint-406699565497.us-central1.run.app/demo)** — the whole story as five clickable documents, driving the live service with nothing simulated (grant → real revocation cascade + Cloud KMS signature → in-browser signature verification → six live-refused attacks). Isolated per visitor; the demo/real boundary is gateway-enforced policy, proven in [`tests/test_demo_sandbox_boundary.py`](tests/test_demo_sandbox_boundary.py).
 - Evidence endpoint: `https://hodi-evidence-endpoint-406699565497.us-central1.run.app`
 - Consent terms: [`/.well-known/hodi.json`](https://hodi-evidence-endpoint-406699565497.us-central1.run.app/.well-known/hodi.json)
 - Registered works manifest: [`/works`](https://hodi-evidence-endpoint-406699565497.us-central1.run.app/works) — **0 works at `verified_control`; all 5 at `asserted`**, two of which are demonstration registrations whose canonical URIs do not currently resolve. The repository work was downgraded on 2026-08-25: it claimed `verified_control` on a signed-commit proof, and the repository has never had a signed commit

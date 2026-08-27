@@ -1058,3 +1058,59 @@ direction that matters. `AffectedGrant.terminated_scopes` now carries per-grant 
 HOD-751
 
 **Ledger:** 63 defects across nine classes, four of which have recurred.
+
+---
+
+### 2026-08-27 — A Live, Interactive Demo Anyone Can Run (HOD-760)
+
+**Prompt (summary):** the terminal-navigation demo fights the "unlikely hero" framing — a creator
+cannot read a scroll of OpenTelemetry JSON. Build a live website at the endpoint that judges can open
+and interact with, with nothing simulated; enforce the demo/real boundary in policy data; keep the
+new code thin; redeploy with runway.
+
+**Outcome.** The whole walkthrough is now a page served at **`/demo`** on the deployed service. Every
+click makes a real call: the licence by the same `permits()` the production route uses, the
+revocation by the same `execute_revocation_cascade` and Cloud KMS signature, the seal verified in the
+visitor's own browser against the published public key, the refusals by the real production routes. A
+judge opens the URL and does exactly what the video shows — and can reproduce every result with `curl`
+or a clean checkout.
+
+**The boundary is policy data, not a route check.** The one real risk — an unauthenticated surface on
+a service whose thesis is that boundaries are structural — is answered structurally. The routes run as
+a new `sandbox_agent` policy role whose `denied_collections` names every real collection and whose
+`permitted_collections` names only the `demo_*` ones. The identical gateway every agent crosses
+refuses `sandbox_agent` at `grants` exactly as it refuses the evidence agent at `buyer_terms`. There
+is **no `if work_id.startswith("demo-")`** anywhere — that would be a string check in the one layer
+this project says cannot be trusted. The revocation is the production `RevocationPropagatorAgent`,
+parameterised only by role and a `demo_` collection namespace; a demo run pointed at a real collection
+is denied **at the gateway**. `tests/test_demo_sandbox_boundary.py` asserts exactly that, and its
+mutation — `sandbox_agent` granted `grants` — fails loudly.
+
+**Test the boundary, not the behaviour.** Nine boundary tests: the sandbox is denied every real
+collection and every real role is denied every demo collection, both directions; a live gateway
+denial fires when the sandbox cascade names production data. The new routes are added to the
+route-auth guard's `PUBLIC_ROUTES` with written reasons — and because the guard already probes
+parameterised paths (round 14 closed the `if "{" in path` hole), they are covered, not exempt.
+
+**Deliberate, documented differences from production**, stated so a source-reading judge is not
+surprised: the notice PROSE is the linted deterministic template rather than a live Gemini call (no
+per-click model spend; it is a real production fallback path, and the notice is still genuinely
+KMS-signed); session ids are server-minted and unguessable; session creation is per-IP rate limited
+and each session is signature-capped; demo collections live in `(default)` and hold no real data.
+
+**Key decisions.**
+1. **Reuse `get_action_permission`, add no authorization logic.** The sandbox boundary is three lines
+   of policy data consulted by the same function every agent already passes — the panel's insistence,
+   and the reason the change is safe to make days from the deadline.
+2. **The browser verifies the signature, not the server.** The seal is checked with WebCrypto against
+   the published public key, so "no Hodi server in the loop" is literally true on camera — proven
+   against a real live notice, VERIFIED untampered and VOID on one altered byte.
+3. **The attack beat hits the real production routes**, not demo ones — six anonymous probes, six real
+   403s — so the refusals are production refusing.
+
+**Verified live on rev `00063-nwj`:** session → licence `true` → real cascade **1.7 s** with a Cloud
+KMS signature → all four scopes struck → licence `false`; the notice verifies in-browser and voids on
+a single altered byte; six anonymous probes refused. Offline suite **549 pass**; compliance,
+check-generated, verify-scopes, `make demo-live` (6/6), red-team all green.
+
+**Requirements touched:** HOD-311, HOD-312, HOD-350, HOD-360, HOD-620, HOD-760

@@ -554,6 +554,19 @@ def main() -> int:
     # numeral or word, and requires them all to equal the source.
     crawler_nouns = (r"(?:generic\s+)?crawler-signature matches", r"at the current audit",
                      r"match a crawler user-agent signature", r"crawler(?:-signature)? user agents")
+    # A digit before "fetched /robots.txt" is the crawler count (the blog's
+    # "those 16 fetched" drifted past every phrase-specific check). Only a
+    # NUMERAL, so the natural-language "every one fetched" is left alone.
+    for path in (README, DEVPOST, VIDEO_SCRIPT, DOCS_INDEX,
+                 ROOT / "docs" / "blog" / "seven-ways-to-lie-to-yourself-in-code.md",
+                 ROOT / "docs" / "blog" / "MEDIUM-VERSION.md"):
+        if not path.exists():
+            continue
+        for m in re.finditer(r"those (\d+) fetched `?/robots", path.read_text()):
+            if int(m.group(1)) != accrual["known_crawler_ua_matches"]:
+                failures.append(
+                    f"{path.relative_to(ROOT)}: 'those {m.group(1)} fetched /robots.txt' but "
+                    f"metrics.json says {accrual['known_crawler_ua_matches']} known-crawler matches.")
     quantifier = r"(\d+|[a-z]+(?:-[a-z]+)?)\s+(?:of them\s+)?"
     for path in (README, DEVPOST, VIDEO_SCRIPT, DOCS_INDEX):
         if not path.exists():
