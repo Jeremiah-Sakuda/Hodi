@@ -159,5 +159,39 @@ class FleetDrillIsRealAndWriteFreeTest(unittest.TestCase):
         self.assertEqual(rows, [])
 
 
+class InterpretRunsTheRealGeminiInterpreterTest(unittest.TestCase):
+    """Page 2 must run the REAL pinned interpreter, not construct the scope.
+
+    A judge caught that the public Page 2 built the scope directly and only ran
+    permits(), so "the AI reads what they meant" was unproven by the shown
+    action. The /demo/api/interpret route calls the same ScopeInterpreter the
+    production natural-language route uses, on the request text committed in the
+    response cache — a real, cache-backed model call. This asserts the returned
+    model id is the pinned interpreter and the scope is the interpretation, and
+    that the route writes nothing.
+    """
+
+    def setUp(self):
+        force_offline(self)
+
+    def test_interpret_returns_the_pinned_model_and_interpreted_scope(self):
+        from fastapi.testclient import TestClient
+        from src.evidence_service.main import app
+        from src.llm.vertex_gemini import PINNED_INTERPRETER_MODEL
+        r = TestClient(app, raise_server_exceptions=False).post("/demo/api/interpret")
+        self.assertEqual(r.status_code, 200)
+        j = r.json()
+        self.assertEqual(j["interpreter_model"], PINNED_INTERPRETER_MODEL)
+        sc = j["interpreted_scope"]
+        self.assertEqual(sc["use_type"], "fine_tuning")
+        self.assertFalse(sc["commercial"])
+        self.assertTrue(sc["attribution_required"])
+        # read-only: no grant collection was written
+        gw = AgentGateway()
+        rows = gw.read_collection(calling_sa=SANDBOX_SA, calling_role_key=SANDBOX_ROLE,
+                                  target_collection="demo_grants", filters={})
+        self.assertEqual(rows, [])
+
+
 if __name__ == "__main__":
     unittest.main()

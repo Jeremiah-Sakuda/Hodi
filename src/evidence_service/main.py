@@ -179,7 +179,12 @@ def seed_corpus_works() -> List[Dict[str, Any]]:
             "title": "Hodi Institutional Consent Fleet",
             "uri": "https://github.com/Jeremiah-Sakuda/Hodi",
             "hodi_record_uri": f"{base}/works/work-repo-001",
-            "content_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            # A REAL digest of a real committed artifact: sha256(README.md), the
+            # repository's representative front matter, verifiable by anyone with
+            # 6e2e4b5284b0ce74514df725a4718fb0eae75ee7ce05de95fc0742b9453fd27a  README.md. This was the SHA-256 of an EMPTY payload
+            # (e3b0c442...b855) — a placeholder that read as fabricated provenance
+            # for the very repository it identifies.
+            "content_hash": "6e2e4b5284b0ce74514df725a4718fb0eae75ee7ce05de95fc0742b9453fd27a",
             # DOWNGRADED 2026-08-25 (HOD-748), and the reason is the point of
             # the tier existing.
             #

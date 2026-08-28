@@ -9,503 +9,468 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=Spectral:ital,wght@0,400;0,500;1,400&family=Courier+Prime:wght@400;700&display=swap">
 <style>
   :root{
-    --desk:#26221c; --paper:#f5f1e6; --paper-shade:#ece5d3; --inset:#e5eaf5;
+    --desk:#221e18; --desk-2:#2b261f; --paper:#f5f1e6; --paper-shade:#ece5d3; --inset:#e5eaf5;
     --ink:#26231b; --ink-soft:#6e6553; --rule:#cfc6ae; --rule-strong:#a89c7d;
     --stamp:#9e2b25; --stamp-wash:rgba(158,43,37,.07);
     --seal:#2e6b4f; --seal-wash:rgba(46,107,79,.08);
+    --chrome-ink:#e6ddcb; --chrome-soft:#9c9179; --chrome-line:#3a342a;
   }
   *{box-sizing:border-box}
-  html{scroll-behavior:smooth}
-  html,body{margin:0}
-  body{background:var(--desk); color:var(--ink); font-family:"Spectral",Georgia,serif; line-height:1.55; -webkit-font-smoothing:antialiased;}
+  html,body{margin:0; height:100%;}
+  body{background:var(--desk); color:var(--ink); font-family:"Spectral",Georgia,serif; line-height:1.55; -webkit-font-smoothing:antialiased; overflow:hidden;}
   .mono{font-family:"Courier Prime","Courier New",monospace;}
-  .desk{display:flex; flex-direction:column; align-items:center; gap:clamp(28px,4vw,56px); padding:clamp(24px,4vw,64px) clamp(12px,3vw,32px);}
-  .sheet{width:min(820px,100%); background:var(--paper); color:var(--ink); border:1px solid var(--rule-strong); position:relative;
-    padding:clamp(30px,5vw,58px) clamp(22px,5.5vw,64px) clamp(24px,3.5vw,40px);
-    box-shadow:0 2px 4px rgba(0,0,0,.35), 0 22px 60px rgba(0,0,0,.45); min-height:88vh; display:flex; flex-direction:column;}
+
+  /* ---------- app shell ---------- */
+  .app{height:100dvh; display:flex; flex-direction:column;}
+
+  .appbar{display:flex; align-items:center; justify-content:space-between; gap:16px; padding:11px clamp(14px,3vw,30px);
+    background:var(--desk-2); border-bottom:1px solid var(--chrome-line); flex:none;}
+  .brand{display:flex; align-items:center; gap:12px; min-width:0;}
+  .brand .mark{font-family:"Courier Prime",monospace; font-weight:700; letter-spacing:.3em; font-size:.82rem; color:var(--chrome-ink); border:1px solid var(--chrome-line); padding:5px 11px 5px 13px; border-radius:5px;}
+  .gcp{display:flex; align-items:center; gap:7px; font-family:"Courier Prime",monospace; font-size:.6rem; letter-spacing:.06em; color:var(--chrome-soft); min-width:0;}
+  .gcp .dot{width:7px; height:7px; border-radius:50%; background:#8a8a8a; flex:none;}
+  .gcp.ok .dot{background:#5fd08a; box-shadow:0 0 0 0 #5fd08a; animation:pl 2.4s infinite;}
+  .gcp.warn .dot{background:#e8a13c;} .gcp.err .dot{background:#e5564b;}
+  .gcp .url{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  @keyframes pl{0%{box-shadow:0 0 0 0 rgba(95,208,138,.5)}70%{box-shadow:0 0 0 6px transparent}100%{box-shadow:0 0 0 0 transparent}}
+
+  .steprail{display:flex; gap:4px; align-items:center; flex:none;}
+  .steprail button{background:none; border:0; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:5px; padding:2px 4px; min-width:52px;}
+  .steprail .bar{width:100%; height:3px; border-radius:2px; background:var(--chrome-line); transition:background .3s;}
+  .steprail .lbl{font-family:"Courier Prime",monospace; font-size:.54rem; letter-spacing:.08em; text-transform:uppercase; color:var(--chrome-soft); transition:color .3s;}
+  .steprail button[aria-current="true"] .bar{background:#d8c9a0;}
+  .steprail button[aria-current="true"] .lbl{color:var(--chrome-ink);}
+  .steprail button.seen .bar{background:var(--seal);}
+  @media (max-width:720px){ .steprail .lbl{display:none;} .steprail button{min-width:26px;} .gcp .url{display:none;} }
+
+  /* ---------- stage: one document at a time ---------- */
+  .stage{flex:1; position:relative; min-height:0;}
+  .doc{position:absolute; inset:0; display:flex; align-items:flex-start; justify-content:center; overflow:auto;
+    padding:clamp(16px,3vw,40px); opacity:0; visibility:hidden; transform:translateY(14px); transition:opacity .45s ease, transform .45s ease;}
+  .doc.on{opacity:1; visibility:visible; transform:none;}
+  .sheet{width:min(840px,100%); background:var(--paper); color:var(--ink); border:1px solid var(--rule-strong); position:relative;
+    padding:clamp(26px,4.2vw,52px) clamp(22px,5vw,60px) clamp(24px,3.2vw,40px);
+    box-shadow:0 2px 4px rgba(0,0,0,.35), 0 20px 54px rgba(0,0,0,.45); margin:auto 0;}
   .sheet::before{content:""; position:absolute; inset:8px; border:1px solid var(--rule); pointer-events:none;}
   .sheet>*{position:relative;}
-  .body-flow{flex:1;}
-  .dochead{text-align:center; margin-bottom:clamp(20px,3.5vw,34px);}
-  .dochead .office{font-family:"Courier Prime",monospace; font-size:.68rem; letter-spacing:.34em; text-transform:uppercase; color:var(--ink-soft); margin-bottom:12px;}
-  .dochead h2{font-family:"Fraunces",Georgia,serif; font-weight:500; font-size:clamp(1.55rem,3.6vw,2.5rem); line-height:1.08; margin:0; letter-spacing:.005em;}
-  .dochead .rulebar{width:110px; border-bottom:1px solid var(--rule-strong); margin:16px auto 0; position:relative;}
+
+  /* ---------- action bar ---------- */
+  .actionbar{display:flex; align-items:center; justify-content:space-between; gap:14px; padding:11px clamp(14px,3vw,30px);
+    background:var(--desk-2); border-top:1px solid var(--chrome-line); flex:none;}
+  .hint{font-family:"Courier Prime",monospace; font-size:.62rem; letter-spacing:.04em; color:var(--chrome-soft); line-height:1.5; min-width:0;}
+  .hint b{color:var(--chrome-ink);}
+  .acts{display:flex; gap:10px; flex:none;}
+  .btn{font-family:"Courier Prime",monospace; font-size:.78rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; padding:11px 20px; border-radius:6px; cursor:pointer; border:1px solid var(--chrome-line); background:var(--desk); color:var(--chrome-ink); transition:transform .1s, opacity .2s, background .2s;}
+  .btn:hover{transform:translateY(-1px);}
+  .btn:disabled{opacity:.35; cursor:not-allowed; transform:none;}
+  .btn.primary{background:var(--paper); color:var(--ink); border-color:var(--paper);}
+  .btn.stamp{background:var(--stamp); color:var(--paper); border-color:var(--stamp); box-shadow:0 3px 0 #6d1d19;}
+  .btn.stamp:active{transform:translateY(2px); box-shadow:0 1px 0 #6d1d19;}
+  .btn:focus-visible{outline:2px solid #d8c9a0; outline-offset:2px;}
+
+  /* ---------- document content ---------- */
+  .dochead{text-align:center; margin-bottom:clamp(16px,3vw,28px);}
+  .dochead .office{font-family:"Courier Prime",monospace; font-size:.66rem; letter-spacing:.32em; text-transform:uppercase; color:var(--ink-soft); margin-bottom:10px;}
+  .dochead h2{font-family:"Fraunces",Georgia,serif; font-weight:500; font-size:clamp(1.5rem,3.4vw,2.3rem); line-height:1.08; margin:0; letter-spacing:.005em;}
+  .dochead .rulebar{width:104px; border-bottom:1px solid var(--rule-strong); margin:14px auto 0; position:relative;}
   .dochead .rulebar::after{content:"❦"; position:absolute; left:50%; top:-11px; transform:translateX(-50%); background:var(--paper); padding:0 10px; color:var(--rule-strong); font-size:.8rem;}
-  .preamble{font-size:1.04rem; max-width:56ch; margin:0 auto 22px; text-align:center;}
-  .preamble i{font-family:"Fraunces",Georgia,serif; font-style:italic;}
-  .ledger{border-top:1px solid var(--rule-strong); margin-top:6px;}
-  .lrow{display:flex; align-items:baseline; gap:14px; padding:13px 2px; border-bottom:1px dotted var(--rule-strong);}
-  .lrow .no{font-family:"Courier Prime",monospace; font-size:.74rem; color:var(--ink-soft); width:44px; flex:none;}
-  .lrow .ti{font-family:"Fraunces",Georgia,serif; font-weight:500; font-size:1.05rem;}
-  .lrow .med{font-family:"Courier Prime",monospace; font-size:.68rem; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-soft);}
-  .lrow .tier{margin-left:auto; font-family:"Courier Prime",monospace; font-size:.66rem; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-soft); flex:none;}
-  .visitor{margin-top:clamp(22px,3.5vw,34px); padding-top:18px; border-top:1px solid var(--rule-strong);}
-  .visitor .cap{font-family:"Courier Prime",monospace; font-size:.68rem; letter-spacing:.28em; text-transform:uppercase; color:var(--ink-soft); margin-bottom:14px;}
-  .tallyline{display:flex; align-items:baseline; gap:18px; flex-wrap:wrap; padding:8px 0;}
-  .tallyline .q{font-family:"Fraunces",Georgia,serif; font-size:1.06rem; width:230px; flex:none;}
+  .preamble{font-size:1.02rem; max-width:56ch; margin:0 auto 20px; text-align:center;} .preamble i{font-family:"Fraunces",Georgia,serif; font-style:italic;}
+
+  .ledger{border-top:1px solid var(--rule-strong); margin-top:4px;}
+  .lrow{display:flex; align-items:baseline; gap:14px; padding:11px 2px; border-bottom:1px dotted var(--rule-strong);}
+  .lrow .no{font-family:"Courier Prime",monospace; font-size:.72rem; color:var(--ink-soft); width:44px; flex:none;}
+  .lrow .ti{font-family:"Fraunces",Georgia,serif; font-weight:500; font-size:1.02rem;}
+  .lrow .med{font-family:"Courier Prime",monospace; font-size:.66rem; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-soft);}
+  .lrow .tier{margin-left:auto; font-family:"Courier Prime",monospace; font-size:.64rem; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-soft); flex:none;}
+  .visitor{margin-top:clamp(16px,2.5vw,26px); padding-top:16px; border-top:1px solid var(--rule-strong);}
+  .visitor .cap{font-family:"Courier Prime",monospace; font-size:.64rem; letter-spacing:.18em; text-transform:uppercase; color:var(--ink-soft); margin-bottom:12px;}
+  .tallyline{display:flex; align-items:baseline; gap:18px; flex-wrap:wrap; padding:6px 0;}
+  .tallyline .q{font-family:"Fraunces",Georgia,serif; font-size:1.04rem; width:250px; flex:none;}
   .tallies{display:inline-flex; gap:16px; align-items:flex-end;}
   .tgroup{position:relative; display:inline-flex; gap:5px; padding:0 2px;}
-  .tgroup i{display:block; width:3px; height:30px; background:var(--ink); border-radius:1px;}
-  .tgroup.full::after{content:""; position:absolute; left:-4px; right:-4px; top:12px; height:3px; background:var(--ink); transform:rotate(-24deg); border-radius:2px;}
-  .tallyline .n{font-family:"Fraunces",Georgia,serif; font-size:1.8rem; font-weight:500;}
+  .tgroup i{display:block; width:3px; height:28px; background:var(--ink); border-radius:1px;}
+  .tgroup.full::after{content:""; position:absolute; left:-4px; right:-4px; top:11px; height:3px; background:var(--ink); transform:rotate(-24deg); border-radius:2px;}
+  .tallyline .n{font-family:"Fraunces",Georgia,serif; font-size:1.7rem; font-weight:500;}
   .tallyline .none{font-family:"Fraunces",Georgia,serif; font-style:italic; font-size:1.5rem; color:var(--stamp);}
-  .verdictline{margin-top:16px; font-size:1.08rem; max-width:58ch;} .verdictline b{font-weight:600;}
-  .letter{font-family:"Fraunces",Georgia,serif; font-style:italic; font-size:clamp(1.15rem,2.4vw,1.4rem); line-height:1.5; max-width:46ch; margin:0 auto; text-align:center;}
+  .verdictline{margin-top:14px; font-size:1.04rem; max-width:60ch;} .verdictline b{font-weight:600;}
+
+  .letter{font-family:"Fraunces",Georgia,serif; font-style:italic; font-size:clamp(1.08rem,2.2vw,1.32rem); line-height:1.5; max-width:52ch; margin:0 auto; text-align:center;}
   .letter::before{content:"“";} .letter::after{content:"”";}
-  .fromline{text-align:center; font-family:"Courier Prime",monospace; font-size:.68rem; letter-spacing:.2em; text-transform:uppercase; color:var(--ink-soft); margin:10px 0 26px;}
-  .drawn{font-family:"Courier Prime",monospace; font-size:.68rem; letter-spacing:.28em; text-transform:uppercase; color:var(--ink-soft); text-align:center; margin:0 0 4px;}
-  .clauses{counter-reset:cl; border-top:1px solid var(--rule-strong); margin-top:14px;}
-  .clause{display:flex; gap:16px; padding:13px 2px; border-bottom:1px dotted var(--rule-strong); align-items:baseline;}
-  .clause::before{counter-increment:cl; content:counter(cl) "."; font-family:"Courier Prime",monospace; font-size:.8rem; color:var(--ink-soft); width:22px; flex:none;}
-  .clause .ct{font-size:1.02rem;}
+  .fromline{text-align:center; font-family:"Courier Prime",monospace; font-size:.66rem; letter-spacing:.18em; text-transform:uppercase; color:var(--ink-soft); margin:10px 0 22px;}
+  .drawn{font-family:"Courier Prime",monospace; font-size:.66rem; letter-spacing:.22em; text-transform:uppercase; color:var(--ink-soft); text-align:center; margin:0 0 4px;}
+  .drawn b{color:var(--seal);}
+  .clauses{counter-reset:cl; border-top:1px solid var(--rule-strong); margin-top:12px; min-height:60px;}
+  .clause{display:flex; gap:16px; padding:11px 2px; border-bottom:1px dotted var(--rule-strong); align-items:baseline; opacity:0; transform:translateX(-6px); transition:opacity .3s, transform .3s;}
+  .clause.on{opacity:1; transform:none;}
+  .clause::before{counter-increment:cl; content:counter(cl) "."; font-family:"Courier Prime",monospace; font-size:.78rem; color:var(--ink-soft); width:22px; flex:none;}
+  .clause .ct{font-size:1rem;}
   .clause .fine{display:block; font-family:"Courier Prime",monospace; font-size:.66rem; color:var(--ink-soft); letter-spacing:.04em; margin-top:2px;}
-  .noteline{margin-top:20px; padding:14px 18px; border:1px solid var(--rule-strong); background:var(--paper-shade); font-size:.98rem;} .noteline b{font-weight:600;}
-  .execline{margin-top:18px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; min-height:44px;}
+  .noteline{margin-top:18px; padding:13px 16px; border:1px solid var(--rule-strong); background:var(--paper-shade); font-size:.96rem;} .noteline b{font-weight:600;}
+  .execline{margin-top:16px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; min-height:40px;}
   .grant-chip{font-family:"Courier Prime",monospace; font-weight:700; font-size:.8rem; letter-spacing:.22em; color:var(--seal); border:3px double var(--seal); padding:7px 16px; transform:rotate(-2deg); background:var(--seal-wash); opacity:0; transition:opacity .4s;}
-  .grant-chip.on{opacity:1;}
-  .execline .ex{font-family:"Courier Prime",monospace; font-size:.7rem; color:var(--ink-soft);}
+  .grant-chip.on{opacity:1;} .execline .ex{font-family:"Courier Prime",monospace; font-size:.68rem; color:var(--ink-soft);}
+
   .stampable{position:relative;}
-  .bigstamp{position:absolute; top:-14px; right:clamp(2px,4vw,30px); z-index:3; font-family:"Courier Prime",monospace; font-weight:700; font-size:clamp(1.15rem,2.6vw,1.7rem); letter-spacing:.24em; color:var(--stamp); border:4px double var(--stamp); padding:10px 22px; transform:rotate(7deg); background:var(--stamp-wash); opacity:0; pointer-events:none;}
+  .bigstamp{position:absolute; top:-12px; right:clamp(2px,3vw,24px); z-index:3; font-family:"Courier Prime",monospace; font-weight:700; font-size:clamp(1.1rem,2.4vw,1.6rem); letter-spacing:.24em; color:var(--stamp); border:4px double var(--stamp); padding:9px 20px; transform:rotate(7deg); background:var(--stamp-wash); opacity:0; pointer-events:none;}
   .bigstamp.on{animation:press .38s cubic-bezier(.2,1.4,.4,1) forwards;}
   @keyframes press{0%{opacity:0; transform:rotate(7deg) scale(1.7)}100%{opacity:1; transform:rotate(7deg) scale(1)}}
-  .schedule{counter-reset:sch; border-top:1px solid var(--rule-strong); margin-top:12px;}
-  .srow{display:flex; gap:16px; padding:13px 2px; border-bottom:1px dotted var(--rule-strong); align-items:baseline;}
-  .srow::before{counter-increment:sch; content:"(" counter(sch,lower-alpha) ")"; font-family:"Courier Prime",monospace; font-size:.78rem; color:var(--ink-soft); width:30px; flex:none;}
-  .srow .body{min-width:0;}
-  .srow .ct{font-size:1.04rem; position:relative; display:inline-block;}
+  .schedule{counter-reset:sch; border-top:1px solid var(--rule-strong); margin-top:10px;}
+  .srow{display:flex; gap:16px; padding:11px 2px; border-bottom:1px dotted var(--rule-strong); align-items:baseline;}
+  .srow::before{counter-increment:sch; content:"(" counter(sch,lower-alpha) ")"; font-family:"Courier Prime",monospace; font-size:.76rem; color:var(--ink-soft); width:30px; flex:none;}
+  .srow .ct{font-size:1.02rem; position:relative; display:inline-block;}
   .srow .ct::after{content:""; position:absolute; left:-2px; right:-2px; top:55%; height:2px; background:var(--stamp); transform:scaleX(0); transform-origin:left center; transition:transform .4s ease;}
   .srow.struck .ct::after{transform:scaleX(1);}
   .srow .fine{display:block; font-family:"Courier Prime",monospace; font-size:.66rem; color:var(--ink-soft); margin-top:2px;}
-  .srow .margin{display:block; font-family:"Courier Prime",monospace; font-size:.7rem; color:var(--stamp); margin-top:5px; opacity:0; transform:translateX(-6px); transition:opacity .35s ease .1s, transform .35s ease .1s;}
+  .srow .margin{display:block; font-family:"Courier Prime",monospace; font-size:.68rem; color:var(--stamp); margin-top:4px; opacity:0; transform:translateX(-6px); transition:opacity .35s ease .1s, transform .35s ease .1s;}
   .srow.struck .margin{opacity:1; transform:none;}
-  .srow .st{margin-left:auto; font-family:"Courier Prime",monospace; font-size:.64rem; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-soft); flex:none; transition:color .3s;}
+  .srow .st{margin-left:auto; font-family:"Courier Prime",monospace; font-size:.62rem; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-soft); flex:none; transition:color .3s;}
   .srow.struck .st{color:var(--stamp); font-weight:700;}
-  .apart{margin-top:18px; padding:13px 16px; border:1px dashed var(--rule-strong); display:flex; gap:14px; align-items:baseline;}
-  .apart .ct{font-size:1.02rem;}
-  .apart .fine{display:block; font-family:"Courier Prime",monospace; font-size:.66rem; color:var(--ink-soft); margin-top:2px;}
-  .apart .st{margin-left:auto; font-family:"Courier Prime",monospace; font-size:.64rem; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-soft); flex:none;}
-  .apart .st b{color:var(--seal);}
-  .actrow{display:flex; align-items:center; gap:18px; margin:24px 0 6px; flex-wrap:wrap;}
-  .stampbtn{font-family:"Courier Prime",monospace; font-weight:700; font-size:.92rem; letter-spacing:.18em; text-transform:uppercase; color:var(--paper); background:var(--stamp); border:1px solid var(--stamp); padding:14px 26px; cursor:pointer; box-shadow:0 3px 0 #6d1d19; transition:transform .1s, box-shadow .1s, opacity .2s;}
-  .stampbtn:hover{transform:translateY(-1px);} .stampbtn:active{transform:translateY(2px); box-shadow:0 1px 0 #6d1d19;}
-  .stampbtn:disabled{opacity:.45; cursor:not-allowed;}
-  button:focus-visible{outline:2px solid var(--ink); outline-offset:3px;}
-  .actrow .why{font-size:.95rem; color:var(--ink-soft); max-width:40ch;}
-  .clockline{font-family:"Courier Prime",monospace; font-size:.72rem; color:var(--ink-soft); letter-spacing:.06em; min-height:1.2em;} .clockline b{color:var(--ink);}
-  .resub{margin-top:20px; padding-top:16px; border-top:1px solid var(--rule-strong); display:flex; align-items:center; gap:16px; flex-wrap:wrap; opacity:.25; transition:opacity .45s;}
+  .apart{margin-top:16px; padding:12px 16px; border:1px dashed var(--rule-strong); display:flex; gap:14px; align-items:baseline;}
+  .apart .ct{font-size:1rem;} .apart .fine{display:block; font-family:"Courier Prime",monospace; font-size:.66rem; color:var(--ink-soft); margin-top:2px;}
+  .apart .st{margin-left:auto; font-family:"Courier Prime",monospace; font-size:.62rem; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-soft); flex:none;} .apart .st b{color:var(--seal);}
+  .clockline{margin-top:16px; font-family:"Courier Prime",monospace; font-size:.72rem; color:var(--ink-soft); min-height:1.2em;} .clockline b{color:var(--ink);}
+  .pathrail{margin-top:14px; padding:13px 16px; border:1px solid var(--rule-strong); background:var(--paper-shade); opacity:0; transform:translateY(6px); transition:opacity .5s, transform .5s;}
+  .pathrail.on{opacity:1; transform:none;}
+  .pathrail .cap{font-family:"Courier Prime",monospace; font-size:.6rem; letter-spacing:.2em; text-transform:uppercase; color:var(--ink-soft); margin-bottom:9px;}
+  .hops{display:flex; flex-wrap:wrap; align-items:center; gap:6px 8px; font-family:"Courier Prime",monospace; font-size:.72rem; line-height:1.5;}
+  .hop{border:1px solid var(--rule-strong); border-radius:3px; padding:4px 8px; background:var(--paper); white-space:nowrap;}
+  .hop.kms{border-color:var(--seal); color:var(--seal); font-weight:700;} .hop.gate{border-color:var(--ink); color:var(--ink); font-weight:700;} .hops .ar{color:var(--rule-strong);}
+  .pathstats{margin-top:9px; font-family:"Courier Prime",monospace; font-size:.76rem; font-weight:700; color:var(--ink);}
+  .prodnote{margin-top:9px; font-family:"Courier Prime",monospace; font-size:.64rem; line-height:1.6; color:var(--ink-soft);} .prodnote b{color:var(--ink);}
+  .resub{margin-top:16px; padding-top:14px; border-top:1px solid var(--rule-strong); display:flex; align-items:center; gap:16px; flex-wrap:wrap; opacity:.22; transition:opacity .45s;}
   .resub.show{opacity:1;}
   .refstamp{font-family:"Courier Prime",monospace; font-weight:700; font-size:1rem; letter-spacing:.26em; color:var(--stamp); border:3px double var(--stamp); padding:8px 18px; transform:rotate(-3deg); background:var(--stamp-wash);}
-  .resub .rx{font-size:.96rem; max-width:44ch;}
-  .noticetext{font-size:1.05rem; max-width:56ch; margin:0 0 18px;} .noticetext b{font-weight:600;}
-  .sigblock{border:1px solid var(--rule-strong); background:var(--paper-shade); padding:14px 16px;}
-  .sigblock .lab{font-family:"Courier Prime",monospace; font-size:.64rem; letter-spacing:.26em; text-transform:uppercase; color:var(--ink-soft); margin-bottom:8px;}
-  .sigtext{font-family:"Courier Prime",monospace; font-size:.72rem; line-height:1.55; word-break:break-all; color:var(--ink);}
-  .sigtext .alg{font-weight:700;}
+  .resub .rx{font-size:.94rem; max-width:44ch;}
+
+  .noticetext{font-size:1.02rem; max-width:58ch; margin:0 0 16px;} .noticetext b{font-weight:600;}
+  .sigblock{border:1px solid var(--rule-strong); background:var(--paper-shade); padding:13px 15px;}
+  .sigblock .lab{font-family:"Courier Prime",monospace; font-size:.62rem; letter-spacing:.24em; text-transform:uppercase; color:var(--ink-soft); margin-bottom:8px;}
+  .sigtext{font-family:"Courier Prime",monospace; font-size:.7rem; line-height:1.55; word-break:break-all; color:var(--ink);} .sigtext .alg{font-weight:700;}
   .sigtext .bad{color:var(--stamp); font-weight:700; background:var(--stamp-wash); text-decoration:line-through; padding:0 2px;}
-  .sealrow{display:flex; align-items:center; gap:22px; margin-top:20px; flex-wrap:wrap;}
-  .sealbtns{display:flex; flex-direction:column; gap:10px;}
-  .sealbtn{font-family:"Courier Prime",monospace; font-size:.8rem; letter-spacing:.1em; text-transform:uppercase; background:var(--paper); color:var(--ink); border:1px solid var(--ink); padding:11px 18px; cursor:pointer; transition:opacity .2s, transform .1s;}
-  .sealbtn:hover{transform:translateY(-1px);} .sealbtn:disabled{opacity:.4; cursor:not-allowed;}
-  .seal{width:128px; height:128px; border-radius:50%; border:3px double var(--rule-strong); display:flex; align-items:center; justify-content:center; text-align:center; font-family:"Courier Prime",monospace; font-size:.6rem; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-soft); transform:rotate(-8deg); transition:.3s; padding:12px; flex:none;}
-  .seal.ok{border-color:var(--seal); color:var(--seal); background:var(--seal-wash); font-weight:700;}
-  .seal.bad{border-color:var(--stamp); color:var(--stamp); background:var(--stamp-wash); font-weight:700;}
+  .sealrow{display:flex; align-items:center; gap:20px; margin-top:18px; flex-wrap:wrap;}
+  .sealbtns{display:flex; flex-direction:column; gap:9px;}
+  .ibtn{font-family:"Courier Prime",monospace; font-size:.76rem; letter-spacing:.08em; text-transform:uppercase; background:var(--paper); color:var(--ink); border:1px solid var(--ink); padding:10px 16px; cursor:pointer; transition:opacity .2s, transform .1s;}
+  .ibtn:hover{transform:translateY(-1px);} .ibtn:disabled{opacity:.4; cursor:not-allowed;}
+  .seal{width:120px; height:120px; border-radius:50%; border:3px double var(--rule-strong); display:flex; align-items:center; justify-content:center; text-align:center; font-family:"Courier Prime",monospace; font-size:.58rem; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-soft); transform:rotate(-8deg); transition:.3s; padding:12px; flex:none;}
+  .seal.ok{border-color:var(--seal); color:var(--seal); background:var(--seal-wash); font-weight:700;} .seal.bad{border-color:var(--stamp); color:var(--stamp); background:var(--stamp-wash); font-weight:700;}
   .seal.pressed{animation:sealpress .35s cubic-bezier(.2,1.4,.4,1);}
   @keyframes sealpress{0%{transform:rotate(-8deg) scale(1.5); opacity:.2}100%{transform:rotate(-8deg) scale(1); opacity:1}}
-  .sealnote{font-size:.92rem; color:var(--ink-soft); max-width:38ch;}
-  .doorlog{margin-top:clamp(22px,3.5vw,32px); padding-top:16px; border-top:1px solid var(--rule-strong);}
-  .doorlog .cap{font-family:"Courier Prime",monospace; font-size:.68rem; letter-spacing:.28em; text-transform:uppercase; color:var(--ink-soft); margin-bottom:6px;}
-  .doorlog .intro{font-size:.98rem; max-width:60ch; margin:0 0 10px;} .doorlog .intro b{font-weight:600;}
-  .attackbtn{font-family:"Courier Prime",monospace; font-size:.76rem; letter-spacing:.12em; text-transform:uppercase; background:var(--ink); color:var(--paper); border:1px solid var(--ink); padding:9px 15px; cursor:pointer; margin-bottom:12px;}
-  .attackbtn:disabled{opacity:.4; cursor:not-allowed;}
-  .drow{display:flex; align-items:baseline; gap:12px; padding:8px 2px; border-bottom:1px dotted var(--rule-strong); font-size:.92rem;}
-  .drow .rs{margin-left:auto; font-family:"Courier Prime",monospace; font-weight:700; font-size:.66rem; letter-spacing:.18em; color:var(--stamp); flex:none;}
-  .drow.pending .rs{color:var(--ink-soft);}
-  .drow .hint{font-family:"Courier Prime",monospace; font-size:.64rem; color:var(--ink-soft);}
-  .sixline{margin-top:12px; font-family:"Courier Prime",monospace; font-size:.74rem; font-weight:700; letter-spacing:.08em; color:var(--seal); min-height:1em;}
-  .decl{counter-reset:dc; border-top:1px solid var(--rule-strong); margin-top:10px;}
-  .ditem{display:flex; gap:16px; padding:16px 2px; border-bottom:1px dotted var(--rule-strong);}
-  .ditem::before{counter-increment:dc; content:counter(dc,upper-roman) "."; font-family:"Fraunces",Georgia,serif; font-size:1.05rem; color:var(--ink-soft); width:34px; flex:none;}
-  .ditem .dt{font-size:1.03rem;} .ditem .dt b{font-weight:600;} .ditem .dt .sm{display:block; color:var(--ink-soft); font-size:.9rem; margin-top:3px;}
-  .closing{text-align:center; margin-top:clamp(28px,5vw,48px);}
-  .closing .ep{font-family:"Fraunces",Georgia,serif; font-style:italic; font-size:clamp(1.25rem,2.8vw,1.7rem); max-width:30ch; margin:0 auto;}
-  .closing .knock{font-family:"Fraunces",Georgia,serif; font-weight:600; font-size:clamp(1.9rem,4.6vw,2.9rem); margin-top:.45em; letter-spacing:.005em;}
-  .closing .rulebar{width:110px; border-bottom:1px solid var(--rule-strong); margin:26px auto 0;}
-  .sfoot{margin-top:clamp(20px,3vw,30px); padding-top:12px; border-top:1px solid var(--rule); display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; font-family:"Courier Prime",monospace; font-size:.6rem; letter-spacing:.18em; text-transform:uppercase; color:var(--ink-soft);}
-  .pagenav{position:fixed; right:clamp(10px,2.5vw,28px); bottom:clamp(10px,2.5vw,24px); z-index:10; display:flex; align-items:center; gap:12px; font-family:"Courier Prime",monospace; font-size:.7rem; letter-spacing:.16em; text-transform:uppercase; color:#cfc6ae;}
-  .pagenav a{color:#f5f1e6; text-decoration:none; border:1px solid rgba(245,241,230,.45); padding:9px 15px; background:rgba(0,0,0,.25);}
-  .livechip{position:fixed; left:clamp(10px,2.5vw,28px); top:clamp(10px,2.5vw,20px); z-index:10; display:flex; align-items:center; gap:8px; font-family:"Courier Prime",monospace; font-size:.62rem; letter-spacing:.14em; text-transform:uppercase; color:#f5f1e6; background:rgba(0,0,0,.4); border:1px solid rgba(245,241,230,.35); border-radius:20px; padding:7px 13px;}
-  .livechip .dot{width:8px; height:8px; border-radius:50%; background:#e8a13c;}
-  .livechip.ok .dot{background:#5fd08a; box-shadow:0 0 0 0 #5fd08a; animation:pl 2.4s infinite;}
-  .livechip.err .dot{background:#e5564b;}
-  @keyframes pl{0%{box-shadow:0 0 0 0 rgba(95,208,138,.5)}70%{box-shadow:0 0 0 7px transparent}100%{box-shadow:0 0 0 0 transparent}}
-  .colophon{width:min(820px,100%); margin:0 auto; text-align:center; padding:6px 10px 40px; font-family:"Courier Prime",monospace; font-size:.64rem; letter-spacing:.08em; line-height:1.7; color:#8d8267;}
-  .colophon b{color:#cfc6ae;} .colophon a{color:#cfc6ae;}
-  @media (max-width:640px){ .tallyline .q{width:100%;} .bigstamp{position:static; display:inline-block; margin-bottom:10px;} }
-  @media (prefers-reduced-motion: reduce){ html{scroll-behavior:auto} *{transition:none!important; animation:none!important;} .bigstamp.on,.seal.pressed,.grant-chip.on{opacity:1;} }
-
-  .pathrail{margin-top:16px; padding:14px 16px; border:1px solid var(--rule-strong); background:var(--paper-shade); opacity:0; transform:translateY(6px); transition:opacity .5s, transform .5s;}
-  .pathrail.on{opacity:1; transform:none;}
-  .pathrail .cap{font-family:"Courier Prime",monospace; font-size:.62rem; letter-spacing:.24em; text-transform:uppercase; color:var(--ink-soft); margin-bottom:10px;}
-  .hops{display:flex; flex-wrap:wrap; align-items:center; gap:6px 8px; font-family:"Courier Prime",monospace; font-size:.74rem; line-height:1.5;}
-  .hop{border:1px solid var(--rule-strong); border-radius:3px; padding:4px 9px; background:var(--paper); white-space:nowrap;}
-  .hop.kms{border-color:var(--seal); color:var(--seal); font-weight:700;}
-  .hop.gate{border-color:var(--ink); color:var(--ink); font-weight:700;}
-  .hops .ar{color:var(--rule-strong);}
-  .pathstats{margin-top:10px; font-family:"Courier Prime",monospace; font-size:.78rem; font-weight:700; color:var(--ink); letter-spacing:.04em;}
-  .prodnote{margin-top:10px; font-family:"Courier Prime",monospace; font-size:.66rem; line-height:1.6; color:var(--ink-soft);}
-  .prodnote b{color:var(--ink);}
-  .fleet{margin-top:clamp(22px,3.5vw,32px); padding-top:16px; border-top:1px solid var(--rule-strong);}
-  .fleet .cap{font-family:"Courier Prime",monospace; font-size:.68rem; letter-spacing:.24em; text-transform:uppercase; color:var(--ink-soft); margin-bottom:6px;}
-  .fleet .intro{font-size:.98rem; max-width:60ch; margin:0 0 12px;}
-  .fleetbtn{font-family:"Courier Prime",monospace; font-size:.76rem; letter-spacing:.12em; text-transform:uppercase; background:var(--ink); color:var(--paper); border:1px solid var(--ink); padding:9px 15px; cursor:pointer; margin-bottom:14px;}
-  .fleetbtn:disabled{opacity:.4; cursor:not-allowed;}
-  .whop{display:flex; gap:14px; align-items:flex-start; padding:11px 2px 11px 0; border-bottom:1px dotted var(--rule-strong);}
-  .whop .tag{font-family:"Courier Prime",monospace; font-weight:700; font-size:.62rem; letter-spacing:.1em; padding:3px 8px; border:1px solid var(--ink-soft); color:var(--ink-soft); flex:none; width:118px; text-align:center; margin-top:2px;}
-  .whop.good .tag{border-color:var(--seal); color:var(--seal); background:var(--seal-wash);}
-  .whop.stop .tag{border-color:var(--stamp); color:var(--stamp); background:var(--stamp-wash);}
-  .whop .who{font-family:"Fraunces",Georgia,serif; font-weight:500; font-size:1.02rem;}
-  .whop .sa{display:block; font-family:"Courier Prime",monospace; font-size:.64rem; color:var(--ink-soft); margin-top:1px; word-break:break-all;}
-  .whop .det{display:block; font-size:.9rem; color:var(--ink-soft); margin-top:3px;}
-  .fleetmeta{margin-top:12px; font-family:"Courier Prime",monospace; font-size:.7rem; color:var(--ink-soft); line-height:1.7;}
-  .fleetmeta b{color:var(--seal);} .fleetmeta a{color:var(--ink); text-decoration:underline;}
+  .sealnote{font-size:.9rem; color:var(--ink-soft); max-width:38ch;}
+  .fleet{margin-top:clamp(18px,2.5vw,26px); padding-top:14px; border-top:1px solid var(--rule-strong);}
+  .fleet .cap{font-family:"Courier Prime",monospace; font-size:.66rem; letter-spacing:.22em; text-transform:uppercase; color:var(--ink-soft); margin-bottom:6px;}
+  .fleet .intro{font-size:.95rem; max-width:62ch; margin:0 0 10px;} .fleet .intro b{font-weight:600;}
+  .whop{display:flex; gap:14px; align-items:flex-start; padding:10px 2px; border-bottom:1px dotted var(--rule-strong);}
+  .whop .tag{font-family:"Courier Prime",monospace; font-weight:700; font-size:.6rem; letter-spacing:.08em; padding:3px 7px; border:1px solid var(--ink-soft); color:var(--ink-soft); flex:none; width:118px; text-align:center; margin-top:2px;}
+  .whop.good .tag{border-color:var(--seal); color:var(--seal); background:var(--seal-wash);} .whop.stop .tag{border-color:var(--stamp); color:var(--stamp); background:var(--stamp-wash);}
+  .whop .who{font-family:"Fraunces",Georgia,serif; font-weight:500; font-size:1rem;}
+  .whop .sa{display:block; font-family:"Courier Prime",monospace; font-size:.62rem; color:var(--ink-soft); margin-top:1px; word-break:break-all;} .whop .sa em{font-style:normal; opacity:.75;}
+  .whop .det{display:block; font-size:.88rem; color:var(--ink-soft); margin-top:3px;}
+  .fleetmeta{margin-top:11px; font-family:"Courier Prime",monospace; font-size:.68rem; color:var(--ink-soft); line-height:1.7;} .fleetmeta b{color:var(--seal);} .fleetmeta a{color:var(--ink);}
+  .doorlog{margin-top:clamp(18px,2.5vw,26px); padding-top:14px; border-top:1px solid var(--rule-strong);}
+  .doorlog .cap{font-family:"Courier Prime",monospace; font-size:.66rem; letter-spacing:.22em; text-transform:uppercase; color:var(--ink-soft); margin-bottom:6px;}
+  .doorlog .intro{font-size:.94rem; max-width:62ch; margin:0 0 10px;} .doorlog .intro b{font-weight:600;}
+  .drow{display:flex; align-items:baseline; gap:12px; padding:7px 2px; border-bottom:1px dotted var(--rule-strong); font-size:.9rem;}
+  .drow .rs{margin-left:auto; font-family:"Courier Prime",monospace; font-weight:700; font-size:.64rem; letter-spacing:.16em; color:var(--stamp); flex:none;}
+  .drow.pending .rs{color:var(--ink-soft);} .drow .hint2{font-family:"Courier Prime",monospace; font-size:.64rem; color:var(--ink-soft);}
+  .sixline{margin-top:10px; font-family:"Courier Prime",monospace; font-size:.72rem; font-weight:700; letter-spacing:.06em; color:var(--seal); min-height:1em;}
+  .decl{counter-reset:dc; border-top:1px solid var(--rule-strong); margin-top:8px;}
+  .ditem{display:flex; gap:16px; padding:14px 2px; border-bottom:1px dotted var(--rule-strong);}
+  .ditem::before{counter-increment:dc; content:counter(dc,upper-roman) "."; font-family:"Fraunces",Georgia,serif; font-size:1.02rem; color:var(--ink-soft); width:34px; flex:none;}
+  .ditem .dt{font-size:1rem;} .ditem .dt b{font-weight:600;} .ditem .dt .sm{display:block; color:var(--ink-soft); font-size:.88rem; margin-top:3px;}
+  .closing{text-align:center; margin-top:clamp(22px,4vw,40px);}
+  .closing .ep{font-family:"Fraunces",Georgia,serif; font-style:italic; font-size:clamp(1.2rem,2.6vw,1.6rem); max-width:32ch; margin:0 auto;}
+  .closing .knock{font-family:"Fraunces",Georgia,serif; font-weight:600; font-size:clamp(1.8rem,4.4vw,2.7rem); margin-top:.4em;}
+  .closing .rulebar{width:104px; border-bottom:1px solid var(--rule-strong); margin:22px auto 0;}
+  @media (max-width:640px){ .tallyline .q{width:100%;} .bigstamp{position:static; display:inline-block; margin-bottom:8px;} }
+  @media (prefers-reduced-motion: reduce){ *{transition:none!important; animation:none!important;} .bigstamp.on,.seal.pressed,.grant-chip.on,.clause,.pathrail{opacity:1;} .clause{transform:none;} }
 </style>
 </head>
 <body>
-<div class="livechip" id="livechip"><span class="dot"></span><span id="livetext">connecting to the live service…</span></div>
+<div class="app">
 
-<div class="desk">
+  <header class="appbar">
+    <div class="brand">
+      <span class="mark">HODI</span>
+      <span class="gcp" id="gcp"><span class="dot"></span><span>Google Cloud ·&nbsp;</span><span class="url" id="gcpUrl">hodi-evidence-endpoint…run.app</span></span>
+    </div>
+    <nav class="steprail" id="steprail" aria-label="Steps"></nav>
+  </header>
 
-  <!-- SHEET 1 -->
-  <section class="sheet" id="p1"><div class="body-flow">
-    <header class="dochead"><div class="office">Hodi · Office of Creative Consent</div><h2>Register of Works</h2><div class="rulebar"></div></header>
-    <p class="preamble">Entered by the artist, in their own name. <i>Five works. All real. All mine.</i></p>
-    <div class="ledger">
-      <div class="lrow"><span class="no">No. 1</span><span><span class="ti">Consent Rails &amp; Creative Sovereignty</span><br><span class="med">essay</span></span><span class="tier">asserted</span></div>
-      <div class="lrow"><span class="no">No. 2</span><span><span class="ti">Hodi Institutional Consent Fleet</span><br><span class="med">code repository</span></span><span class="tier">asserted</span></div>
-      <div class="lrow"><span class="no">No. 3</span><span><span class="ti">Electric Bass Solo Recordings &amp; Stems</span><br><span class="med">bass recording</span></span><span class="tier">asserted</span></div>
-      <div class="lrow"><span class="no">No. 4</span><span><span class="ti">Draft Notes on Multi-Agent Consent</span><br><span class="med">notes</span></span><span class="tier">asserted</span></div>
-      <div class="lrow"><span class="no">No. 5</span><span><span class="ti">Live Bass Improvisation Session</span><br><span class="med">bass recording</span></span><span class="tier">asserted</span></div>
-    </div>
-    <div class="visitor">
-      <div class="cap">Visitor log · compiled by Hodi’s own daily audit — Cloud Scheduler ✓ · most recent Aug 26</div>
-      <div class="tallyline"><span class="q">Visits identifying themselves as AI crawlers</span>
-        <span class="tallies"><span class="tgroup full"><i></i><i></i><i></i><i></i></span><span class="tgroup full"><i></i><i></i><i></i><i></i></span><span class="tgroup full"><i></i><i></i><i></i><i></i></span><span class="tgroup"><i></i><i></i></span></span>
-        <span class="n" id="crawlN">17</span></div>
-      <div class="tallyline"><span class="q">…asked what they may <b>do</b> with the work</span><span class="none">none.</span></div>
-      <p class="verdictline">Every one checked whether it was allowed <b>in</b>. Not one asked what it was allowed to <b>do</b>. There was never a way to ask. <b>Hodi is that way — the knock.</b></p>
-    </div>
-  </div><footer class="sfoot"><span>register of works</span><span id="foot1">live · this service</span><span>page 1 of 5</span></footer></section>
+  <div class="stage" id="stage">
 
-  <!-- SHEET 2 -->
-  <section class="sheet" id="p2"><div class="body-flow">
-    <header class="dochead"><div class="office">Hodi · Office of Creative Consent</div><h2>Application &amp; Grant of License</h2><div class="rulebar"></div></header>
-    <p class="letter">We'd like to fine-tune an open-weights model on this work, for non-commercial research, US and Canada only, with attribution.</p>
-    <div class="fromline">received in the applicant's own words · acme-intelligence-labs</div>
-    <div class="drawn">drawn into the artist's terms — evaluated live</div>
-    <div class="clauses">
-      <div class="clause"><span><span class="ct">They may teach their AI from these works;</span><span class="fine">use_type: fine_tuning</span></span></div>
-      <div class="clause"><span><span class="ct">only the kind of model they named;</span><span class="fine">model_class: open_weights</span></span></div>
-      <div class="clause"><span><span class="ct">never for profit;</span><span class="fine">commercial: false</span></span></div>
-      <div class="clause"><span><span class="ct">within the United States and Canada;</span><span class="fine">territory: US, CA</span></span></div>
-      <div class="clause"><span><span class="ct">and my name stays attached.</span><span class="fine">attribution_required: true</span></span></div>
-    </div>
-    <div class="noteline"><b>The AI reads what they meant. It decides nothing.</b> The artist's rules decide — identically, every time. An interpretation that doesn't fit the terms is rejected, never bent to fit.</div>
-    <div class="execline"><span class="grant-chip" id="grantChip">Granted</span><span class="ex" id="grantEx">evaluating against the live service…</span></div>
-  </div><footer class="sfoot"><span>application &amp; grant</span><span>live · permits()</span><span>page 2 of 5</span></footer></section>
+    <section class="doc on" data-step="0"><div class="sheet">
+      <header class="dochead"><div class="office">Hodi · Office of Creative Consent</div><h2>Register of Works</h2><div class="rulebar"></div></header>
+      <p class="preamble">Entered by the artist, in their own name. <i>Five works. All real. All mine.</i></p>
+      <div class="ledger">
+        <div class="lrow"><span class="no">No. 1</span><span><span class="ti">Consent Rails &amp; Creative Sovereignty</span><br><span class="med">essay</span></span><span class="tier">asserted</span></div>
+        <div class="lrow"><span class="no">No. 2</span><span><span class="ti">Hodi Institutional Consent Fleet</span><br><span class="med">code repository</span></span><span class="tier">asserted</span></div>
+        <div class="lrow"><span class="no">No. 3</span><span><span class="ti">Electric Bass Solo Recordings &amp; Stems</span><br><span class="med">bass recording</span></span><span class="tier">asserted</span></div>
+        <div class="lrow"><span class="no">No. 4</span><span><span class="ti">Draft Notes on Multi-Agent Consent</span><br><span class="med">notes</span></span><span class="tier">asserted</span></div>
+        <div class="lrow"><span class="no">No. 5</span><span><span class="ti">Live Bass Improvisation Session</span><br><span class="med">bass recording</span></span><span class="tier">asserted</span></div>
+      </div>
+      <div class="visitor">
+        <div class="cap">Visitor log · compiled by Hodi’s own daily audit — Cloud Scheduler ✓ · most recent Aug 26</div>
+        <div class="tallyline"><span class="q">Visits identifying themselves as AI crawlers</span>
+          <span class="tallies"><span class="tgroup full"><i></i><i></i><i></i><i></i></span><span class="tgroup full"><i></i><i></i><i></i><i></i></span><span class="tgroup full"><i></i><i></i><i></i><i></i></span><span class="tgroup"><i></i><i></i></span></span>
+          <span class="n">17</span></div>
+        <div class="tallyline"><span class="q">…asked what they may <b>do</b> with the work</span><span class="none">none.</span></div>
+        <p class="verdictline">Every one checked whether it was allowed <b>in</b>. Not one asked what it was allowed to <b>do</b>. There was never a way to ask. <b>Hodi is that way — the knock.</b></p>
+      </div>
+    </div></section>
 
-  <!-- SHEET 3 -->
-  <section class="sheet stampable" id="p3"><div class="bigstamp" id="bigstamp">Revoked</div><div class="body-flow">
-    <header class="dochead"><div class="office">Hodi · Office of Creative Consent</div><h2>Notice of Revocation</h2><div class="rulebar"></div></header>
-    <p class="preamble">The artist has changed their mind. <i>Consent you can't take back isn't consent.</i></p>
-    <div class="drawn">schedule of uses under the grant</div>
-    <div class="schedule" id="schedule">
-      <div class="srow" data-k="training"><span class="body"><span class="ct">Train an AI on my work</span><span class="fine">training</span><span class="margin">— the use revoked, by name</span></span><span class="st">in force</span></div>
-      <div class="srow" data-k="fine_tuning"><span class="body"><span class="ct">Fine-tune an existing model with it</span><span class="fine">fine_tuning</span><span class="margin">— included in that yes · training ⊃ fine_tuning</span></span><span class="st">in force</span></div>
-      <div class="srow" data-k="rag_retrieval"><span class="body"><span class="ct">Let an AI quote and pull from it</span><span class="fine">rag_retrieval</span><span class="margin">— included in that yes · fine_tuning ⊃ rag_retrieval</span></span><span class="st">in force</span></div>
-      <div class="srow" data-k="human_reference"><span class="body"><span class="ct">Let a person study it as reference</span><span class="fine">human_reference</span><span class="margin">— included in that yes · rag_retrieval ⊃ human_reference</span></span><span class="st">in force</span></div>
-    </div>
-    <div class="apart"><span><span class="ct">Generate new work in my style</span><span class="fine">synthesis — a separate ask, never part of this grant</span></span><span class="st" id="apartSt">not granted here</span></div>
-    <div class="actrow"><button class="stampbtn" id="revoke">Stamp · take it back</button><span class="why">Take back the big yes, and everything inside it comes back with it — automatically.</span></div>
-    <div class="clockline" id="clock">this runs the real cascade against the live service · watch the wall clock</div>
-    <div class="pathrail" id="pathrail">
-      <div class="cap">how that request actually moved — live, not a diagram</div>
-      <div class="hops"><span class="hop">You</span><span class="ar">→</span><span class="hop">Sandbox agent</span><span class="ar">→</span><span class="hop gate">Agent Gateway · policy</span><span class="ar">→</span><span class="hop">Firestore · append-only</span><span class="ar">→</span><span class="hop kms">Cloud KMS · signed</span></div>
-      <div class="pathstats" id="pathstats"></div>
-      <div class="prodnote">In production, <b>/api/v1/revoke</b> additionally hands the cascade to a separate <b>private revocation-propagator workload</b> under its own service account, and returns 503 rather than fall back locally if that worker is down. This sandbox runs the same cascade in-process so anyone can try it without a credential — and you can watch the four agents cross identities, live, on the certificate page.</div>
-    </div>
-    <div class="resub" id="resub"><span class="refstamp">Refused</span><span class="rx">The same request, resubmitted moments later. And the grant above isn't erased — it's struck through. A “no” that pretends the “yes” never happened is its own kind of lie.</span></div>
-  </div><footer class="sfoot"><span>notice of revocation</span><span>live · execute_revocation_cascade</span><span>page 3 of 5</span></footer></section>
+    <section class="doc" data-step="1"><div class="sheet">
+      <header class="dochead"><div class="office">Hodi · Office of Creative Consent</div><h2>Application &amp; Grant of License</h2><div class="rulebar"></div></header>
+      <p class="letter" id="letter">…</p>
+      <div class="fromline">received in the applicant’s own words · acme-intelligence-labs</div>
+      <div class="drawn" id="drawn">reading the request…</div>
+      <div class="clauses" id="clauses"></div>
+      <div class="noteline"><b>The AI reads what they meant. It decides nothing.</b> The artist’s rules decide — identically, every time. An interpretation that doesn’t fit the terms is rejected, never bent to fit.</div>
+      <div class="execline"><span class="grant-chip" id="grantChip">Granted</span><span class="ex" id="grantEx">evaluating against the live service…</span></div>
+    </div></section>
 
-  <!-- SHEET 4 -->
-  <section class="sheet" id="p4"><div class="body-flow">
-    <header class="dochead"><div class="office">Hodi · Office of Creative Consent</div><h2>Certificate of Authenticity</h2><div class="rulebar"></div></header>
-    <p class="noticetext">The notice the company received reads: this grant is <b>terminated</b>; the uses above are withdrawn; and it <b>does not un-train a model</b> — it withdraws permission going forward. If they ever claim the artist never revoked, this page is the proof.</p>
-    <div class="sigblock"><div class="lab">signature of record — Cloud KMS · ECDSA P-256</div><div class="sigtext" id="sigtext">— revoke on page 3 to issue the signed notice —</div></div>
-    <div class="sealrow">
-      <div class="sealbtns"><button class="sealbtn" id="verify" disabled>Press seal — verify</button><button class="sealbtn" id="tamper" disabled>Alter one character</button></div>
-      <div class="seal" id="seal"><span id="sealText">seal<br>not yet<br>pressed</span></div>
-      <p class="sealnote" id="sealnote">Verified in your browser against the published public key — no Hodi server in the loop. Anyone can run this check.</p>
-    </div>
-    <div class="fleet">
-      <div class="cap">Is this four agents, or four names in one prompt?</div>
-      <p class="intro">Run one real delegation. It executes on <b>google.adk</b> — real agents under a
-        real runner — each hop under a <b>different service-account identity</b>, and it forces the
-        revocation worker to hang so the supervisor has to recover. Nothing is written; it reads fixtures.</p>
-      <button class="fleetbtn" id="fleetBtn">Run the real fleet delegation, live</button>
-      <div id="fleetWrap"></div>
-      <div class="fleetmeta" id="fleetMeta"></div>
-    </div>
+    <section class="doc" data-step="2"><div class="sheet stampable"><div class="bigstamp" id="bigstamp">Revoked</div>
+      <header class="dochead"><div class="office">Hodi · Office of Creative Consent</div><h2>Notice of Revocation</h2><div class="rulebar"></div></header>
+      <p class="preamble">The artist has changed their mind. <i>Consent you can’t take back isn’t consent.</i></p>
+      <div class="drawn">schedule of uses under the grant</div>
+      <div class="schedule" id="schedule">
+        <div class="srow" data-k="training"><span class="body"><span class="ct">Train an AI on my work</span><span class="fine">training</span><span class="margin">— the use revoked, by name</span></span><span class="st">in force</span></div>
+        <div class="srow" data-k="fine_tuning"><span class="body"><span class="ct">Fine-tune an existing model with it</span><span class="fine">fine_tuning</span><span class="margin">— included in that yes · training ⊃ fine_tuning</span></span><span class="st">in force</span></div>
+        <div class="srow" data-k="rag_retrieval"><span class="body"><span class="ct">Let an AI quote and pull from it</span><span class="fine">rag_retrieval</span><span class="margin">— included in that yes · fine_tuning ⊃ rag_retrieval</span></span><span class="st">in force</span></div>
+        <div class="srow" data-k="human_reference"><span class="body"><span class="ct">Let a person study it as reference</span><span class="fine">human_reference</span><span class="margin">— included in that yes · rag_retrieval ⊃ human_reference</span></span><span class="st">in force</span></div>
+      </div>
+      <div class="apart"><span><span class="ct">Generate new work in my style</span><span class="fine">synthesis — a separate ask, never part of this grant</span></span><span class="st" id="apartSt">not granted here</span></div>
+      <div class="clockline" id="clock">press <b>Stamp · take it back</b> below — it runs the real cascade against the live service</div>
+      <div class="pathrail" id="pathrail">
+        <div class="cap">how that request actually moved — live, not a diagram</div>
+        <div class="hops"><span class="hop">You</span><span class="ar">→</span><span class="hop">Sandbox agent</span><span class="ar">→</span><span class="hop gate">Agent Gateway · policy</span><span class="ar">→</span><span class="hop">Firestore · append-only</span><span class="ar">→</span><span class="hop kms">Cloud KMS · signed</span></div>
+        <div class="pathstats" id="pathstats"></div>
+        <div class="prodnote">In production, <b>/api/v1/revoke</b> hands the cascade to a separate <b>private revocation-propagator workload</b> under its own service account, and returns 503 rather than fall back locally if that worker is down. This sandbox runs the same cascade in-process so anyone can try it without a credential.</div>
+      </div>
+      <div class="resub" id="resub"><span class="refstamp">Refused</span><span class="rx">The same request, resubmitted moments later. And the grant above isn’t erased — it’s struck through. A “no” that pretends the “yes” never happened is its own kind of lie.</span></div>
+    </div></section>
 
-    <div class="doorlog">
-      <div class="cap">Log of attempted entries — refused at the door</div>
-      <p class="intro">On August 7th a real break-in worked against this system: an anonymous request read another artist's deal. <b>We kept that attack.</b> Press below to throw it — and five more — at the <b>live</b> service right now.</p>
-      <button class="attackbtn" id="attackBtn">Run the attacks against the live service</button>
-      <div id="attackList"></div>
-      <div class="sixline" id="attackPass"></div>
-    </div>
-  </div><footer class="sfoot"><span>certificate of authenticity</span><span>live · KMS + production routes</span><span>page 4 of 5</span></footer></section>
+    <section class="doc" data-step="3"><div class="sheet">
+      <header class="dochead"><div class="office">Hodi · Office of Creative Consent</div><h2>Certificate of Authenticity</h2><div class="rulebar"></div></header>
+      <p class="noticetext">The notice the company received reads: this grant is <b>terminated</b>; the uses are withdrawn; and it <b>does not un-train a model</b> — it withdraws permission going forward.</p>
+      <div class="sigblock"><div class="lab">signature of record — Cloud KMS · ECDSA P-256</div><div class="sigtext" id="sigtext">— revoke on the previous page to issue the signed notice —</div></div>
+      <div class="sealrow">
+        <div class="sealbtns"><button class="ibtn" id="verify" disabled>Press seal — verify</button><button class="ibtn" id="tamper" disabled>Alter one character</button></div>
+        <div class="seal" id="seal"><span id="sealText">seal<br>not yet<br>pressed</span></div>
+        <p class="sealnote" id="sealnote">Verifiable by anyone, in this browser, against the published public key — no Hodi server in the loop.</p>
+      </div>
+      <div class="fleet">
+        <div class="cap">Is this four agents, or four names in one prompt?</div>
+        <p class="intro">Run one real delegation. It executes on <b>google.adk</b> — real agents under a real runner — as separate <b>role-scoped agents</b>, and forces the revocation worker to hang so the supervisor has to recover. Nothing is written; it reads fixtures.</p>
+        <button class="ibtn" id="fleetBtn">Run the real fleet delegation, live</button>
+        <div id="fleetWrap"></div>
+        <div class="fleetmeta" id="fleetMeta"></div>
+      </div>
+      <div class="doorlog">
+        <div class="cap">Log of attempted entries — refused at the door</div>
+        <p class="intro">On August 7th a real break-in worked against this system. <b>We kept that attack.</b> Throw it — and five more — at the <b>live</b> routes now.</p>
+        <button class="ibtn" id="attackBtn">Run the attacks against the live service</button>
+        <div id="attackList"></div>
+        <div class="sixline" id="attackPass"></div>
+      </div>
+    </div></section>
 
-  <!-- SHEET 5 -->
-  <section class="sheet" id="p5"><div class="body-flow">
-    <header class="dochead"><div class="office">Hodi · Office of Creative Consent</div><h2>What This Office Will Not Certify</h2><div class="rulebar"></div></header>
-    <p class="preamble"><i>A registry that flatters you is worthless. This one is built to be believed.</i></p>
-    <div class="decl">
-      <div class="ditem"><span class="dt"><b>That your work is inside a model's training data.</b><span class="sm">Nobody on earth can prove that today — so the system literally cannot say it. There is no field for a claim it can't back.</span></span></div>
-      <div class="ditem"><span class="dt"><b>That taking back consent reaches into a model and pulls your work out.</b><span class="sm">It stops future use. A check refuses to let any notice ever imply otherwise.</span></span></div>
-      <div class="ditem"><span class="dt"><b>That the artist's own claims are above the rules.</b><span class="sm" id="flatter">Checking the live registry…</span></span></div>
-    </div>
-    <div class="closing"><p class="ep">Your voice is in a product you never agreed to.</p><div class="knock">Hodi is the knock.</div><div class="rulebar"></div></div>
-  </div><footer class="sfoot"><span>declarations</span><span>live · /works</span><span>page 5 of 5</span></footer></section>
+    <section class="doc" data-step="4"><div class="sheet">
+      <header class="dochead"><div class="office">Hodi · Office of Creative Consent</div><h2>What This Office Will Not Certify</h2><div class="rulebar"></div></header>
+      <p class="preamble"><i>A registry that flatters you is worthless. This one is built to be believed.</i></p>
+      <div class="decl">
+        <div class="ditem"><span class="dt"><b>That your work is inside a model’s training data.</b><span class="sm">Nobody on earth can prove that today — so the system literally cannot say it. There is no field for a claim it can’t back.</span></span></div>
+        <div class="ditem"><span class="dt"><b>That revocation reaches into a model and pulls your work out.</b><span class="sm">It withdraws permission for future use, and integrated clients stop. It cannot compel a party outside the rail, or un-train a model. A check refuses to let any notice imply otherwise.</span></span></div>
+        <div class="ditem"><span class="dt"><b>That the artist’s own claims are above the rules.</b><span class="sm" id="flatter">Checking the live registry…</span></span></div>
+      </div>
+      <div class="closing"><p class="ep">Your voice deserves a door before it becomes someone else’s product.</p><div class="knock">Hodi is the knock.</div><div class="rulebar"></div></div>
+    </div></section>
 
-  <div class="colophon"><b>◈ live, not simulated</b><br>
-    Every value on these pages is produced by this deployed service as you click — the licence by the same
-    <b>permits()</b> the production route uses, the revocation by the same <b>cascade</b> and <b>Cloud KMS</b>
-    signature, the seal verified in your own browser against the published key, the refusals by the real
-    production routes. Try it yourself: this page runs an isolated sandbox, and the same calls are
-    reproducible with <b>curl</b> and from a clean checkout (<b>make demo-live</b>).</div>
+  </div>
+
+  <footer class="actionbar">
+    <div class="hint" id="hint">Live sandbox on Google Cloud — every action below is a real call. Nothing is simulated.</div>
+    <div class="acts">
+      <button class="btn" id="back" disabled>← Back</button>
+      <button class="btn primary" id="primary">Begin →</button>
+    </div>
+  </footer>
 </div>
-
-<nav class="pagenav"><span id="pgno">page 1 of 5</span><a href="#p2" id="nextlink">next page ↓</a></nav>
 
 <script>
 (() => {
   const $ = id => document.getElementById(id);
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const chip = $('livechip'), chipText = $('livetext');
-  const setChip = (cls, txt) => { chip.className = 'livechip ' + cls; chipText.textContent = txt; };
-  const api = (path, opts) => fetch(path, Object.assign({method:'POST', headers:{'Content-Type':'application/json'}}, opts||{}));
+  const api = (path) => fetch(path, {method:'POST', headers:{'Content-Type':'application/json'}});
+  const setGcp = (cls, url) => { $('gcp').className = 'gcp ' + cls; if(url) $('gcpUrl').textContent = url; };
 
-  let sid = null, notice = null, pubKey = null;
+  let sid = null, notice = null, pubKey = null, revoked = false;
 
-  // ---------- boot: warm + open session ----------
   async function boot(){
+    try { $('gcpUrl').textContent = location.host; } catch(e){}
     try {
-      await fetch('/', {cache:'no-store'});            // warm the instance
-      const r = await api('/demo/api/session');
-      if(!r.ok) throw new Error('session ' + r.status);
-      const s = await r.json();
-      sid = s.session;
-      setChip('ok', 'live · sandbox ' + sid.slice(0,6));
-      await evaluateLicense('grant');                   // sheet 2 "granted"
-      loadFlatter();                                    // sheet 5 live works
-    } catch(e){
-      setChip('err', 'service waking — reload in a moment');
-      $('grantEx').textContent = 'the service is warming up; reload the page in a few seconds.';
-    }
+      await fetch('/', {cache:'no-store'});
+      const s = await (await api('/demo/api/session')).json();
+      sid = s.session; setGcp('ok', location.host);
+    } catch(e){ setGcp('warn', location.host + ' · waking'); }
   }
 
-  // ---------- sheet 2 / 3c: licence eval ----------
-  async function evaluateLicense(phase){
+  let doc2Loaded = false;
+  async function loadDoc2(){
+    if(doc2Loaded) return; doc2Loaded = true;
+    try {
+      const j = await (await api('/demo/api/interpret')).json();
+      $('letter').textContent = j.request_text;
+      $('drawn').innerHTML = 'drawn into the artist’s terms — read live by <b>' + j.interpreter_model + '</b> · Vertex AI';
+      const sc = j.interpreted_scope || {};
+      const terr = (sc.territory || []).join(' & ');
+      const clauses = [
+        ['They may teach their AI from this work;', 'use_type: ' + sc.use_type],
+        ['only the kind of model they named;', 'model_class: ' + sc.model_class],
+        [(sc.commercial ? 'for commercial use;' : 'never for profit;'), 'commercial: ' + sc.commercial],
+        ['within ' + terr + ';', 'territory: ' + (sc.territory||[]).join(', ')],
+        [(sc.attribution_required ? 'and my name stays attached.' : 'attribution optional.'), 'attribution_required: ' + sc.attribution_required],
+      ];
+      const wrap = $('clauses'); wrap.innerHTML = '';
+      clauses.forEach(([t,f],i) => {
+        const d = document.createElement('div'); d.className = 'clause';
+        d.innerHTML = '<span><span class="ct">'+t+'</span><span class="fine">'+f+'</span></span>';
+        wrap.appendChild(d);
+        setTimeout(()=>d.classList.add('on'), (reduce?0:180) + i*(reduce?0:220));
+      });
+    } catch(e){ $('drawn').textContent = 'the interpreter is warming up — reload the page.'; }
     if(!sid) return;
     try {
-      const r = await api('/demo/api/' + sid + '/license');
-      const j = await r.json();
-      if(phase === 'grant'){
-        if(j.permitted){ $('grantChip').classList.add('on'); $('grantEx').textContent = 'limits attached · receipt signed · evaluated live by permits()'; }
-        else $('grantEx').textContent = 'this sandbox is already revoked — reload for a fresh one.';
-      } else {
-        if(j.permitted === false){ $('resub').classList.add('show'); }
-      }
-    } catch(e){ /* leave prior state */ }
+      const j = await (await api('/demo/api/'+sid+'/license')).json();
+      if(j.permitted){ setTimeout(()=>{ $('grantChip').classList.add('on'); $('grantEx').textContent='limits attached · receipt signed · decided by permits()'; }, reduce?0:1300); }
+      else $('grantEx').textContent = 'this sandbox is already revoked — reload for a fresh one.';
+    } catch(e){}
   }
 
-  // ---------- sheet 3: the real cascade ----------
   const order = ['training','fine_tuning','rag_retrieval','human_reference'];
-  const rows = {}; document.querySelectorAll('.srow').forEach(r => rows[r.dataset.k] = r);
-  function strike(k, label){ const r = rows[k]; if(!r) return; r.classList.add('struck'); r.querySelector('.st').textContent = label; }
-  $('revoke').addEventListener('click', async () => {
-    if(!sid){ $('clock').textContent = 'no live sandbox — reload the page.'; return; }
-    const btn = $('revoke'); btn.disabled = true;
+  const rows = {}; document.querySelectorAll('.srow').forEach(r => rows[r.dataset.k]=r);
+  function strike(k,label){ const r=rows[k]; if(!r) return; r.classList.add('struck'); r.querySelector('.st').textContent=label; }
+  async function runRevoke(){
+    if(!sid){ $('clock').textContent='no live sandbox — reload the page.'; return false; }
     $('clock').innerHTML = 'minting a real Cloud KMS signature against the live service…';
     const t0 = performance.now();
     try {
-      const r = await api('/demo/api/' + sid + '/revoke');
-      const ms = Math.round(performance.now() - t0);
-      if(!r.ok){ $('clock').textContent = 'the sandbox has reached its limit — reload for a fresh one.'; btn.disabled = false; return; }
+      const r = await api('/demo/api/'+sid+'/revoke');
+      if(!r.ok){ $('clock').textContent='this sandbox reached its limit — reload for a fresh one.'; return false; }
       const res = (await r.json()).result || {};
-      notice = (res.issued_notices || [])[0] || null;
-      $('clock').innerHTML = 'the real cascade ran against the live service in <b>' + (ms/1000).toFixed(1) + ' seconds</b> · notice issued once, Cloud KMS-signed';
+      const ms = Math.round(performance.now()-t0);
+      notice = (res.issued_notices||[])[0] || null;
+      $('clock').innerHTML = 'the real cascade ran against the live service in <b>'+(ms/1000).toFixed(1)+' seconds</b> · notice Cloud KMS-signed, issued once';
       $('bigstamp').classList.add('on');
-      // the live path rail — real numbers from the response
-      const grants = (res.affected_grants || []).length || 1;
-      const scopes = (res.terminated_scopes || []).length || 4;
-      $('pathstats').textContent = (ms/1000).toFixed(1) + ' s  ·  ' + scopes + ' scopes withdrawn  ·  ' + grants + ' grant  ·  Cloud KMS ECDSA P-256 signature';
-      $('pathrail').classList.add('on');
       const terminated = res.terminated_scopes || order;
-      const step = reduce ? 0 : 420;
-      order.forEach((k,i) => { if(terminated.includes(k)) setTimeout(() => strike(k, i===0?'revoked':'withdrawn'), (reduce?0:200) + i*step); });
-      setTimeout(() => { $('apartSt').innerHTML = '<b>unaffected ✓</b>'; }, (reduce?0:200) + order.length*step);
-      // publish the real signature to the certificate page + enable the seal
-      if(notice && notice.signature){ renderSig(false); $('verify').disabled = false; }
-      evaluateLicense('refuse');    // the same request now refused, live
-    } catch(e){
-      $('clock').textContent = 'could not reach the live service — check your connection and reload.';
-      btn.disabled = false;
-    }
-  });
+      const step = reduce?0:420;
+      order.forEach((k,i)=>{ if(terminated.includes(k)) setTimeout(()=>strike(k, i===0?'revoked':'withdrawn'), (reduce?0:180)+i*step); });
+      setTimeout(()=>{ $('apartSt').innerHTML='<b>unaffected ✓</b>'; }, (reduce?0:180)+order.length*step);
+      const grants = (res.affected_grants||[]).length||1, scopes = (res.terminated_scopes||[]).length||4;
+      $('pathstats').textContent = (ms/1000).toFixed(1)+' s  ·  '+scopes+' scopes withdrawn  ·  '+grants+' grant  ·  Cloud KMS ECDSA P-256';
+      $('pathrail').classList.add('on');
+      if(notice && notice.signature){ renderSig(false); $('verify').disabled=false; }
+      try { const lj = await (await api('/demo/api/'+sid+'/license')).json(); if(lj.permitted===false) $('resub').classList.add('show'); } catch(e){}
+      revoked = true;
+      return true;
+    } catch(e){ $('clock').textContent='could not reach the live service — reload and try again.'; return false; }
+  }
 
-  // ---------- sheet 4: signature + browser-side verify ----------
-  function sigParts(){ // [alg, keyref, b64der]
-    const s = notice.signature; const i1 = s.indexOf(':'); const i2 = s.indexOf(':', i1+1);
-    return [s.slice(0,i1), s.slice(i1+1,i2), s.slice(i2+1)];
-  }
-  let tampered = false, pressed = false, curB64 = null;
-  function renderSig(tamper){
-    const [alg, keyref, b64] = sigParts();
-    curB64 = b64;
-    if(!tamper){ $('sigtext').innerHTML = '<span class="alg">'+alg+'</span>:'+keyref+':'+b64; }
-    else {
-      const k = 20; const bad = b64.slice(0,k) + '<span class="bad">'+b64[k]+'</span>' + b64.slice(k+1);
-      $('sigtext').innerHTML = '<span class="alg">'+alg+'</span>:'+keyref+':'+bad;
-    }
-  }
-  function canonicalBytes(n){
-    // The signable bytes: the notice minus `signature`, keys sorted, no spaces.
-    // Flat string fields; revoked_at already ends in Z. Matches signable_bytes().
-    const o = {}; Object.keys(n).filter(k => k!=='signature').sort().forEach(k => o[k]=n[k]);
-    let s = '{'; const ks = Object.keys(o);
-    ks.forEach((k,i) => { s += JSON.stringify(k)+':'+JSON.stringify(o[k]) + (i<ks.length-1?',':''); });
-    return new TextEncoder().encode(s + '}');
-  }
-  function b64ToBytes(b64){ const bin = atob(b64); const a = new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) a[i]=bin.charCodeAt(i); return a; }
-  function derToRaw(der){ // DER SEQ{ INT r, INT s } -> 64-byte r||s (P-256)
-    let i = 0; if(der[i++] !== 0x30) throw 0; if(der[i] & 0x80) i += (der[i]&0x7f); i++;
-    const rd = () => { if(der[i++] !== 0x02) throw 0; let len = der[i++]; let v = der.slice(i, i+len); i += len;
-      while(v.length>32 && v[0]===0) v = v.slice(1); const out = new Uint8Array(32); out.set(v, 32-v.length); return out; };
-    const r = rd(), s = rd(); const raw = new Uint8Array(64); raw.set(r,0); raw.set(s,32); return raw;
-  }
-  async function loadPubKey(){
-    if(pubKey) return pubKey;
-    const pem = (await (await fetch('/verification-key')).json()).public_key_pem;
-    const b64 = pem.replace(/-----[^-]+-----/g,'').replace(/\s+/g,'');
-    pubKey = await crypto.subtle.importKey('spki', b64ToBytes(b64).buffer, {name:'ECDSA', namedCurve:'P-256'}, false, ['verify']);
-    return pubKey;
-  }
-  async function pressSeal(){
-    pressed = true; $('tamper').disabled = false;
-    const seal = $('seal'); seal.classList.remove('ok','bad','pressed'); void seal.offsetWidth;
-    try {
-      const key = await loadPubKey();
-      const raw = derToRaw(b64ToBytes(curB64));
-      const ok = await crypto.subtle.verify({name:'ECDSA', hash:'SHA-256'}, key, raw.buffer, canonicalBytes(notice).buffer);
-      if(ok && !tampered){
-        seal.classList.add('ok','pressed'); $('sealText').innerHTML = 'VERIFIED<br>KMS · ECDSA<br>P-256';
-        $('sealnote').textContent = 'The mathematics agrees with the published public key — checked in this browser, no Hodi server in the loop. If the company ever claims the artist never revoked, this proves they did.';
-      } else {
-        seal.classList.add('bad','pressed'); $('sealText').innerHTML = 'VOID<br>signature<br>does not match';
-        $('sealnote').textContent = 'The signature no longer agrees with the notice. A forged notice — or a real one anyone altered — is refused. Nobody can put words in the artist’s mouth.';
-      }
-    } catch(e){
-      seal.classList.add('bad','pressed'); $('sealText').innerHTML = 'VOID<br>could not<br>verify';
-    }
-  }
+  function sigParts(){ const s=notice.signature; const i1=s.indexOf(':'); const i2=s.indexOf(':',i1+1); return [s.slice(0,i1), s.slice(i1+1,i2), s.slice(i2+1)]; }
+  let tampered=false, pressed=false, curB64=null;
+  function renderSig(t){ const [alg,keyref,b64]=sigParts(); curB64=b64;
+    if(!t){ $('sigtext').innerHTML='<span class="alg">'+alg+'</span>:'+keyref+':'+b64; }
+    else { const k=20; $('sigtext').innerHTML='<span class="alg">'+alg+'</span>:'+keyref+':'+b64.slice(0,k)+'<span class="bad">'+b64[k]+'</span>'+b64.slice(k+1); } }
+  function canon(n){ const o={}; Object.keys(n).filter(k=>k!=='signature').sort().forEach(k=>o[k]=n[k]);
+    let s='{'; const ks=Object.keys(o); ks.forEach((k,i)=>{s+=JSON.stringify(k)+':'+JSON.stringify(o[k])+(i<ks.length-1?',':'');}); return new TextEncoder().encode(s+'}'); }
+  function b2a(b){const bin=atob(b);const a=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);return a;}
+  function derToRaw(d){let i=0;if(d[i++]!==0x30)throw 0;if(d[i]&0x80)i+=(d[i]&0x7f);i++;
+    const rd=()=>{if(d[i++]!==0x02)throw 0;let len=d[i++];let v=d.slice(i,i+len);i+=len;while(v.length>32&&v[0]===0)v=v.slice(1);const o=new Uint8Array(32);o.set(v,32-v.length);return o;};
+    const r=rd(),s=rd();const raw=new Uint8Array(64);raw.set(r,0);raw.set(s,32);return raw;}
+  async function loadPub(){ if(pubKey) return pubKey; const pem=(await (await fetch('/verification-key')).json()).public_key_pem;
+    const b=pem.replace(/-----[^-]+-----/g,'').replace(/\s+/g,''); pubKey=await crypto.subtle.importKey('spki', b2a(b).buffer, {name:'ECDSA',namedCurve:'P-256'}, false, ['verify']); return pubKey; }
+  async function pressSeal(){ pressed=true; $('tamper').disabled=false; const seal=$('seal'); seal.classList.remove('ok','bad','pressed'); void seal.offsetWidth;
+    try { const key=await loadPub(); const raw=derToRaw(b2a(curB64)); const ok=await crypto.subtle.verify({name:'ECDSA',hash:'SHA-256'}, key, raw.buffer, canon(notice).buffer);
+      if(ok && !tampered){ seal.classList.add('ok','pressed'); $('sealText').innerHTML='VERIFIED<br>KMS · ECDSA<br>P-256';
+        $('sealnote').textContent='The mathematics agrees with the published public key — verified in this browser, no Hodi server in the loop. Verifiable by anyone; altered by no one without detection.'; }
+      else { seal.classList.add('bad','pressed'); $('sealText').innerHTML='VOID<br>signature<br>does not match';
+        $('sealnote').textContent='One character changed and the signature no longer agrees with the notice. Altered — and detected.'; }
+    } catch(e){ seal.classList.add('bad','pressed'); $('sealText').innerHTML='VOID<br>could not<br>verify'; } }
   $('verify').addEventListener('click', pressSeal);
-  $('tamper').addEventListener('click', () => {
-    if(!notice) return;
-    tampered = !tampered;
-    // flip a real byte of the signature so the crypto genuinely fails
-    const [alg,keyref,b64] = sigParts();
-    if(tampered){ const k=20; const flip = b64[k]==='A'?'B':'A'; curB64 = b64.slice(0,k)+flip+b64.slice(k+1); renderSig(true); $('sigtext').querySelector('.bad')&&($('sigtext').querySelector('.bad').textContent=flip); $('tamper').textContent='Restore the character'; }
-    else { curB64 = b64; renderSig(false); $('tamper').textContent='Alter one character'; }
-    if(pressed) pressSeal();
-  });
+  $('tamper').addEventListener('click', ()=>{ if(!notice) return; tampered=!tampered;
+    const [,,b64]=sigParts(); if(tampered){ const k=20; const f=b64[k]==='A'?'B':'A'; curB64=b64.slice(0,k)+f+b64.slice(k+1); renderSig(true); $('tamper').textContent='Restore the character'; }
+    else { curB64=b64; renderSig(false); $('tamper').textContent='Alter one character'; } if(pressed) pressSeal(); });
 
-  // ---------- sheet 4: live attack ----------
+  const GOOD=new Set(['PERMITTED','INITIATED','DISCOVERED']), STOP=new Set(['ABANDONED','QUARANTINED + REROUTED']);
+  $('fleetBtn').addEventListener('click', async ()=>{ const b=$('fleetBtn'); b.disabled=true; b.textContent='running the fleet…'; $('fleetWrap').innerHTML=''; $('fleetMeta').textContent='';
+    try { const j = await (await api('/demo/api/fleet-drill')).json();
+      for(const s of j.steps){ const cls=GOOD.has(s.outcome)?'good':(STOP.has(s.outcome)?'stop':''); const row=document.createElement('div'); row.className='whop '+cls;
+        row.innerHTML='<span class="tag">'+s.outcome+'</span><span><span class="who">'+s.agent+'</span>'+(s.sa?'<span class="sa">'+s.sa+' <em>(role identity)</em></span>':'')+'<span class="det">'+s.detail+'</span></span>';
+        $('fleetWrap').appendChild(row); await new Promise(r=>setTimeout(r, reduce?0:240)); }
+      const link = (j.trace_id && j.trace_exporter==='cloud_trace') ? '<a href="https://console.cloud.google.com/traces/list?tid='+j.trace_id+'" target="_blank" rel="noopener">open in Cloud Trace ↗</a>' : ('trace '+(j.trace_id||'—'));
+      $('fleetMeta').innerHTML='one correlated run on <b>'+j.framework+'</b> · '+j.elapsed_ms+' ms · completed <b>degraded</b>, not hung · '+link+
+        '<br><span style="opacity:.85">Separate role-scoped agents inside one runner. The production data boundaries go further — separately deployed Cloud Run workloads authenticate with distinct service accounts and OIDC.</span>';
+      b.textContent='run it again';
+    } catch(e){ $('fleetMeta').textContent='could not reach the live service — reload and try again.'; b.textContent='run the real fleet delegation, live'; }
+    b.disabled=false; });
+
   const probes = [
     ['/api/v1/revoke', {work_id:'work-repo-001', revoked_use_type:'training'}, null, 'An anonymous request tries to revoke', 'no signature'],
-    ['/api/v1/license', {work_id:'work-repo-001', counterparty_id:'acme-intelligence-labs', requested_scope:{use_type:'fine_tuning', model_class:'open_weights', commercial:false, attribution_required:true, territory:['US','CA'], valid_from:new Date().toISOString()}, raw_document_b64:'aGVsbG8='}, null, 'An anonymous request tries to read a grant', 'no signature'],
-    ['/api/v1/license', {work_id:'work-repo-001', counterparty_id:'acme-intelligence-labs', requested_scope:{use_type:'fine_tuning', model_class:'open_weights', commercial:false, attribution_required:true, territory:['US','CA'], valid_from:new Date().toISOString()}, raw_document_b64:'aGVsbG8='}, 'NOT-A-REAL-SIGNATURE', 'A forged signature on a real request', 'bad signature'],
+    ['/api/v1/license', {work_id:'work-repo-001', counterparty_id:'acme-intelligence-labs', requested_scope:{use_type:'fine_tuning', model_class:'open_weights', commercial:false, attribution_required:true, territory:['US'], valid_from:new Date().toISOString()}, raw_document_b64:'aGVsbG8='}, null, 'An anonymous request tries to read a grant', 'no signature'],
+    ['/api/v1/license', {work_id:'work-repo-001', counterparty_id:'acme-intelligence-labs', requested_scope:{use_type:'fine_tuning', model_class:'open_weights', commercial:false, attribution_required:true, territory:['US'], valid_from:new Date().toISOString()}, raw_document_b64:'aGVsbG8='}, 'NOT-A-REAL-SIGNATURE', 'A forged signature on a real request', 'bad signature'],
     ['/api/v1/revoke', {work_id:'work-repo-001', revoked_use_type:'training'}, 'NOT-A-REAL-SIGNATURE', 'A forged revoke', 'bad signature'],
-    ['/api/v1/negotiate', {work_id:'work-repo-001', counterparty_id:'acme-intelligence-labs', requested_scope:{use_type:'fine_tuning', model_class:'open_weights', commercial:false, attribution_required:true, territory:['US','CA'], valid_from:new Date().toISOString()}}, null, 'An anonymous negotiation', 'missing key'],
+    ['/api/v1/negotiate', {work_id:'work-repo-001', counterparty_id:'acme-intelligence-labs', requested_scope:{use_type:'fine_tuning', model_class:'open_weights', commercial:false, attribution_required:true, territory:['US'], valid_from:new Date().toISOString()}}, null, 'An anonymous negotiation', 'missing key'],
     ['/api/v1/works', {work_id:'demo-x', medium:'prose', uri:'https://x.invalid/x', content_hash:'a'.repeat(64), title:'X', published_at:'2026-01-01'}, null, 'An anonymous registration', 'missing key'],
   ];
-  $('attackBtn').addEventListener('click', async () => {
-    const btn = $('attackBtn'); btn.disabled = true; btn.textContent = 'throwing the attacks…';
-    const list = $('attackList'); list.innerHTML = '';
-    let refused = 0;
-    for(const [path, body, sig, label, hint] of probes){
-      const row = document.createElement('div'); row.className = 'drow pending';
-      row.innerHTML = '<span>'+label+' <span class="hint">· '+hint+'</span></span><span class="rs">…</span>';
-      list.appendChild(row);
-      const headers = {'Content-Type':'application/json'};
-      if(sig){ headers['X-Hodi-Key-Id']='key-attacker-invented'; headers['X-Hodi-Timestamp']=new Date().toISOString(); headers['X-Hodi-Signature']=sig; }
-      let code;
-      try { const r = await fetch(path, {method:'POST', headers, body:JSON.stringify(body)}); code = r.status; }
-      catch(e){ code = 'ERR'; }
-      const refusedThis = (code === 403 || code === 401);
-      if(refusedThis) refused++;
-      row.classList.remove('pending');
-      row.querySelector('.rs').textContent = (code===403?'403 · REFUSED':(refusedThis?code+' · REFUSED':code+' · ' + (code>=400?'blocked':'!!')));
-    }
-    $('attackPass').textContent = refused + ' of ' + probes.length + ' attempts refused at the door · the boundary holds';
-    btn.textContent = 'attacks refused — run again';
-    btn.disabled = false;
-  });
+  $('attackBtn').addEventListener('click', async ()=>{ const b=$('attackBtn'); b.disabled=true; b.textContent='throwing the attacks…'; $('attackList').innerHTML=''; let refused=0;
+    for(const [path,body,sig,label,hint] of probes){ const row=document.createElement('div'); row.className='drow pending'; row.innerHTML='<span>'+label+' <span class="hint2">· '+hint+'</span></span><span class="rs">…</span>'; $('attackList').appendChild(row);
+      const h={'Content-Type':'application/json'}; if(sig){ h['X-Hodi-Key-Id']='key-attacker-invented'; h['X-Hodi-Timestamp']=new Date().toISOString(); h['X-Hodi-Signature']=sig; }
+      let code; try { code=(await fetch(path,{method:'POST',headers:h,body:JSON.stringify(body)})).status; } catch(e){ code='ERR'; }
+      const ref=(code===403||code===401); if(ref) refused++; row.classList.remove('pending'); row.querySelector('.rs').textContent = code===403?'403 · REFUSED':(ref?code+' · REFUSED':code); }
+    $('attackPass').textContent = refused+' of '+probes.length+' attempts refused at the door · the boundary holds'; b.textContent='attacks refused — run again'; b.disabled=false; });
 
-  // ---------- sheet 4: live fleet delegation ----------
-  const OUT_GOOD = new Set(['PERMITTED','INITIATED','DISCOVERED']);
-  const OUT_STOP = new Set(['ABANDONED','QUARANTINED + REROUTED']);
-  $('fleetBtn').addEventListener('click', async () => {
-    const btn = $('fleetBtn'); btn.disabled = true; btn.textContent = 'running the fleet…';
-    const wrap = $('fleetWrap'); wrap.innerHTML = '';
-    try {
-      const j = await (await api('/demo/api/fleet-drill')).json();
-      for(const step of j.steps){
-        const cls = OUT_GOOD.has(step.outcome) ? 'good' : (OUT_STOP.has(step.outcome) ? 'stop' : '');
-        const row = document.createElement('div'); row.className = 'whop ' + cls;
-        row.innerHTML = '<span class="tag">'+step.outcome+'</span><span><span class="who">'+step.agent+'</span>'+
-          (step.sa ? '<span class="sa">'+step.sa+'</span>' : '')+'<span class="det">'+step.detail+'</span></span>';
-        wrap.appendChild(row);
-        await new Promise(r=>setTimeout(r, reduce?0:260));
-      }
-      const trace = j.trace_id ? ('trace <b>'+j.trace_id+'</b>'+(j.trace_exporter==='cloud_trace'?' → Cloud Trace':' (console exporter on this instance)')) : '';
-      $('fleetMeta').innerHTML = 'one correlated run on <b>'+j.framework+'</b> · '+j.elapsed_ms+' ms · request completed <b>degraded</b>, not hung · '+trace;
-      btn.textContent = 'run it again';
-    } catch(e){
-      $('fleetMeta').textContent = 'could not reach the live service — reload and try again.';
-      btn.textContent = 'run the real fleet delegation, live';
-    }
-    btn.disabled = false;
-  });
+  let doc5Loaded=false;
+  async function loadDoc5(){ if(doc5Loaded) return; doc5Loaded=true;
+    try { const w=(await (await fetch('/works')).json()).works||[]; const v=w.filter(x=>x.control_tier==='verified_control').length;
+      $('flatter').textContent='Right now '+v+' of my '+w.length+' works shows as “verified” — I haven’t cryptographically proven ownership yet, and the system won’t round up. Checked live, just now.'; }
+    catch(e){ $('flatter').textContent='None of my works is marked “verified” until ownership is cryptographically proven — the system won’t round up.'; } }
 
-  // ---------- sheet 5: live works ----------
-  async function loadFlatter(){
-    try {
-      const w = (await (await fetch('/works')).json()).works || [];
-      const verified = w.filter(x => x.control_tier === 'verified_control').length;
-      $('flatter').textContent = 'Right now ' + verified + ' of my ' + w.length + ' works shows as “verified” — I haven’t cryptographically proven ownership yet, and the system won’t round up. Checked live, just now.';
-    } catch(e){ $('flatter').textContent = 'None of my works is marked “verified” until ownership is cryptographically proven — the system won’t round up.'; }
+  const docs=[...document.querySelectorAll('.doc')];
+  const labels=['Register','License','Revoke','Certificate','Declarations'];
+  const rail=$('steprail'); rail.innerHTML=docs.map((_,i)=>'<button data-go="'+i+'"><span class="bar"></span><span class="lbl">'+(i+1)+' '+labels[i]+'</span></button>').join('');
+  const back=$('back'), primary=$('primary');
+  let cur=0;
+  const HINTS=[
+    'Live sandbox on Google Cloud — every action below is a real call. Nothing is simulated.',
+    'The request is read by <b>Gemini 3.5 Flash</b> on Vertex AI, then the deterministic rules decide.',
+    'This is the hero: press <b>Stamp</b> to run the real revocation cascade against the live service.',
+    'Verify the signature in your browser; run the real ADK fleet; attack the live routes.',
+    'What the office refuses to certify — then the knock.',
+  ];
+  function configurePrimary(){
+    if(cur===2 && !revoked){ primary.textContent='Stamp · take it back'; primary.className='btn stamp'; }
+    else if(cur===docs.length-1){ primary.textContent='Start over ↻'; primary.className='btn primary'; }
+    else { primary.textContent='Continue →'; primary.className='btn primary'; }
   }
+  function show(i){
+    cur=Math.max(0,Math.min(docs.length-1,i));
+    docs.forEach((d,idx)=>d.classList.toggle('on', idx===cur));
+    [...rail.children].forEach((b,idx)=>{ b.setAttribute('aria-current', idx===cur); b.classList.toggle('seen', idx<cur); });
+    back.disabled = cur===0;
+    $('hint').innerHTML = HINTS[cur];
+    configurePrimary();
+    if(cur===1) loadDoc2();
+    if(cur===4) loadDoc5();
+  }
+  primary.addEventListener('click', async ()=>{
+    if(cur===2 && !revoked){ primary.disabled=true; const ok=await runRevoke(); primary.disabled=false; if(ok) configurePrimary(); return; }
+    if(cur===docs.length-1){ location.reload(); return; }
+    show(cur+1);
+  });
+  back.addEventListener('click', ()=>show(cur-1));
+  rail.addEventListener('click', e=>{ const b=e.target.closest('button'); if(b) show(+b.dataset.go); });
+  document.addEventListener('keydown', e=>{ if(e.target.tagName==='BUTTON') return; if(e.key==='ArrowRight' && !(cur===2&&!revoked)) show(cur+1); if(e.key==='ArrowLeft') show(cur-1); });
 
-  // ---------- page nav ----------
-  const sheets = [...document.querySelectorAll('.sheet')];
-  const io = new IntersectionObserver(es => es.forEach(e => { if(!e.isIntersecting) return; const i = sheets.indexOf(e.target);
-    $('pgno').textContent = 'page '+(i+1)+' of 5';
-    if(i < sheets.length-1){ $('nextlink').href = '#'+sheets[i+1].id; $('nextlink').textContent = 'next page ↓'; }
-    else { $('nextlink').href = '#p1'; $('nextlink').textContent = 'first page ↑'; } }), {threshold:.55});
-  sheets.forEach(s => io.observe(s));
-
-  boot();
+  boot(); show(0);
 })();
 </script>
 </body>

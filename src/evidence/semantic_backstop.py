@@ -145,13 +145,20 @@ class SemanticBackstop:
             return None
 
     def _fetch_live(self, text: str) -> Optional[List[float]]:
-        import subprocess
         import urllib.request
+        import google.auth
+        import google.auth.transport.requests
 
+        # Application Default Credentials, not a shelled-out CLI token command.
+        # The deployed image does not ship the gcloud CLI, so the previous
+        # subprocess call was unreachable in production and left the embedding
+        # backstop cache-only there. ADC uses the Cloud Run runtime service
+        # account the same way src/llm/vertex_gemini.py already does, so the live
+        # embedding path now actually runs where it is deployed.
         project = os.environ.get("GCP_PROJECT_ID", "hodi-2026")
-        token = subprocess.check_output(
-            ["gcloud", "auth", "print-access-token"], stderr=subprocess.DEVNULL
-        ).decode().strip()
+        creds, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+        creds.refresh(google.auth.transport.requests.Request())
+        token = creds.token
         url = (f"https://aiplatform.googleapis.com/v1/projects/{project}/locations/us-central1/"
                f"publishers/google/models/{PINNED_EMBEDDING_MODEL}:predict")
         body = json.dumps({"instances": [{"content": text}]}).encode()
