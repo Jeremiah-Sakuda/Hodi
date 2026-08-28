@@ -6,292 +6,374 @@
 <title>Hodi — The Knock</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=Spectral:ital,wght@0,400;0,500;1,400&family=Courier+Prime:wght@400;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
   :root{
-    --desk:#221e18; --desk-2:#2b261f; --paper:#f5f1e6; --paper-shade:#ece5d3; --inset:#e5eaf5;
-    --ink:#26231b; --ink-soft:#6e6553; --rule:#cfc6ae; --rule-strong:#a89c7d;
-    --stamp:#9e2b25; --stamp-wash:rgba(158,43,37,.07);
-    --seal:#2e6b4f; --seal-wash:rgba(46,107,79,.08);
-    --chrome-ink:#e6ddcb; --chrome-soft:#9c9179; --chrome-line:#3a342a;
+    --ground:#141110; --panel:#1c1815; --panel-2:#241f1a; --line:#332c24; --line-2:#443a2e;
+    --ink:#f2ece0; --ink-2:#c8bda9; --ink-dim:#8d8271;
+    --gold:#d9b26a; --gold-dim:#a4823f;
+    --green:#5fd08a; --green-dim:#2e6b4f; --green-wash:rgba(95,208,138,.09);
+    --red:#e2685c; --red-dim:#8e332b; --red-wash:rgba(226,104,92,.10);
   }
   *{box-sizing:border-box}
   html,body{margin:0; height:100%;}
-  body{background:var(--desk); color:var(--ink); font-family:"Spectral",Georgia,serif; line-height:1.55; -webkit-font-smoothing:antialiased; overflow:hidden;}
-  .mono{font-family:"Courier Prime","Courier New",monospace;}
+  body{background:var(--ground); color:var(--ink); font-family:"IBM Plex Sans",system-ui,sans-serif;
+    line-height:1.5; -webkit-font-smoothing:antialiased; overflow:hidden;}
+  .serif{font-family:"Fraunces",Georgia,serif;} .mono{font-family:"IBM Plex Mono",monospace;}
+  ::selection{background:var(--gold); color:#171310;}
 
-  /* ---------- app shell ---------- */
-  .app{height:100dvh; display:flex; flex-direction:column;}
+  .app{height:100dvh; display:grid; grid-template-rows:auto 1fr auto;}
 
-  .appbar{display:flex; align-items:center; justify-content:space-between; gap:16px; padding:11px clamp(14px,3vw,30px);
-    background:var(--desk-2); border-bottom:1px solid var(--chrome-line); flex:none;}
-  .brand{display:flex; align-items:center; gap:12px; min-width:0;}
-  .brand .mark{font-family:"Courier Prime",monospace; font-weight:700; letter-spacing:.3em; font-size:.82rem; color:var(--chrome-ink); border:1px solid var(--chrome-line); padding:5px 11px 5px 13px; border-radius:5px;}
-  .gcp{display:flex; align-items:center; gap:7px; font-family:"Courier Prime",monospace; font-size:.6rem; letter-spacing:.06em; color:var(--chrome-soft); min-width:0;}
-  .gcp .dot{width:7px; height:7px; border-radius:50%; background:#8a8a8a; flex:none;}
-  .gcp.ok .dot{background:#5fd08a; box-shadow:0 0 0 0 #5fd08a; animation:pl 2.4s infinite;}
-  .gcp.warn .dot{background:#e8a13c;} .gcp.err .dot{background:#e5564b;}
-  .gcp .url{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-  @keyframes pl{0%{box-shadow:0 0 0 0 rgba(95,208,138,.5)}70%{box-shadow:0 0 0 6px transparent}100%{box-shadow:0 0 0 0 transparent}}
+  /* ---------- top bar ---------- */
+  .bar{display:flex; align-items:center; justify-content:space-between; gap:20px;
+    padding:0 clamp(16px,2.6vw,40px); height:56px; border-bottom:1px solid var(--line); background:var(--panel);}
+  .bl{display:flex; align-items:center; gap:16px; min-width:0;}
+  .logo{font-family:"IBM Plex Mono",monospace; font-weight:600; letter-spacing:.34em; font-size:.78rem; color:var(--ink);
+    border:1px solid var(--line-2); padding:6px 10px 6px 14px; border-radius:4px;}
+  .env{display:flex; align-items:center; gap:8px; font-family:"IBM Plex Mono",monospace; font-size:.66rem; color:var(--ink-dim); min-width:0;}
+  .env .dot{width:7px;height:7px;border-radius:50%;background:#7a7a7a;flex:none;}
+  .env.ok .dot{background:var(--green); box-shadow:0 0 0 0 var(--green); animation:pl 2.4s infinite;}
+  .env.warn .dot{background:var(--gold);} .env .host{color:var(--ink-2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  @keyframes pl{0%{box-shadow:0 0 0 0 rgba(95,208,138,.45)}70%{box-shadow:0 0 0 6px transparent}100%{box-shadow:0 0 0 0 transparent}}
+  .steps{display:flex; gap:2px;}
+  .steps button{background:none;border:0;cursor:pointer;padding:6px 10px;display:flex;flex-direction:column;gap:6px;min-width:74px;}
+  .steps .b{height:2px;background:var(--line-2);border-radius:2px;transition:background .3s;}
+  .steps .t{font-family:"IBM Plex Mono",monospace;font-size:.58rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-dim);text-align:left;transition:color .3s;}
+  .steps button[aria-current="true"] .b{background:var(--gold);}
+  .steps button[aria-current="true"] .t{color:var(--ink);}
+  .steps button.done .b{background:var(--green-dim);}
+  @media(max-width:860px){.steps .t{display:none}.steps button{min-width:30px}.env .host{display:none}}
 
-  .steprail{display:flex; gap:4px; align-items:center; flex:none;}
-  .steprail button{background:none; border:0; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:5px; padding:2px 4px; min-width:52px;}
-  .steprail .bar{width:100%; height:3px; border-radius:2px; background:var(--chrome-line); transition:background .3s;}
-  .steprail .lbl{font-family:"Courier Prime",monospace; font-size:.54rem; letter-spacing:.08em; text-transform:uppercase; color:var(--chrome-soft); transition:color .3s;}
-  .steprail button[aria-current="true"] .bar{background:#d8c9a0;}
-  .steprail button[aria-current="true"] .lbl{color:var(--chrome-ink);}
-  .steprail button.seen .bar{background:var(--seal);}
-  @media (max-width:720px){ .steprail .lbl{display:none;} .steprail button{min-width:26px;} .gcp .url{display:none;} }
+  /* ---------- stage ---------- */
+  .stage{position:relative; min-height:0;}
+  .scene{position:absolute; inset:0; padding:clamp(18px,2.6vw,40px) clamp(16px,2.6vw,40px); display:flex; flex-direction:column;
+    opacity:0; visibility:hidden; transform:translateY(10px); transition:opacity .4s, transform .4s; overflow:auto;}
+  .scene.on{opacity:1; visibility:visible; transform:none;}
+  .scene::-webkit-scrollbar{width:8px} .scene::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:4px}
 
-  /* ---------- stage: one document at a time ---------- */
-  .stage{flex:1; position:relative; min-height:0;}
-  .doc{position:absolute; inset:0; display:flex; align-items:flex-start; justify-content:center; overflow:auto;
-    padding:clamp(16px,3vw,40px); opacity:0; visibility:hidden; transform:translateY(14px); transition:opacity .45s ease, transform .45s ease;}
-  .doc.on{opacity:1; visibility:visible; transform:none;}
-  .sheet{width:min(840px,100%); background:var(--paper); color:var(--ink); border:1px solid var(--rule-strong); position:relative;
-    padding:clamp(26px,4.2vw,52px) clamp(22px,5vw,60px) clamp(24px,3.2vw,40px);
-    box-shadow:0 2px 4px rgba(0,0,0,.35), 0 20px 54px rgba(0,0,0,.45); margin:auto 0;}
-  .sheet::before{content:""; position:absolute; inset:8px; border:1px solid var(--rule); pointer-events:none;}
-  .sheet>*{position:relative;}
+  .eyebrow{font-family:"IBM Plex Mono",monospace; font-size:.62rem; letter-spacing:.26em; text-transform:uppercase; color:var(--gold-dim);}
+  h1{font-family:"Fraunces",Georgia,serif; font-weight:400; font-size:clamp(1.9rem,3.6vw,3.1rem); line-height:1.02;
+    letter-spacing:-.01em; margin:.18em 0 0; text-wrap:balance;}
+  h1 em{font-style:italic; color:var(--gold);}
+  .sub{color:var(--ink-2); font-size:clamp(.94rem,1.15vw,1.05rem); max-width:62ch; margin-top:.7em;}
+  .sub b{color:var(--ink); font-weight:600;}
 
-  /* ---------- action bar ---------- */
-  .actionbar{display:flex; align-items:center; justify-content:space-between; gap:14px; padding:11px clamp(14px,3vw,30px);
-    background:var(--desk-2); border-top:1px solid var(--chrome-line); flex:none;}
-  .hint{font-family:"Courier Prime",monospace; font-size:.62rem; letter-spacing:.04em; color:var(--chrome-soft); line-height:1.5; min-width:0;}
-  .hint b{color:var(--chrome-ink);}
-  .acts{display:flex; gap:10px; flex:none;}
-  .btn{font-family:"Courier Prime",monospace; font-size:.78rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; padding:11px 20px; border-radius:6px; cursor:pointer; border:1px solid var(--chrome-line); background:var(--desk); color:var(--chrome-ink); transition:transform .1s, opacity .2s, background .2s;}
-  .btn:hover{transform:translateY(-1px);}
-  .btn:disabled{opacity:.35; cursor:not-allowed; transform:none;}
-  .btn.primary{background:var(--paper); color:var(--ink); border-color:var(--paper);}
-  .btn.stamp{background:var(--stamp); color:var(--paper); border-color:var(--stamp); box-shadow:0 3px 0 #6d1d19;}
-  .btn.stamp:active{transform:translateY(2px); box-shadow:0 1px 0 #6d1d19;}
-  .btn:focus-visible{outline:2px solid #d8c9a0; outline-offset:2px;}
+  .grid{display:grid; gap:clamp(16px,2vw,30px); min-height:100%; align-content:stretch; align-items:stretch;}
+  .g-1-1{grid-template-columns:minmax(0,1fr) minmax(0,1fr);}
+  .g-5-7{grid-template-columns:minmax(0,5fr) minmax(0,7fr);}
+  .g-7-5{grid-template-columns:minmax(0,7fr) minmax(0,5fr);}
+  .g-3{grid-template-columns:repeat(3,minmax(0,1fr));}
+  @media(max-width:1000px){.g-1-1,.g-5-7,.g-7-5,.g-3{grid-template-columns:minmax(0,1fr);}}
 
-  /* ---------- document content ---------- */
-  .dochead{text-align:center; margin-bottom:clamp(16px,3vw,28px);}
-  .dochead .office{font-family:"Courier Prime",monospace; font-size:.66rem; letter-spacing:.32em; text-transform:uppercase; color:var(--ink-soft); margin-bottom:10px;}
-  .dochead h2{font-family:"Fraunces",Georgia,serif; font-weight:500; font-size:clamp(1.5rem,3.4vw,2.3rem); line-height:1.08; margin:0; letter-spacing:.005em;}
-  .dochead .rulebar{width:104px; border-bottom:1px solid var(--rule-strong); margin:14px auto 0; position:relative;}
-  .dochead .rulebar::after{content:"❦"; position:absolute; left:50%; top:-11px; transform:translateX(-50%); background:var(--paper); padding:0 10px; color:var(--rule-strong); font-size:.8rem;}
-  .preamble{font-size:1.02rem; max-width:56ch; margin:0 auto 20px; text-align:center;} .preamble i{font-family:"Fraunces",Georgia,serif; font-style:italic;}
+  .panel{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:clamp(14px,1.5vw,22px); min-width:0; display:flex; flex-direction:column;}
+  .panel.flush{padding:0; overflow:hidden;}
+  .ptitle{font-family:"IBM Plex Mono",monospace; font-size:.6rem; letter-spacing:.2em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:12px;}
 
-  .ledger{border-top:1px solid var(--rule-strong); margin-top:4px;}
-  .lrow{display:flex; align-items:baseline; gap:14px; padding:11px 2px; border-bottom:1px dotted var(--rule-strong);}
-  .lrow .no{font-family:"Courier Prime",monospace; font-size:.72rem; color:var(--ink-soft); width:44px; flex:none;}
-  .lrow .ti{font-family:"Fraunces",Georgia,serif; font-weight:500; font-size:1.02rem;}
-  .lrow .med{font-family:"Courier Prime",monospace; font-size:.66rem; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-soft);}
-  .lrow .tier{margin-left:auto; font-family:"Courier Prime",monospace; font-size:.64rem; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-soft); flex:none;}
-  .visitor{margin-top:clamp(16px,2.5vw,26px); padding-top:16px; border-top:1px solid var(--rule-strong);}
-  .visitor .cap{font-family:"Courier Prime",monospace; font-size:.64rem; letter-spacing:.18em; text-transform:uppercase; color:var(--ink-soft); margin-bottom:12px;}
-  .tallyline{display:flex; align-items:baseline; gap:18px; flex-wrap:wrap; padding:6px 0;}
-  .tallyline .q{font-family:"Fraunces",Georgia,serif; font-size:1.04rem; width:250px; flex:none;}
-  .tallies{display:inline-flex; gap:16px; align-items:flex-end;}
-  .tgroup{position:relative; display:inline-flex; gap:5px; padding:0 2px;}
-  .tgroup i{display:block; width:3px; height:28px; background:var(--ink); border-radius:1px;}
-  .tgroup.full::after{content:""; position:absolute; left:-4px; right:-4px; top:11px; height:3px; background:var(--ink); transform:rotate(-24deg); border-radius:2px;}
-  .tallyline .n{font-family:"Fraunces",Georgia,serif; font-size:1.7rem; font-weight:500;}
-  .tallyline .none{font-family:"Fraunces",Georgia,serif; font-style:italic; font-size:1.5rem; color:var(--stamp);}
-  .verdictline{margin-top:14px; font-size:1.04rem; max-width:60ch;} .verdictline b{font-weight:600;}
+  /* register table */
+  .works{width:100%; border-collapse:collapse;}
+  .works th{font-family:"IBM Plex Mono",monospace; font-size:.58rem; letter-spacing:.18em; text-transform:uppercase; color:var(--ink-dim);
+    text-align:left; font-weight:400; padding:12px clamp(12px,1.4vw,20px); border-bottom:1px solid var(--line);}
+  .works td{padding:11px clamp(12px,1.4vw,20px); border-bottom:1px solid var(--line); vertical-align:middle;}
+  .works tr:last-child td{border-bottom:0;}
+  .works .n{font-family:"IBM Plex Mono",monospace; font-size:.7rem; color:var(--ink-dim); width:40px;}
+  .works .ti{font-family:"Fraunces",Georgia,serif; font-size:1.02rem; font-weight:500;}
+  .works .md{font-family:"IBM Plex Mono",monospace; font-size:.62rem; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-dim);}
+  .pill{font-family:"IBM Plex Mono",monospace; font-size:.58rem; letter-spacing:.14em; text-transform:uppercase;
+    border:1px solid var(--line-2); color:var(--ink-dim); padding:3px 9px; border-radius:20px; white-space:nowrap;}
 
-  .letter{font-family:"Fraunces",Georgia,serif; font-style:italic; font-size:clamp(1.08rem,2.2vw,1.32rem); line-height:1.5; max-width:52ch; margin:0 auto; text-align:center;}
-  .letter::before{content:"“";} .letter::after{content:"”";}
-  .fromline{text-align:center; font-family:"Courier Prime",monospace; font-size:.66rem; letter-spacing:.18em; text-transform:uppercase; color:var(--ink-soft); margin:10px 0 22px;}
-  .drawn{font-family:"Courier Prime",monospace; font-size:.66rem; letter-spacing:.22em; text-transform:uppercase; color:var(--ink-soft); text-align:center; margin:0 0 4px;}
-  .drawn b{color:var(--seal);}
-  .clauses{counter-reset:cl; border-top:1px solid var(--rule-strong); margin-top:12px; min-height:60px;}
-  .clause{display:flex; gap:16px; padding:11px 2px; border-bottom:1px dotted var(--rule-strong); align-items:baseline; opacity:0; transform:translateX(-6px); transition:opacity .3s, transform .3s;}
-  .clause.on{opacity:1; transform:none;}
-  .clause::before{counter-increment:cl; content:counter(cl) "."; font-family:"Courier Prime",monospace; font-size:.78rem; color:var(--ink-soft); width:22px; flex:none;}
-  .clause .ct{font-size:1rem;}
-  .clause .fine{display:block; font-family:"Courier Prime",monospace; font-size:.66rem; color:var(--ink-soft); letter-spacing:.04em; margin-top:2px;}
-  .noteline{margin-top:18px; padding:13px 16px; border:1px solid var(--rule-strong); background:var(--paper-shade); font-size:.96rem;} .noteline b{font-weight:600;}
-  .execline{margin-top:16px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; min-height:40px;}
-  .grant-chip{font-family:"Courier Prime",monospace; font-weight:700; font-size:.8rem; letter-spacing:.22em; color:var(--seal); border:3px double var(--seal); padding:7px 16px; transform:rotate(-2deg); background:var(--seal-wash); opacity:0; transition:opacity .4s;}
-  .grant-chip.on{opacity:1;} .execline .ex{font-family:"Courier Prime",monospace; font-size:.68rem; color:var(--ink-soft);}
+  .stat{display:flex; align-items:baseline; gap:16px; flex-wrap:wrap;}
+  .stat .big{font-family:"Fraunces",Georgia,serif; font-size:clamp(3rem,6vw,4.6rem); line-height:.9; letter-spacing:-.02em;}
+  .stat .big.gold{color:var(--gold);} .stat .big.red{color:var(--red);}
+  .stat .lab{color:var(--ink-2); font-size:.98rem; max-width:24ch;}
+  .tally{display:inline-flex; gap:13px; align-items:flex-end; margin:10px 0 4px;}
+  .tg{position:relative; display:inline-flex; gap:4px;}
+  .tg i{display:block; width:2px; height:26px; background:var(--ink-2); border-radius:1px;}
+  .tg.f::after{content:"";position:absolute;left:-3px;right:-3px;top:10px;height:2px;background:var(--ink-2);transform:rotate(-24deg);}
+  .divider{height:1px; background:var(--line); margin:14px 0;}
 
-  .stampable{position:relative;}
-  .bigstamp{position:absolute; top:-12px; right:clamp(2px,3vw,24px); z-index:3; font-family:"Courier Prime",monospace; font-weight:700; font-size:clamp(1.1rem,2.4vw,1.6rem); letter-spacing:.24em; color:var(--stamp); border:4px double var(--stamp); padding:9px 20px; transform:rotate(7deg); background:var(--stamp-wash); opacity:0; pointer-events:none;}
-  .bigstamp.on{animation:press .38s cubic-bezier(.2,1.4,.4,1) forwards;}
-  @keyframes press{0%{opacity:0; transform:rotate(7deg) scale(1.7)}100%{opacity:1; transform:rotate(7deg) scale(1)}}
-  .schedule{counter-reset:sch; border-top:1px solid var(--rule-strong); margin-top:10px;}
-  .srow{display:flex; gap:16px; padding:11px 2px; border-bottom:1px dotted var(--rule-strong); align-items:baseline;}
-  .srow::before{counter-increment:sch; content:"(" counter(sch,lower-alpha) ")"; font-family:"Courier Prime",monospace; font-size:.76rem; color:var(--ink-soft); width:30px; flex:none;}
-  .srow .ct{font-size:1.02rem; position:relative; display:inline-block;}
-  .srow .ct::after{content:""; position:absolute; left:-2px; right:-2px; top:55%; height:2px; background:var(--stamp); transform:scaleX(0); transform-origin:left center; transition:transform .4s ease;}
-  .srow.struck .ct::after{transform:scaleX(1);}
-  .srow .fine{display:block; font-family:"Courier Prime",monospace; font-size:.66rem; color:var(--ink-soft); margin-top:2px;}
-  .srow .margin{display:block; font-family:"Courier Prime",monospace; font-size:.68rem; color:var(--stamp); margin-top:4px; opacity:0; transform:translateX(-6px); transition:opacity .35s ease .1s, transform .35s ease .1s;}
-  .srow.struck .margin{opacity:1; transform:none;}
-  .srow .st{margin-left:auto; font-family:"Courier Prime",monospace; font-size:.62rem; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-soft); flex:none; transition:color .3s;}
-  .srow.struck .st{color:var(--stamp); font-weight:700;}
-  .apart{margin-top:16px; padding:12px 16px; border:1px dashed var(--rule-strong); display:flex; gap:14px; align-items:baseline;}
-  .apart .ct{font-size:1rem;} .apart .fine{display:block; font-family:"Courier Prime",monospace; font-size:.66rem; color:var(--ink-soft); margin-top:2px;}
-  .apart .st{margin-left:auto; font-family:"Courier Prime",monospace; font-size:.62rem; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-soft); flex:none;} .apart .st b{color:var(--seal);}
-  .clockline{margin-top:16px; font-family:"Courier Prime",monospace; font-size:.72rem; color:var(--ink-soft); min-height:1.2em;} .clockline b{color:var(--ink);}
-  .pathrail{margin-top:14px; padding:13px 16px; border:1px solid var(--rule-strong); background:var(--paper-shade); opacity:0; transform:translateY(6px); transition:opacity .5s, transform .5s;}
-  .pathrail.on{opacity:1; transform:none;}
-  .pathrail .cap{font-family:"Courier Prime",monospace; font-size:.6rem; letter-spacing:.2em; text-transform:uppercase; color:var(--ink-soft); margin-bottom:9px;}
-  .hops{display:flex; flex-wrap:wrap; align-items:center; gap:6px 8px; font-family:"Courier Prime",monospace; font-size:.72rem; line-height:1.5;}
-  .hop{border:1px solid var(--rule-strong); border-radius:3px; padding:4px 8px; background:var(--paper); white-space:nowrap;}
-  .hop.kms{border-color:var(--seal); color:var(--seal); font-weight:700;} .hop.gate{border-color:var(--ink); color:var(--ink); font-weight:700;} .hops .ar{color:var(--rule-strong);}
-  .pathstats{margin-top:9px; font-family:"Courier Prime",monospace; font-size:.76rem; font-weight:700; color:var(--ink);}
-  .prodnote{margin-top:9px; font-family:"Courier Prime",monospace; font-size:.64rem; line-height:1.6; color:var(--ink-soft);} .prodnote b{color:var(--ink);}
-  .resub{margin-top:16px; padding-top:14px; border-top:1px solid var(--rule-strong); display:flex; align-items:center; gap:16px; flex-wrap:wrap; opacity:.22; transition:opacity .45s;}
-  .resub.show{opacity:1;}
-  .refstamp{font-family:"Courier Prime",monospace; font-weight:700; font-size:1rem; letter-spacing:.26em; color:var(--stamp); border:3px double var(--stamp); padding:8px 18px; transform:rotate(-3deg); background:var(--stamp-wash);}
-  .resub .rx{font-size:.94rem; max-width:44ch;}
+  /* license */
+  .quote{font-family:"Fraunces",Georgia,serif; font-style:italic; font-size:clamp(1.1rem,1.7vw,1.42rem); line-height:1.42; color:var(--ink);}
+  .quote::before{content:"“"} .quote::after{content:"”"}
+  .from{font-family:"IBM Plex Mono",monospace; font-size:.62rem; letter-spacing:.18em; text-transform:uppercase; color:var(--ink-dim); margin-top:12px;}
+  .terms{display:flex; flex-direction:column;}
+  .term{display:flex; gap:14px; align-items:baseline; padding:11px 0; border-bottom:1px solid var(--line); opacity:0; transform:translateX(-8px); transition:.35s;}
+  .term.on{opacity:1; transform:none;} .term:last-child{border-bottom:0;}
+  .term .i{font-family:"IBM Plex Mono",monospace; font-size:.68rem; color:var(--gold-dim); width:18px; flex:none;}
+  .term .p{font-size:1rem;}
+  .term .m{display:block; font-family:"IBM Plex Mono",monospace; font-size:.62rem; color:var(--ink-dim); margin-top:2px;}
+  .badge{display:inline-flex; align-items:center; gap:9px; font-family:"IBM Plex Mono",monospace; font-weight:600; font-size:.72rem;
+    letter-spacing:.18em; text-transform:uppercase; padding:8px 16px; border-radius:5px; border:1px solid var(--green-dim);
+    color:var(--green); background:var(--green-wash); opacity:0; transition:opacity .45s;}
+  .badge.on{opacity:1;}
+  .note{border-left:2px solid var(--gold-dim); padding-left:14px; color:var(--ink-2); font-size:.95rem;}
+  .note b{color:var(--ink); font-weight:600;}
 
-  .noticetext{font-size:1.02rem; max-width:58ch; margin:0 0 16px;} .noticetext b{font-weight:600;}
-  .sigblock{border:1px solid var(--rule-strong); background:var(--paper-shade); padding:13px 15px;}
-  .sigblock .lab{font-family:"Courier Prime",monospace; font-size:.62rem; letter-spacing:.24em; text-transform:uppercase; color:var(--ink-soft); margin-bottom:8px;}
-  .sigtext{font-family:"Courier Prime",monospace; font-size:.7rem; line-height:1.55; word-break:break-all; color:var(--ink);} .sigtext .alg{font-weight:700;}
-  .sigtext .bad{color:var(--stamp); font-weight:700; background:var(--stamp-wash); text-decoration:line-through; padding:0 2px;}
-  .sealrow{display:flex; align-items:center; gap:20px; margin-top:18px; flex-wrap:wrap;}
-  .sealbtns{display:flex; flex-direction:column; gap:9px;}
-  .ibtn{font-family:"Courier Prime",monospace; font-size:.76rem; letter-spacing:.08em; text-transform:uppercase; background:var(--paper); color:var(--ink); border:1px solid var(--ink); padding:10px 16px; cursor:pointer; transition:opacity .2s, transform .1s;}
-  .ibtn:hover{transform:translateY(-1px);} .ibtn:disabled{opacity:.4; cursor:not-allowed;}
-  .seal{width:120px; height:120px; border-radius:50%; border:3px double var(--rule-strong); display:flex; align-items:center; justify-content:center; text-align:center; font-family:"Courier Prime",monospace; font-size:.58rem; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-soft); transform:rotate(-8deg); transition:.3s; padding:12px; flex:none;}
-  .seal.ok{border-color:var(--seal); color:var(--seal); background:var(--seal-wash); font-weight:700;} .seal.bad{border-color:var(--stamp); color:var(--stamp); background:var(--stamp-wash); font-weight:700;}
-  .seal.pressed{animation:sealpress .35s cubic-bezier(.2,1.4,.4,1);}
-  @keyframes sealpress{0%{transform:rotate(-8deg) scale(1.5); opacity:.2}100%{transform:rotate(-8deg) scale(1); opacity:1}}
-  .sealnote{font-size:.9rem; color:var(--ink-soft); max-width:38ch;}
-  .fleet{margin-top:clamp(18px,2.5vw,26px); padding-top:14px; border-top:1px solid var(--rule-strong);}
-  .fleet .cap{font-family:"Courier Prime",monospace; font-size:.66rem; letter-spacing:.22em; text-transform:uppercase; color:var(--ink-soft); margin-bottom:6px;}
-  .fleet .intro{font-size:.95rem; max-width:62ch; margin:0 0 10px;} .fleet .intro b{font-weight:600;}
-  .whop{display:flex; gap:14px; align-items:flex-start; padding:10px 2px; border-bottom:1px dotted var(--rule-strong);}
-  .whop .tag{font-family:"Courier Prime",monospace; font-weight:700; font-size:.6rem; letter-spacing:.08em; padding:3px 7px; border:1px solid var(--ink-soft); color:var(--ink-soft); flex:none; width:118px; text-align:center; margin-top:2px;}
-  .whop.good .tag{border-color:var(--seal); color:var(--seal); background:var(--seal-wash);} .whop.stop .tag{border-color:var(--stamp); color:var(--stamp); background:var(--stamp-wash);}
-  .whop .who{font-family:"Fraunces",Georgia,serif; font-weight:500; font-size:1rem;}
-  .whop .sa{display:block; font-family:"Courier Prime",monospace; font-size:.62rem; color:var(--ink-soft); margin-top:1px; word-break:break-all;} .whop .sa em{font-style:normal; opacity:.75;}
-  .whop .det{display:block; font-size:.88rem; color:var(--ink-soft); margin-top:3px;}
-  .fleetmeta{margin-top:11px; font-family:"Courier Prime",monospace; font-size:.68rem; color:var(--ink-soft); line-height:1.7;} .fleetmeta b{color:var(--seal);} .fleetmeta a{color:var(--ink);}
-  .doorlog{margin-top:clamp(18px,2.5vw,26px); padding-top:14px; border-top:1px solid var(--rule-strong);}
-  .doorlog .cap{font-family:"Courier Prime",monospace; font-size:.66rem; letter-spacing:.22em; text-transform:uppercase; color:var(--ink-soft); margin-bottom:6px;}
-  .doorlog .intro{font-size:.94rem; max-width:62ch; margin:0 0 10px;} .doorlog .intro b{font-weight:600;}
-  .drow{display:flex; align-items:baseline; gap:12px; padding:7px 2px; border-bottom:1px dotted var(--rule-strong); font-size:.9rem;}
-  .drow .rs{margin-left:auto; font-family:"Courier Prime",monospace; font-weight:700; font-size:.64rem; letter-spacing:.16em; color:var(--stamp); flex:none;}
-  .drow.pending .rs{color:var(--ink-soft);} .drow .hint2{font-family:"Courier Prime",monospace; font-size:.64rem; color:var(--ink-soft);}
-  .sixline{margin-top:10px; font-family:"Courier Prime",monospace; font-size:.72rem; font-weight:700; letter-spacing:.06em; color:var(--seal); min-height:1em;}
-  .decl{counter-reset:dc; border-top:1px solid var(--rule-strong); margin-top:8px;}
-  .ditem{display:flex; gap:16px; padding:14px 2px; border-bottom:1px dotted var(--rule-strong);}
-  .ditem::before{counter-increment:dc; content:counter(dc,upper-roman) "."; font-family:"Fraunces",Georgia,serif; font-size:1.02rem; color:var(--ink-soft); width:34px; flex:none;}
-  .ditem .dt{font-size:1rem;} .ditem .dt b{font-weight:600;} .ditem .dt .sm{display:block; color:var(--ink-soft); font-size:.88rem; margin-top:3px;}
-  .closing{text-align:center; margin-top:clamp(22px,4vw,40px);}
-  .closing .ep{font-family:"Fraunces",Georgia,serif; font-style:italic; font-size:clamp(1.2rem,2.6vw,1.6rem); max-width:32ch; margin:0 auto;}
-  .closing .knock{font-family:"Fraunces",Georgia,serif; font-weight:600; font-size:clamp(1.8rem,4.4vw,2.7rem); margin-top:.4em;}
-  .closing .rulebar{width:104px; border-bottom:1px solid var(--rule-strong); margin:22px auto 0;}
-  @media (max-width:640px){ .tallyline .q{width:100%;} .bigstamp{position:static; display:inline-block; margin-bottom:8px;} }
-  @media (prefers-reduced-motion: reduce){ *{transition:none!important; animation:none!important;} .bigstamp.on,.seal.pressed,.grant-chip.on,.clause,.pathrail{opacity:1;} .clause{transform:none;} }
+  /* revoke */
+  .scopes{display:flex; flex-direction:column;}
+  .scope{display:flex; gap:14px; align-items:center; padding:clamp(10px,1.2vw,15px) 0; border-bottom:1px solid var(--line);}
+  .scope:last-child{border-bottom:0;}
+  .scope .k{width:9px;height:9px;border-radius:50%;background:var(--green);flex:none;box-shadow:0 0 0 4px var(--green-wash);transition:.4s;}
+  .scope .txt{min-width:0;}
+  .scope .p{font-size:clamp(.98rem,1.3vw,1.14rem); position:relative; display:inline-block;}
+  .scope .p::after{content:"";position:absolute;left:-2px;right:-2px;top:54%;height:2px;background:var(--red);transform:scaleX(0);transform-origin:left;transition:transform .45s;}
+  .scope .m{display:block;font-family:"IBM Plex Mono",monospace;font-size:.62rem;color:var(--ink-dim);margin-top:2px;}
+  .scope .why{display:block;font-family:"IBM Plex Mono",monospace;font-size:.62rem;color:var(--red);margin-top:4px;opacity:0;transform:translateX(-6px);transition:.35s .1s;}
+  .scope .s{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:.58rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);flex:none;transition:.3s;}
+  .scope.gone .k{background:var(--red);box-shadow:0 0 0 4px var(--red-wash);}
+  .scope.gone .p::after{transform:scaleX(1);}
+  .scope.gone .why{opacity:1;transform:none;}
+  .scope.gone .s{color:var(--red);font-weight:600;}
+  .apart{margin-top:12px; padding:12px 14px; border:1px dashed var(--line-2); border-radius:8px; display:flex; gap:14px; align-items:center;}
+  .apart .s{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:.58rem;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-dim);flex:none;}
+  .apart .s b{color:var(--green);}
+  .clock{font-family:"IBM Plex Mono",monospace; font-size:.74rem; color:var(--ink-2); min-height:1.2em;}
+  .clock b{color:var(--gold); font-size:.9rem;}
+  .rail{margin-top:12px; opacity:0; transform:translateY(6px); transition:.5s;} .rail.on{opacity:1;transform:none;}
+  .hops{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-family:"IBM Plex Mono",monospace;font-size:.66rem;}
+  .hops span.h{border:1px solid var(--line-2);border-radius:4px;padding:5px 9px;background:var(--panel-2);white-space:nowrap;}
+  .hops span.h.g{border-color:var(--gold-dim);color:var(--gold);}
+  .hops span.h.k{border-color:var(--green-dim);color:var(--green);}
+  .hops .a{color:var(--ink-dim);}
+  .railstat{margin-top:10px;font-family:"IBM Plex Mono",monospace;font-size:.72rem;font-weight:600;color:var(--ink);}
+  .prod{margin-top:9px;font-family:"IBM Plex Mono",monospace;font-size:.6rem;line-height:1.65;color:var(--ink-dim);} .prod b{color:var(--ink-2);}
+  .refused{margin-top:12px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;opacity:.2;transition:.45s;} .refused.on{opacity:1;}
+  .stampmark{font-family:"IBM Plex Mono",monospace;font-weight:600;font-size:.82rem;letter-spacing:.24em;color:var(--red);
+    border:2px solid var(--red);padding:6px 14px;border-radius:4px;transform:rotate(-2deg);background:var(--red-wash);}
+  .refused .x{color:var(--ink-2);font-size:.92rem;max-width:48ch;}
+
+  /* certificate */
+  .sig{font-family:"IBM Plex Mono",monospace;font-size:.66rem;line-height:1.6;word-break:break-all;color:var(--ink-2);
+    background:var(--panel-2);border:1px solid var(--line);border-radius:7px;padding:11px 13px;transition:.3s;}
+  .sig .alg{color:var(--green);font-weight:600;} .sig.bad{border-color:var(--red-dim);background:var(--red-wash);}
+  .sig .flip{color:var(--red);font-weight:600;text-decoration:line-through;}
+  .sealrow{display:flex;align-items:center;gap:18px;margin-top:14px;flex-wrap:wrap;}
+  .seal{width:112px;height:112px;border-radius:50%;border:2px solid var(--line-2);display:flex;align-items:center;justify-content:center;
+    text-align:center;font-family:"IBM Plex Mono",monospace;font-size:.56rem;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-dim);
+    transform:rotate(-8deg);transition:.3s;padding:10px;flex:none;}
+  .seal.ok{border-color:var(--green);color:var(--green);background:var(--green-wash);font-weight:600;}
+  .seal.bad{border-color:var(--red);color:var(--red);background:var(--red-wash);font-weight:600;}
+  .seal.hit{animation:sp .35s cubic-bezier(.2,1.4,.4,1);}
+  @keyframes sp{0%{transform:rotate(-8deg) scale(1.45);opacity:.25}100%{transform:rotate(-8deg) scale(1);opacity:1}}
+  .btns{display:flex;flex-direction:column;gap:8px;}
+  .mini{font-family:"IBM Plex Mono",monospace;font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;background:var(--panel-2);
+    color:var(--ink);border:1px solid var(--line-2);padding:9px 14px;border-radius:5px;cursor:pointer;transition:.15s;}
+  .mini:hover{transform:translateY(-1px);border-color:var(--gold-dim);} .mini:disabled{opacity:.35;cursor:not-allowed;transform:none;}
+  .sealnote{color:var(--ink-2);font-size:.88rem;max-width:34ch;}
+
+  .hop2{display:flex;gap:12px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--line);}
+  .hop2:last-child{border-bottom:0;}
+  .hop2 .tag{font-family:"IBM Plex Mono",monospace;font-weight:600;font-size:.55rem;letter-spacing:.08em;padding:3px 6px;border-radius:3px;
+    border:1px solid var(--line-2);color:var(--ink-dim);flex:none;width:104px;text-align:center;margin-top:2px;}
+  .hop2.g .tag{border-color:var(--green-dim);color:var(--green);background:var(--green-wash);}
+  .hop2.s .tag{border-color:var(--red-dim);color:var(--red);background:var(--red-wash);}
+  .hop2 .who{font-size:.94rem;font-weight:600;}
+  .hop2 .sa{display:block;font-family:"IBM Plex Mono",monospace;font-size:.58rem;color:var(--ink-dim);word-break:break-all;margin-top:1px;}
+  .hop2 .d{display:block;font-size:.82rem;color:var(--ink-2);margin-top:2px;}
+  .meta{margin-top:9px;font-family:"IBM Plex Mono",monospace;font-size:.62rem;color:var(--ink-dim);line-height:1.7;}
+  .meta b{color:var(--green);} .meta a{color:var(--gold);}
+  .arow{display:flex;gap:10px;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--line);font-size:.86rem;}
+  .arow:last-child{border-bottom:0;}
+  .arow .c{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-weight:600;font-size:.58rem;letter-spacing:.12em;color:var(--red);flex:none;}
+  .arow.p .c{color:var(--ink-dim);} .arow .h{font-family:"IBM Plex Mono",monospace;font-size:.6rem;color:var(--ink-dim);}
+  .pass{margin-top:9px;font-family:"IBM Plex Mono",monospace;font-size:.66rem;font-weight:600;color:var(--green);min-height:1em;}
+
+  /* declarations */
+  .refuse{display:flex; flex-direction:column; gap:10px;}
+  .refuse .r{display:flex;gap:12px;padding:13px 14px;background:var(--panel);border:1px solid var(--line);border-radius:9px;}
+  .refuse .x{color:var(--red);font-family:"IBM Plex Mono",monospace;font-weight:600;flex:none;}
+  .refuse .h{font-size:.98rem;font-weight:600;}
+  .refuse .s{display:block;color:var(--ink-2);font-size:.88rem;margin-top:3px;font-weight:400;}
+  .closer{display:flex;flex-direction:column;justify-content:center;height:100%;text-align:center;gap:.1em;}
+  .closer .e{font-family:"Fraunces",Georgia,serif;font-style:italic;font-size:clamp(1.15rem,2vw,1.7rem);color:var(--ink-2);max-width:26ch;margin:0 auto;}
+  .closer .k{font-family:"Fraunces",Georgia,serif;font-weight:600;font-size:clamp(2rem,4.4vw,3.4rem);color:var(--ink);margin-top:.25em;}
+  .closer .k span{color:var(--gold);}
+
+  /* ---------- bottom bar ---------- */
+  .foot{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:0 clamp(16px,2.6vw,40px);height:66px;
+    border-top:1px solid var(--line);background:var(--panel);}
+  .tip{font-family:"IBM Plex Mono",monospace;font-size:.64rem;color:var(--ink-dim);line-height:1.5;min-width:0;}
+  .tip b{color:var(--ink-2);}
+  .acts{display:flex;gap:10px;flex:none;}
+  .btn{font-family:"IBM Plex Mono",monospace;font-size:.72rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;
+    padding:12px 22px;border-radius:6px;cursor:pointer;border:1px solid var(--line-2);background:var(--panel-2);color:var(--ink);transition:.15s;}
+  .btn:hover{transform:translateY(-1px);} .btn:disabled{opacity:.3;cursor:not-allowed;transform:none;}
+  .btn.go{background:var(--gold);color:#1b1509;border-color:var(--gold);}
+  .btn.act{background:var(--red);color:#fff;border-color:var(--red);}
+  .btn:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
+  /* step 4 is the densest: let its lists scroll inside their panels so the
+     scene itself never scrolls at 1080p. */
+  #fleetWrap{max-height:min(24vh,210px); overflow:auto;}
+  #attackList{max-height:min(20vh,170px); overflow:auto;}
+  /* the certificate step stacks two live panels; let the column scroll inside
+     itself so the SCENE never scrolls and the page keeps its app feel. */
+  .scene[data-i="3"] .grid > div:last-child{min-height:0; overflow:auto;}
+  .scene[data-i="3"] .grid > div:last-child::-webkit-scrollbar{width:6px}
+  .scene[data-i="3"] .grid > div:last-child::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:3px}
+  #fleetWrap::-webkit-scrollbar,#attackList::-webkit-scrollbar{width:6px}
+  #fleetWrap::-webkit-scrollbar-thumb,#attackList::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:3px}
+  @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important} .term,.rail{opacity:1;transform:none}}
 </style>
 </head>
 <body>
 <div class="app">
 
-  <header class="appbar">
-    <div class="brand">
-      <span class="mark">HODI</span>
-      <span class="gcp" id="gcp"><span class="dot"></span><span>Google Cloud ·&nbsp;</span><span class="url" id="gcpUrl">hodi-evidence-endpoint…run.app</span></span>
+  <header class="bar">
+    <div class="bl">
+      <span class="logo">HODI</span>
+      <span class="env" id="env"><span class="dot"></span><span>Google&nbsp;Cloud</span><span class="host" id="host">·&nbsp;run.app</span></span>
     </div>
-    <nav class="steprail" id="steprail" aria-label="Steps"></nav>
+    <nav class="steps" id="steps" aria-label="Steps"></nav>
   </header>
 
-  <div class="stage" id="stage">
+  <main class="stage" id="stage">
 
-    <section class="doc on" data-step="0"><div class="sheet">
-      <header class="dochead"><div class="office">Hodi · Office of Creative Consent</div><h2>Register of Works</h2><div class="rulebar"></div></header>
-      <p class="preamble">Entered by the artist, in their own name. <i>Five works. All real. All mine.</i></p>
-      <div class="ledger">
-        <div class="lrow"><span class="no">No. 1</span><span><span class="ti">Consent Rails &amp; Creative Sovereignty</span><br><span class="med">essay</span></span><span class="tier">asserted</span></div>
-        <div class="lrow"><span class="no">No. 2</span><span><span class="ti">Hodi Institutional Consent Fleet</span><br><span class="med">code repository</span></span><span class="tier">asserted</span></div>
-        <div class="lrow"><span class="no">No. 3</span><span><span class="ti">Electric Bass Solo Recordings &amp; Stems</span><br><span class="med">bass recording</span></span><span class="tier">asserted</span></div>
-        <div class="lrow"><span class="no">No. 4</span><span><span class="ti">Draft Notes on Multi-Agent Consent</span><br><span class="med">notes</span></span><span class="tier">asserted</span></div>
-        <div class="lrow"><span class="no">No. 5</span><span><span class="ti">Live Bass Improvisation Session</span><br><span class="med">bass recording</span></span><span class="tier">asserted</span></div>
+    <!-- 1 REGISTER -->
+    <section class="scene on" data-i="0">
+      <div class="grid g-7-5">
+        <div style="display:flex;flex-direction:column">
+          <div class="eyebrow">Office of Creative Consent · Register of Works</div>
+          <h1>Five works. All real. <em>All mine.</em></h1>
+          <div class="panel flush" style="margin-top:18px;flex:1">
+            <table class="works">
+              <thead><tr><th>№</th><th>Work</th><th style="text-align:right">Control tier</th></tr></thead>
+              <tbody>
+                <tr><td class="n">01</td><td><div class="ti">Consent Rails &amp; Creative Sovereignty</div><div class="md">essay</div></td><td style="text-align:right"><span class="pill">asserted</span></td></tr>
+                <tr><td class="n">02</td><td><div class="ti">Hodi Institutional Consent Fleet</div><div class="md">code repository</div></td><td style="text-align:right"><span class="pill">asserted</span></td></tr>
+                <tr><td class="n">03</td><td><div class="ti">Electric Bass Solo Recordings &amp; Stems</div><div class="md">bass recording</div></td><td style="text-align:right"><span class="pill">asserted</span></td></tr>
+                <tr><td class="n">04</td><td><div class="ti">Draft Notes on Multi-Agent Consent</div><div class="md">notes</div></td><td style="text-align:right"><span class="pill">asserted</span></td></tr>
+                <tr><td class="n">05</td><td><div class="ti">Live Bass Improvisation Session</div><div class="md">bass recording</div></td><td style="text-align:right"><span class="pill">asserted</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="ptitle">Visitor log · Hodi’s own daily audit — Cloud Scheduler ✓ · latest Aug 26</div>
+          <div class="stat"><span class="big gold">17</span><span class="lab">visits identifying themselves as <b>AI crawlers</b></span></div>
+          <div class="tally"><span class="tg f"><i></i><i></i><i></i><i></i></span><span class="tg f"><i></i><i></i><i></i><i></i></span><span class="tg f"><i></i><i></i><i></i><i></i></span><span class="tg"><i></i><i></i></span></div>
+          <div class="divider"></div>
+          <div class="stat"><span class="big red">0</span><span class="lab">asked what they were allowed to <b>do</b> with the work</span></div>
+          <div class="divider"></div>
+          <p class="sub" style="margin:0">Every one checked whether it was allowed <b>in</b>. There was never a way to ask the other question. <b>Hodi is that way — the knock.</b></p>
+        </div>
       </div>
-      <div class="visitor">
-        <div class="cap">Visitor log · compiled by Hodi’s own daily audit — Cloud Scheduler ✓ · most recent Aug 26</div>
-        <div class="tallyline"><span class="q">Visits identifying themselves as AI crawlers</span>
-          <span class="tallies"><span class="tgroup full"><i></i><i></i><i></i><i></i></span><span class="tgroup full"><i></i><i></i><i></i><i></i></span><span class="tgroup full"><i></i><i></i><i></i><i></i></span><span class="tgroup"><i></i><i></i></span></span>
-          <span class="n">17</span></div>
-        <div class="tallyline"><span class="q">…asked what they may <b>do</b> with the work</span><span class="none">none.</span></div>
-        <p class="verdictline">Every one checked whether it was allowed <b>in</b>. Not one asked what it was allowed to <b>do</b>. There was never a way to ask. <b>Hodi is that way — the knock.</b></p>
-      </div>
-    </div></section>
+    </section>
 
-    <section class="doc" data-step="1"><div class="sheet">
-      <header class="dochead"><div class="office">Hodi · Office of Creative Consent</div><h2>Application &amp; Grant of License</h2><div class="rulebar"></div></header>
-      <p class="letter" id="letter">…</p>
-      <div class="fromline">received in the applicant’s own words · acme-intelligence-labs</div>
-      <div class="drawn" id="drawn">reading the request…</div>
-      <div class="clauses" id="clauses"></div>
-      <div class="noteline"><b>The AI reads what they meant. It decides nothing.</b> The artist’s rules decide — identically, every time. An interpretation that doesn’t fit the terms is rejected, never bent to fit.</div>
-      <div class="execline"><span class="grant-chip" id="grantChip">Granted</span><span class="ex" id="grantEx">evaluating against the live service…</span></div>
-    </div></section>
+    <!-- 2 LICENSE -->
+    <section class="scene" data-i="1">
+      <div class="grid g-5-7">
+        <div>
+          <div class="eyebrow">Application for License</div>
+          <h1>They ask in English.<br><em>My rules decide.</em></h1>
+          <div class="panel" style="margin-top:18px">
+            <div class="ptitle">Received — the applicant’s own words</div>
+            <p class="quote" id="letter">…</p>
+            <div class="from">acme-intelligence-labs</div>
+          </div>
+          <div class="note" style="margin-top:16px"><b>The AI reads what they meant. It decides nothing.</b> The rules decide — identically, every time. An interpretation that doesn’t fit is rejected, never bent to fit.</div>
+        </div>
+        <div class="panel">
+          <div class="ptitle" id="drawn">reading the request…</div>
+          <div class="terms" id="clauses"></div>
+          <div class="divider"></div>
+          <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+            <span class="badge" id="grantChip">✓ Granted</span>
+            <span class="mono" style="font-size:.64rem;color:var(--ink-dim)" id="grantEx">evaluating…</span>
+          </div>
+        </div>
+      </div>
+    </section>
 
-    <section class="doc" data-step="2"><div class="sheet stampable"><div class="bigstamp" id="bigstamp">Revoked</div>
-      <header class="dochead"><div class="office">Hodi · Office of Creative Consent</div><h2>Notice of Revocation</h2><div class="rulebar"></div></header>
-      <p class="preamble">The artist has changed their mind. <i>Consent you can’t take back isn’t consent.</i></p>
-      <div class="drawn">schedule of uses under the grant</div>
-      <div class="schedule" id="schedule">
-        <div class="srow" data-k="training"><span class="body"><span class="ct">Train an AI on my work</span><span class="fine">training</span><span class="margin">— the use revoked, by name</span></span><span class="st">in force</span></div>
-        <div class="srow" data-k="fine_tuning"><span class="body"><span class="ct">Fine-tune an existing model with it</span><span class="fine">fine_tuning</span><span class="margin">— included in that yes · training ⊃ fine_tuning</span></span><span class="st">in force</span></div>
-        <div class="srow" data-k="rag_retrieval"><span class="body"><span class="ct">Let an AI quote and pull from it</span><span class="fine">rag_retrieval</span><span class="margin">— included in that yes · fine_tuning ⊃ rag_retrieval</span></span><span class="st">in force</span></div>
-        <div class="srow" data-k="human_reference"><span class="body"><span class="ct">Let a person study it as reference</span><span class="fine">human_reference</span><span class="margin">— included in that yes · rag_retrieval ⊃ human_reference</span></span><span class="st">in force</span></div>
+    <!-- 3 REVOKE -->
+    <section class="scene" data-i="2">
+      <div class="grid g-7-5">
+        <div class="panel">
+          <div class="ptitle">Schedule of uses under the grant</div>
+          <div class="scopes" id="schedule">
+            <div class="scope" data-k="training"><span class="k"></span><span class="txt"><span class="p">Train an AI on my work</span><span class="m">training</span><span class="why">— the use revoked, by name</span></span><span class="s">in force</span></div>
+            <div class="scope" data-k="fine_tuning"><span class="k"></span><span class="txt"><span class="p">Fine-tune an existing model with it</span><span class="m">fine_tuning</span><span class="why">— inside that yes · training ⊃ fine_tuning</span></span><span class="s">in force</span></div>
+            <div class="scope" data-k="rag_retrieval"><span class="k"></span><span class="txt"><span class="p">Let an AI quote and pull from it</span><span class="m">rag_retrieval</span><span class="why">— inside that yes · fine_tuning ⊃ rag_retrieval</span></span><span class="s">in force</span></div>
+            <div class="scope" data-k="human_reference"><span class="k"></span><span class="txt"><span class="p">Let a person study it as reference</span><span class="m">human_reference</span><span class="why">— inside that yes · rag_retrieval ⊃ human_reference</span></span><span class="s">in force</span></div>
+          </div>
+          <div class="apart"><span><span style="font-size:1rem">Generate new work in my style</span><span class="m" style="display:block;font-family:'IBM Plex Mono',monospace;font-size:.62rem;color:var(--ink-dim);margin-top:2px">synthesis — a separate ask, never part of this grant</span></span><span class="s" id="apartSt">not granted here</span></div>
+        </div>
+        <div>
+          <div class="eyebrow">Notice of Revocation</div>
+          <h1>Take back the big yes — <em>everything inside it</em> goes.</h1>
+          <p class="sub">Consent you can’t take back isn’t consent. Press <b>Stamp</b> below: it runs the real cascade against this live service.</p>
+          <div class="divider"></div>
+          <div class="clock" id="clock">awaiting the stamp…</div>
+          <div class="rail" id="pathrail">
+            <div class="ptitle" style="margin:12px 0 8px">how that request actually moved — live</div>
+            <div class="hops"><span class="h">You</span><span class="a">→</span><span class="h">Sandbox agent</span><span class="a">→</span><span class="h g">Agent Gateway</span><span class="a">→</span><span class="h">Firestore append-only</span><span class="a">→</span><span class="h k">Cloud KMS</span></div>
+            <div class="railstat" id="pathstats"></div>
+            <div class="prod">Production <b>/api/v1/revoke</b> hands the cascade to a separate <b>private revocation workload</b> under its own service account, and returns 503 rather than fall back locally. This sandbox runs the same cascade in-process so anyone can try it without a credential.</div>
+          </div>
+          <div class="refused" id="resub"><span class="stampmark">Refused</span><span class="x">The same request, moments later. The grant isn’t erased — it’s struck through. A “no” that pretends the “yes” never happened is its own kind of lie.</span></div>
+        </div>
       </div>
-      <div class="apart"><span><span class="ct">Generate new work in my style</span><span class="fine">synthesis — a separate ask, never part of this grant</span></span><span class="st" id="apartSt">not granted here</span></div>
-      <div class="clockline" id="clock">press <b>Stamp · take it back</b> below — it runs the real cascade against the live service</div>
-      <div class="pathrail" id="pathrail">
-        <div class="cap">how that request actually moved — live, not a diagram</div>
-        <div class="hops"><span class="hop">You</span><span class="ar">→</span><span class="hop">Sandbox agent</span><span class="ar">→</span><span class="hop gate">Agent Gateway · policy</span><span class="ar">→</span><span class="hop">Firestore · append-only</span><span class="ar">→</span><span class="hop kms">Cloud KMS · signed</span></div>
-        <div class="pathstats" id="pathstats"></div>
-        <div class="prodnote">In production, <b>/api/v1/revoke</b> hands the cascade to a separate <b>private revocation-propagator workload</b> under its own service account, and returns 503 rather than fall back locally if that worker is down. This sandbox runs the same cascade in-process so anyone can try it without a credential.</div>
-      </div>
-      <div class="resub" id="resub"><span class="refstamp">Refused</span><span class="rx">The same request, resubmitted moments later. And the grant above isn’t erased — it’s struck through. A “no” that pretends the “yes” never happened is its own kind of lie.</span></div>
-    </div></section>
+    </section>
 
-    <section class="doc" data-step="3"><div class="sheet">
-      <header class="dochead"><div class="office">Hodi · Office of Creative Consent</div><h2>Certificate of Authenticity</h2><div class="rulebar"></div></header>
-      <p class="noticetext">The notice the company received reads: this grant is <b>terminated</b>; the uses are withdrawn; and it <b>does not un-train a model</b> — it withdraws permission going forward.</p>
-      <div class="sigblock"><div class="lab">signature of record — Cloud KMS · ECDSA P-256</div><div class="sigtext" id="sigtext">— revoke on the previous page to issue the signed notice —</div></div>
-      <div class="sealrow">
-        <div class="sealbtns"><button class="ibtn" id="verify" disabled>Press seal — verify</button><button class="ibtn" id="tamper" disabled>Alter one character</button></div>
-        <div class="seal" id="seal"><span id="sealText">seal<br>not yet<br>pressed</span></div>
-        <p class="sealnote" id="sealnote">Verifiable by anyone, in this browser, against the published public key — no Hodi server in the loop.</p>
+    <!-- 4 CERTIFICATE -->
+    <section class="scene" data-i="3">
+      <div class="grid g-1-1">
+        <div>
+          <div class="eyebrow">Certificate of Authenticity</div>
+          <h1>Verifiable by anyone.<br><em>Altered by no one</em> without detection.</h1>
+          <div class="panel" style="margin-top:16px">
+            <div class="ptitle">Signature of record — Cloud KMS · ECDSA P-256</div>
+            <div class="sig" id="sigtext">— revoke on the previous step to issue the signed notice —</div>
+            <div class="sealrow">
+              <div class="btns"><button class="mini" id="verify" disabled>Press seal — verify</button><button class="mini" id="tamper" disabled>Alter one character</button></div>
+              <div class="seal" id="seal"><span id="sealText">seal<br>not yet<br>pressed</span></div>
+              <p class="sealnote" id="sealnote">Verified in <b>your browser</b> against the published public key — no Hodi server in the loop.</p>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:clamp(12px,1.6vw,20px);min-width:0">
+          <div class="panel">
+            <div class="ptitle">Four agents, or four names in one prompt?</div>
+            <p style="font-size:.9rem;color:var(--ink-2);margin:0 0 10px">One real delegation on <b style="color:var(--ink)">google.adk</b> — separate role-scoped agents under a real runner. The revocation worker is forced to hang so the supervisor must recover. Write-free.</p>
+            <button class="mini" id="fleetBtn">Run the real fleet delegation, live</button>
+            <div id="fleetWrap" style="margin-top:10px"></div>
+            <div class="meta" id="fleetMeta"></div>
+          </div>
+          <div class="panel">
+            <div class="ptitle">Attempted entries — refused at the door</div>
+            <p style="font-size:.9rem;color:var(--ink-2);margin:0 0 10px">On Aug 7 a real break-in worked against this system. <b style="color:var(--ink)">We kept that attack.</b> Throw it — and five more — at the live routes.</p>
+            <button class="mini" id="attackBtn">Run the attacks against the live service</button>
+            <div id="attackList" style="margin-top:8px"></div>
+            <div class="pass" id="attackPass"></div>
+          </div>
+        </div>
       </div>
-      <div class="fleet">
-        <div class="cap">Is this four agents, or four names in one prompt?</div>
-        <p class="intro">Run one real delegation. It executes on <b>google.adk</b> — real agents under a real runner — as separate <b>role-scoped agents</b>, and forces the revocation worker to hang so the supervisor has to recover. Nothing is written; it reads fixtures.</p>
-        <button class="ibtn" id="fleetBtn">Run the real fleet delegation, live</button>
-        <div id="fleetWrap"></div>
-        <div class="fleetmeta" id="fleetMeta"></div>
-      </div>
-      <div class="doorlog">
-        <div class="cap">Log of attempted entries — refused at the door</div>
-        <p class="intro">On August 7th a real break-in worked against this system. <b>We kept that attack.</b> Throw it — and five more — at the <b>live</b> routes now.</p>
-        <button class="ibtn" id="attackBtn">Run the attacks against the live service</button>
-        <div id="attackList"></div>
-        <div class="sixline" id="attackPass"></div>
-      </div>
-    </div></section>
+    </section>
 
-    <section class="doc" data-step="4"><div class="sheet">
-      <header class="dochead"><div class="office">Hodi · Office of Creative Consent</div><h2>What This Office Will Not Certify</h2><div class="rulebar"></div></header>
-      <p class="preamble"><i>A registry that flatters you is worthless. This one is built to be believed.</i></p>
-      <div class="decl">
-        <div class="ditem"><span class="dt"><b>That your work is inside a model’s training data.</b><span class="sm">Nobody on earth can prove that today — so the system literally cannot say it. There is no field for a claim it can’t back.</span></span></div>
-        <div class="ditem"><span class="dt"><b>That revocation reaches into a model and pulls your work out.</b><span class="sm">It withdraws permission for future use, and integrated clients stop. It cannot compel a party outside the rail, or un-train a model. A check refuses to let any notice imply otherwise.</span></span></div>
-        <div class="ditem"><span class="dt"><b>That the artist’s own claims are above the rules.</b><span class="sm" id="flatter">Checking the live registry…</span></span></div>
+    <!-- 5 DECLARATIONS -->
+    <section class="scene" data-i="4">
+      <div class="grid g-1-1">
+        <div>
+          <div class="eyebrow">What this office will not certify</div>
+          <h1>A registry that flatters you <em>is worthless.</em></h1>
+          <div class="refuse" style="margin-top:18px">
+            <div class="r"><span class="x">✕</span><span class="h">That your work is inside a model’s training data.<span class="s">Nobody on earth can prove that today — so the system cannot say it. There is no field for a claim it can’t back.</span></span></div>
+            <div class="r"><span class="x">✕</span><span class="h">That revocation pulls your work out of a model.<span class="s">It withdraws permission for future use, and integrated clients stop. It cannot compel a party outside the rail, or un-train a model.</span></span></div>
+            <div class="r"><span class="x">✕</span><span class="h">That the artist’s own claims beat the rules.<span class="s" id="flatter">Checking the live registry…</span></span></div>
+          </div>
+        </div>
+        <div class="closer">
+          <p class="e">Your voice deserves a door before it becomes someone else’s product.</p>
+          <div class="k">Hodi is <span>the knock.</span></div>
+        </div>
       </div>
-      <div class="closing"><p class="ep">Your voice deserves a door before it becomes someone else’s product.</p><div class="knock">Hodi is the knock.</div><div class="rulebar"></div></div>
-    </div></section>
+    </section>
 
-  </div>
+  </main>
 
-  <footer class="actionbar">
-    <div class="hint" id="hint">Live sandbox on Google Cloud — every action below is a real call. Nothing is simulated.</div>
+  <footer class="foot">
+    <div class="tip" id="tip">Live sandbox on Google Cloud — every action is a real call. <b>Nothing is simulated.</b></div>
     <div class="acts">
       <button class="btn" id="back" disabled>← Back</button>
-      <button class="btn primary" id="primary">Begin →</button>
+      <button class="btn go" id="primary">Begin →</button>
     </div>
   </footer>
 </div>
@@ -300,175 +382,150 @@
 (() => {
   const $ = id => document.getElementById(id);
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const api = (path) => fetch(path, {method:'POST', headers:{'Content-Type':'application/json'}});
-  const setGcp = (cls, url) => { $('gcp').className = 'gcp ' + cls; if(url) $('gcpUrl').textContent = url; };
-
-  let sid = null, notice = null, pubKey = null, revoked = false;
+  const api = p => fetch(p, {method:'POST', headers:{'Content-Type':'application/json'}});
+  let sid=null, notice=null, pubKey=null, revoked=false;
 
   async function boot(){
-    try { $('gcpUrl').textContent = location.host; } catch(e){}
-    try {
-      await fetch('/', {cache:'no-store'});
-      const s = await (await api('/demo/api/session')).json();
-      sid = s.session; setGcp('ok', location.host);
-    } catch(e){ setGcp('warn', location.host + ' · waking'); }
+    $('host').textContent = '· ' + location.host;
+    try { await fetch('/', {cache:'no-store'});
+      const s = await (await api('/demo/api/session')).json(); sid=s.session;
+      $('env').className='env ok';
+    } catch(e){ $('env').className='env warn'; }
   }
 
-  let doc2Loaded = false;
-  async function loadDoc2(){
-    if(doc2Loaded) return; doc2Loaded = true;
-    try {
+  let l2=false;
+  async function loadLicense(){
+    if(l2) return; l2=true;
+    try{
       const j = await (await api('/demo/api/interpret')).json();
       $('letter').textContent = j.request_text;
-      $('drawn').innerHTML = 'drawn into the artist’s terms — read live by <b>' + j.interpreter_model + '</b> · Vertex AI';
-      const sc = j.interpreted_scope || {};
-      const terr = (sc.territory || []).join(' & ');
-      const clauses = [
-        ['They may teach their AI from this work;', 'use_type: ' + sc.use_type],
-        ['only the kind of model they named;', 'model_class: ' + sc.model_class],
-        [(sc.commercial ? 'for commercial use;' : 'never for profit;'), 'commercial: ' + sc.commercial],
-        ['within ' + terr + ';', 'territory: ' + (sc.territory||[]).join(', ')],
-        [(sc.attribution_required ? 'and my name stays attached.' : 'attribution optional.'), 'attribution_required: ' + sc.attribution_required],
-      ];
-      const wrap = $('clauses'); wrap.innerHTML = '';
-      clauses.forEach(([t,f],i) => {
-        const d = document.createElement('div'); d.className = 'clause';
-        d.innerHTML = '<span><span class="ct">'+t+'</span><span class="fine">'+f+'</span></span>';
-        wrap.appendChild(d);
-        setTimeout(()=>d.classList.add('on'), (reduce?0:180) + i*(reduce?0:220));
-      });
-    } catch(e){ $('drawn').textContent = 'the interpreter is warming up — reload the page.'; }
+      $('drawn').innerHTML = 'Drawn into the artist’s terms — read live by <span style="color:var(--gold)">'+j.interpreter_model+'</span> · Vertex AI';
+      const sc=j.interpreted_scope||{}, terr=(sc.territory||[]).join(' & ');
+      const rows=[['They may teach their AI from this work','use_type: '+sc.use_type],
+        ['only the kind of model they named','model_class: '+sc.model_class],
+        [sc.commercial?'for commercial use':'never for profit','commercial: '+sc.commercial],
+        ['within '+terr,'territory: '+(sc.territory||[]).join(', ')],
+        [sc.attribution_required?'and my name stays attached':'attribution optional','attribution_required: '+sc.attribution_required]];
+      const w=$('clauses'); w.innerHTML='';
+      rows.forEach(([p,m],i)=>{ const d=document.createElement('div'); d.className='term';
+        d.innerHTML='<span class="i">'+(i+1)+'</span><span><span class="p">'+p+'</span><span class="m">'+m+'</span></span>';
+        w.appendChild(d); setTimeout(()=>d.classList.add('on'), (reduce?0:150)+i*(reduce?0:200)); });
+    }catch(e){ $('drawn').textContent='the interpreter is warming up — reload.'; }
     if(!sid) return;
-    try {
-      const j = await (await api('/demo/api/'+sid+'/license')).json();
-      if(j.permitted){ setTimeout(()=>{ $('grantChip').classList.add('on'); $('grantEx').textContent='limits attached · receipt signed · decided by permits()'; }, reduce?0:1300); }
-      else $('grantEx').textContent = 'this sandbox is already revoked — reload for a fresh one.';
-    } catch(e){}
+    try{ const j=await (await api('/demo/api/'+sid+'/license')).json();
+      if(j.permitted) setTimeout(()=>{$('grantChip').classList.add('on'); $('grantEx').textContent='limits attached · receipt signed · decided by permits()';}, reduce?0:1150);
+      else $('grantEx').textContent='this sandbox is already revoked — reload for a fresh one.';
+    }catch(e){}
   }
 
-  const order = ['training','fine_tuning','rag_retrieval','human_reference'];
-  const rows = {}; document.querySelectorAll('.srow').forEach(r => rows[r.dataset.k]=r);
-  function strike(k,label){ const r=rows[k]; if(!r) return; r.classList.add('struck'); r.querySelector('.st').textContent=label; }
+  const order=['training','fine_tuning','rag_retrieval','human_reference'];
+  const rows={}; document.querySelectorAll('.scope').forEach(r=>rows[r.dataset.k]=r);
   async function runRevoke(){
-    if(!sid){ $('clock').textContent='no live sandbox — reload the page.'; return false; }
-    $('clock').innerHTML = 'minting a real Cloud KMS signature against the live service…';
-    const t0 = performance.now();
-    try {
-      const r = await api('/demo/api/'+sid+'/revoke');
+    if(!sid){ $('clock').textContent='no live sandbox — reload.'; return false; }
+    $('clock').textContent='minting a real Cloud KMS signature against the live service…';
+    const t0=performance.now();
+    try{
+      const r=await api('/demo/api/'+sid+'/revoke');
       if(!r.ok){ $('clock').textContent='this sandbox reached its limit — reload for a fresh one.'; return false; }
-      const res = (await r.json()).result || {};
-      const ms = Math.round(performance.now()-t0);
-      notice = (res.issued_notices||[])[0] || null;
-      $('clock').innerHTML = 'the real cascade ran against the live service in <b>'+(ms/1000).toFixed(1)+' seconds</b> · notice Cloud KMS-signed, issued once';
-      $('bigstamp').classList.add('on');
-      const terminated = res.terminated_scopes || order;
-      const step = reduce?0:420;
-      order.forEach((k,i)=>{ if(terminated.includes(k)) setTimeout(()=>strike(k, i===0?'revoked':'withdrawn'), (reduce?0:180)+i*step); });
-      setTimeout(()=>{ $('apartSt').innerHTML='<b>unaffected ✓</b>'; }, (reduce?0:180)+order.length*step);
-      const grants = (res.affected_grants||[]).length||1, scopes = (res.terminated_scopes||[]).length||4;
-      $('pathstats').textContent = (ms/1000).toFixed(1)+' s  ·  '+scopes+' scopes withdrawn  ·  '+grants+' grant  ·  Cloud KMS ECDSA P-256';
+      const res=(await r.json()).result||{}; const ms=Math.round(performance.now()-t0);
+      notice=(res.issued_notices||[])[0]||null;
+      $('clock').innerHTML='the real cascade ran against the live service in <b>'+(ms/1000).toFixed(1)+'s</b> · notice Cloud KMS-signed, issued once';
+      const term=res.terminated_scopes||order, step=reduce?0:400;
+      order.forEach((k,i)=>{ if(term.includes(k)) setTimeout(()=>{ const el=rows[k]; if(el){el.classList.add('gone'); el.querySelector('.s').textContent=i===0?'revoked':'withdrawn';} }, (reduce?0:150)+i*step); });
+      setTimeout(()=>$('apartSt').innerHTML='<b>unaffected ✓</b>', (reduce?0:150)+order.length*step);
+      $('pathstats').textContent=(ms/1000).toFixed(1)+'s · '+((res.terminated_scopes||[]).length||4)+' scopes withdrawn · '+((res.affected_grants||[]).length||1)+' grant · Cloud KMS ECDSA P-256';
       $('pathrail').classList.add('on');
-      if(notice && notice.signature){ renderSig(false); $('verify').disabled=false; }
-      try { const lj = await (await api('/demo/api/'+sid+'/license')).json(); if(lj.permitted===false) $('resub').classList.add('show'); } catch(e){}
-      revoked = true;
-      return true;
-    } catch(e){ $('clock').textContent='could not reach the live service — reload and try again.'; return false; }
+      if(notice&&notice.signature){ renderSig(false); $('verify').disabled=false; }
+      try{ const lj=await (await api('/demo/api/'+sid+'/license')).json(); if(lj.permitted===false) $('resub').classList.add('on'); }catch(e){}
+      revoked=true; return true;
+    }catch(e){ $('clock').textContent='could not reach the live service — reload.'; return false; }
   }
 
-  function sigParts(){ const s=notice.signature; const i1=s.indexOf(':'); const i2=s.indexOf(':',i1+1); return [s.slice(0,i1), s.slice(i1+1,i2), s.slice(i2+1)]; }
-  let tampered=false, pressed=false, curB64=null;
-  function renderSig(t){ const [alg,keyref,b64]=sigParts(); curB64=b64;
-    if(!t){ $('sigtext').innerHTML='<span class="alg">'+alg+'</span>:'+keyref+':'+b64; }
-    else { const k=20; $('sigtext').innerHTML='<span class="alg">'+alg+'</span>:'+keyref+':'+b64.slice(0,k)+'<span class="bad">'+b64[k]+'</span>'+b64.slice(k+1); } }
+  function parts(){ const s=notice.signature,a=s.indexOf(':'),b=s.indexOf(':',a+1); return [s.slice(0,a),s.slice(a+1,b),s.slice(b+1)]; }
+  let tam=false,pressed=false,cur64=null;
+  function renderSig(t){ const [alg,kr,b64]=parts(); cur64=b64;
+    $('sigtext').innerHTML = t ? '<span class="alg">'+alg+'</span>:'+kr+':'+b64.slice(0,20)+'<span class="flip">'+b64[20]+'</span>'+b64.slice(21)
+                               : '<span class="alg">'+alg+'</span>:'+kr+':'+b64; }
   function canon(n){ const o={}; Object.keys(n).filter(k=>k!=='signature').sort().forEach(k=>o[k]=n[k]);
-    let s='{'; const ks=Object.keys(o); ks.forEach((k,i)=>{s+=JSON.stringify(k)+':'+JSON.stringify(o[k])+(i<ks.length-1?',':'');}); return new TextEncoder().encode(s+'}'); }
-  function b2a(b){const bin=atob(b);const a=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);return a;}
-  function derToRaw(d){let i=0;if(d[i++]!==0x30)throw 0;if(d[i]&0x80)i+=(d[i]&0x7f);i++;
-    const rd=()=>{if(d[i++]!==0x02)throw 0;let len=d[i++];let v=d.slice(i,i+len);i+=len;while(v.length>32&&v[0]===0)v=v.slice(1);const o=new Uint8Array(32);o.set(v,32-v.length);return o;};
-    const r=rd(),s=rd();const raw=new Uint8Array(64);raw.set(r,0);raw.set(s,32);return raw;}
-  async function loadPub(){ if(pubKey) return pubKey; const pem=(await (await fetch('/verification-key')).json()).public_key_pem;
-    const b=pem.replace(/-----[^-]+-----/g,'').replace(/\s+/g,''); pubKey=await crypto.subtle.importKey('spki', b2a(b).buffer, {name:'ECDSA',namedCurve:'P-256'}, false, ['verify']); return pubKey; }
-  async function pressSeal(){ pressed=true; $('tamper').disabled=false; const seal=$('seal'); seal.classList.remove('ok','bad','pressed'); void seal.offsetWidth;
-    try { const key=await loadPub(); const raw=derToRaw(b2a(curB64)); const ok=await crypto.subtle.verify({name:'ECDSA',hash:'SHA-256'}, key, raw.buffer, canon(notice).buffer);
-      if(ok && !tampered){ seal.classList.add('ok','pressed'); $('sealText').innerHTML='VERIFIED<br>KMS · ECDSA<br>P-256';
-        $('sealnote').textContent='The mathematics agrees with the published public key — verified in this browser, no Hodi server in the loop. Verifiable by anyone; altered by no one without detection.'; }
-      else { seal.classList.add('bad','pressed'); $('sealText').innerHTML='VOID<br>signature<br>does not match';
+    let s='{'; const ks=Object.keys(o); ks.forEach((k,i)=>s+=JSON.stringify(k)+':'+JSON.stringify(o[k])+(i<ks.length-1?',':'')); return new TextEncoder().encode(s+'}'); }
+  function b2a(b){const x=atob(b),a=new Uint8Array(x.length);for(let i=0;i<x.length;i++)a[i]=x.charCodeAt(i);return a;}
+  function der(d){let i=0;if(d[i++]!==0x30)throw 0;if(d[i]&0x80)i+=(d[i]&0x7f);i++;
+    const rd=()=>{if(d[i++]!==0x02)throw 0;let n=d[i++],v=d.slice(i,i+n);i+=n;while(v.length>32&&v[0]===0)v=v.slice(1);const o=new Uint8Array(32);o.set(v,32-v.length);return o;};
+    const r=rd(),s=rd(),o=new Uint8Array(64);o.set(r,0);o.set(s,32);return o;}
+  async function key(){ if(pubKey) return pubKey; const pem=(await (await fetch('/verification-key')).json()).public_key_pem;
+    pubKey=await crypto.subtle.importKey('spki', b2a(pem.replace(/-----[^-]+-----/g,'').replace(/\s+/g,'')).buffer,{name:'ECDSA',namedCurve:'P-256'},false,['verify']); return pubKey; }
+  async function press(){ pressed=true; $('tamper').disabled=false; const s=$('seal'); s.classList.remove('ok','bad','hit'); void s.offsetWidth;
+    try{ const ok=await crypto.subtle.verify({name:'ECDSA',hash:'SHA-256'}, await key(), der(b2a(cur64)).buffer, canon(notice).buffer);
+      if(ok&&!tam){ s.classList.add('ok','hit'); $('sealText').innerHTML='VERIFIED<br>KMS ECDSA<br>P-256';
+        $('sealnote').innerHTML='The mathematics agrees with the published key — checked in <b>your browser</b>. Verifiable by anyone; altered by no one without detection.'; }
+      else { s.classList.add('bad','hit'); $('sealText').innerHTML='VOID<br>does not<br>match';
         $('sealnote').textContent='One character changed and the signature no longer agrees with the notice. Altered — and detected.'; }
-    } catch(e){ seal.classList.add('bad','pressed'); $('sealText').innerHTML='VOID<br>could not<br>verify'; } }
-  $('verify').addEventListener('click', pressSeal);
-  $('tamper').addEventListener('click', ()=>{ if(!notice) return; tampered=!tampered;
-    const [,,b64]=sigParts(); if(tampered){ const k=20; const f=b64[k]==='A'?'B':'A'; curB64=b64.slice(0,k)+f+b64.slice(k+1); renderSig(true); $('tamper').textContent='Restore the character'; }
-    else { curB64=b64; renderSig(false); $('tamper').textContent='Alter one character'; } if(pressed) pressSeal(); });
+    }catch(e){ s.classList.add('bad','hit'); $('sealText').innerHTML='VOID<br>cannot<br>verify'; } }
+  $('verify').addEventListener('click',press);
+  $('tamper').addEventListener('click',()=>{ if(!notice)return; tam=!tam; const [,,b64]=parts();
+    if(tam){ const f=b64[20]==='A'?'B':'A'; cur64=b64.slice(0,20)+f+b64.slice(21); renderSig(true); $('tamper').textContent='Restore the character'; }
+    else { cur64=b64; renderSig(false); $('tamper').textContent='Alter one character'; } if(pressed) press(); });
 
-  const GOOD=new Set(['PERMITTED','INITIATED','DISCOVERED']), STOP=new Set(['ABANDONED','QUARANTINED + REROUTED']);
-  $('fleetBtn').addEventListener('click', async ()=>{ const b=$('fleetBtn'); b.disabled=true; b.textContent='running the fleet…'; $('fleetWrap').innerHTML=''; $('fleetMeta').textContent='';
-    try { const j = await (await api('/demo/api/fleet-drill')).json();
-      for(const s of j.steps){ const cls=GOOD.has(s.outcome)?'good':(STOP.has(s.outcome)?'stop':''); const row=document.createElement('div'); row.className='whop '+cls;
-        row.innerHTML='<span class="tag">'+s.outcome+'</span><span><span class="who">'+s.agent+'</span>'+(s.sa?'<span class="sa">'+s.sa+' <em>(role identity)</em></span>':'')+'<span class="det">'+s.detail+'</span></span>';
-        $('fleetWrap').appendChild(row); await new Promise(r=>setTimeout(r, reduce?0:240)); }
-      const link = (j.trace_id && j.trace_exporter==='cloud_trace') ? '<a href="https://console.cloud.google.com/traces/list?tid='+j.trace_id+'" target="_blank" rel="noopener">open in Cloud Trace ↗</a>' : ('trace '+(j.trace_id||'—'));
-      $('fleetMeta').innerHTML='one correlated run on <b>'+j.framework+'</b> · '+j.elapsed_ms+' ms · completed <b>degraded</b>, not hung · '+link+
-        '<br><span style="opacity:.85">Separate role-scoped agents inside one runner. The production data boundaries go further — separately deployed Cloud Run workloads authenticate with distinct service accounts and OIDC.</span>';
+  const G=new Set(['PERMITTED','INITIATED','DISCOVERED']), S=new Set(['ABANDONED','QUARANTINED + REROUTED']);
+  $('fleetBtn').addEventListener('click', async()=>{ const b=$('fleetBtn'); b.disabled=true; b.textContent='running the fleet…'; $('fleetWrap').innerHTML=''; $('fleetMeta').textContent='';
+    try{ const j=await (await api('/demo/api/fleet-drill')).json();
+      for(const s of j.steps){ const d=document.createElement('div'); d.className='hop2 '+(G.has(s.outcome)?'g':(S.has(s.outcome)?'s':''));
+        d.innerHTML='<span class="tag">'+s.outcome+'</span><span><span class="who">'+s.agent+'</span>'+(s.sa?'<span class="sa">'+s.sa+' (role identity)</span>':'')+'<span class="d">'+s.detail+'</span></span>';
+        $('fleetWrap').appendChild(d); await new Promise(r=>setTimeout(r,reduce?0:220)); }
+      const link=(j.trace_id&&j.trace_exporter==='cloud_trace')?'<a href="https://console.cloud.google.com/traces/list?tid='+j.trace_id+'" target="_blank" rel="noopener">open in Cloud Trace ↗</a>':('trace '+(j.trace_id||'—'));
+      $('fleetMeta').innerHTML='one correlated run on <b>'+j.framework+'</b> · '+j.elapsed_ms+'ms · completed <b>degraded</b>, not hung · '+link+'<br>Separate role-scoped agents in one runner. Production goes further — separately deployed Cloud Run workloads with distinct service accounts and OIDC.';
       b.textContent='run it again';
-    } catch(e){ $('fleetMeta').textContent='could not reach the live service — reload and try again.'; b.textContent='run the real fleet delegation, live'; }
+    }catch(e){ $('fleetMeta').textContent='could not reach the live service — reload.'; b.textContent='run the real fleet delegation, live'; }
     b.disabled=false; });
 
-  const probes = [
-    ['/api/v1/revoke', {work_id:'work-repo-001', revoked_use_type:'training'}, null, 'An anonymous request tries to revoke', 'no signature'],
-    ['/api/v1/license', {work_id:'work-repo-001', counterparty_id:'acme-intelligence-labs', requested_scope:{use_type:'fine_tuning', model_class:'open_weights', commercial:false, attribution_required:true, territory:['US'], valid_from:new Date().toISOString()}, raw_document_b64:'aGVsbG8='}, null, 'An anonymous request tries to read a grant', 'no signature'],
-    ['/api/v1/license', {work_id:'work-repo-001', counterparty_id:'acme-intelligence-labs', requested_scope:{use_type:'fine_tuning', model_class:'open_weights', commercial:false, attribution_required:true, territory:['US'], valid_from:new Date().toISOString()}, raw_document_b64:'aGVsbG8='}, 'NOT-A-REAL-SIGNATURE', 'A forged signature on a real request', 'bad signature'],
-    ['/api/v1/revoke', {work_id:'work-repo-001', revoked_use_type:'training'}, 'NOT-A-REAL-SIGNATURE', 'A forged revoke', 'bad signature'],
-    ['/api/v1/negotiate', {work_id:'work-repo-001', counterparty_id:'acme-intelligence-labs', requested_scope:{use_type:'fine_tuning', model_class:'open_weights', commercial:false, attribution_required:true, territory:['US'], valid_from:new Date().toISOString()}}, null, 'An anonymous negotiation', 'missing key'],
-    ['/api/v1/works', {work_id:'demo-x', medium:'prose', uri:'https://x.invalid/x', content_hash:'a'.repeat(64), title:'X', published_at:'2026-01-01'}, null, 'An anonymous registration', 'missing key'],
-  ];
-  $('attackBtn').addEventListener('click', async ()=>{ const b=$('attackBtn'); b.disabled=true; b.textContent='throwing the attacks…'; $('attackList').innerHTML=''; let refused=0;
-    for(const [path,body,sig,label,hint] of probes){ const row=document.createElement('div'); row.className='drow pending'; row.innerHTML='<span>'+label+' <span class="hint2">· '+hint+'</span></span><span class="rs">…</span>'; $('attackList').appendChild(row);
-      const h={'Content-Type':'application/json'}; if(sig){ h['X-Hodi-Key-Id']='key-attacker-invented'; h['X-Hodi-Timestamp']=new Date().toISOString(); h['X-Hodi-Signature']=sig; }
-      let code; try { code=(await fetch(path,{method:'POST',headers:h,body:JSON.stringify(body)})).status; } catch(e){ code='ERR'; }
-      const ref=(code===403||code===401); if(ref) refused++; row.classList.remove('pending'); row.querySelector('.rs').textContent = code===403?'403 · REFUSED':(ref?code+' · REFUSED':code); }
-    $('attackPass').textContent = refused+' of '+probes.length+' attempts refused at the door · the boundary holds'; b.textContent='attacks refused — run again'; b.disabled=false; });
+  const now=()=>new Date().toISOString();
+  const sc=()=>({use_type:'fine_tuning',model_class:'open_weights',commercial:false,attribution_required:true,territory:['US'],valid_from:now()});
+  const probes=[
+    ['/api/v1/revoke',{work_id:'work-repo-001',revoked_use_type:'training'},null,'Anonymous request tries to revoke','no signature'],
+    ['/api/v1/license',{work_id:'work-repo-001',counterparty_id:'acme-intelligence-labs',requested_scope:sc(),raw_document_b64:'aGVsbG8='},null,'Anonymous request tries to read a grant','no signature'],
+    ['/api/v1/license',{work_id:'work-repo-001',counterparty_id:'acme-intelligence-labs',requested_scope:sc(),raw_document_b64:'aGVsbG8='},'NOT-A-REAL-SIGNATURE','Forged signature on a real request','bad signature'],
+    ['/api/v1/revoke',{work_id:'work-repo-001',revoked_use_type:'training'},'NOT-A-REAL-SIGNATURE','A forged revoke','bad signature'],
+    ['/api/v1/negotiate',{work_id:'work-repo-001',counterparty_id:'acme-intelligence-labs',requested_scope:sc()},null,'Anonymous negotiation','missing key'],
+    ['/api/v1/works',{work_id:'demo-x',medium:'prose',uri:'https://x.invalid/x',content_hash:'a'.repeat(64),title:'X',published_at:'2026-01-01'},null,'Anonymous registration','missing key']];
+  $('attackBtn').addEventListener('click', async()=>{ const b=$('attackBtn'); b.disabled=true; b.textContent='throwing the attacks…'; $('attackList').innerHTML=''; let ref=0;
+    for(const [p,body,sig,label,hint] of probes){ const row=document.createElement('div'); row.className='arow p';
+      row.innerHTML='<span>'+label+' <span class="h">· '+hint+'</span></span><span class="c">…</span>'; $('attackList').appendChild(row);
+      const h={'Content-Type':'application/json'}; if(sig){h['X-Hodi-Key-Id']='key-attacker-invented';h['X-Hodi-Timestamp']=now();h['X-Hodi-Signature']=sig;}
+      let c; try{ c=(await fetch(p,{method:'POST',headers:h,body:JSON.stringify(body)})).status; }catch(e){ c='ERR'; }
+      const r=(c===403||c===401); if(r) ref++; row.className='arow'; row.querySelector('.c').textContent=c===403?'403 · REFUSED':(r?c+' · REFUSED':c); }
+    $('attackPass').textContent=ref+' of '+probes.length+' refused at the door · the boundary holds'; b.textContent='attacks refused — run again'; b.disabled=false; });
 
-  let doc5Loaded=false;
-  async function loadDoc5(){ if(doc5Loaded) return; doc5Loaded=true;
-    try { const w=(await (await fetch('/works')).json()).works||[]; const v=w.filter(x=>x.control_tier==='verified_control').length;
+  let l5=false;
+  async function loadDecl(){ if(l5) return; l5=true;
+    try{ const w=(await (await fetch('/works')).json()).works||[]; const v=w.filter(x=>x.control_tier==='verified_control').length;
       $('flatter').textContent='Right now '+v+' of my '+w.length+' works shows as “verified” — I haven’t cryptographically proven ownership yet, and the system won’t round up. Checked live, just now.'; }
-    catch(e){ $('flatter').textContent='None of my works is marked “verified” until ownership is cryptographically proven — the system won’t round up.'; } }
+    catch(e){ $('flatter').textContent='No work is marked “verified” until ownership is cryptographically proven — the system won’t round up.'; } }
 
-  const docs=[...document.querySelectorAll('.doc')];
-  const labels=['Register','License','Revoke','Certificate','Declarations'];
-  const rail=$('steprail'); rail.innerHTML=docs.map((_,i)=>'<button data-go="'+i+'"><span class="bar"></span><span class="lbl">'+(i+1)+' '+labels[i]+'</span></button>').join('');
-  const back=$('back'), primary=$('primary');
+  const scenes=[...document.querySelectorAll('.scene')];
+  const names=['Register','License','Revoke','Certificate','Declarations'];
+  $('steps').innerHTML=scenes.map((_,i)=>'<button data-g="'+i+'"><span class="b"></span><span class="t">'+(i+1)+' '+names[i]+'</span></button>').join('');
+  const TIPS=['Live sandbox on Google Cloud — every action is a real call. <b>Nothing is simulated.</b>',
+    'Read live by <b>Gemini 3.5 Flash</b> on Vertex AI — then the deterministic rules decide.',
+    'The hero: <b>Stamp</b> runs the real revocation cascade against this live service.',
+    'Verify the signature in your browser · run the real ADK fleet · attack the live routes.',
+    'What the office refuses to certify — then the knock.'];
   let cur=0;
-  const HINTS=[
-    'Live sandbox on Google Cloud — every action below is a real call. Nothing is simulated.',
-    'The request is read by <b>Gemini 3.5 Flash</b> on Vertex AI, then the deterministic rules decide.',
-    'This is the hero: press <b>Stamp</b> to run the real revocation cascade against the live service.',
-    'Verify the signature in your browser; run the real ADK fleet; attack the live routes.',
-    'What the office refuses to certify — then the knock.',
-  ];
-  function configurePrimary(){
-    if(cur===2 && !revoked){ primary.textContent='Stamp · take it back'; primary.className='btn stamp'; }
-    else if(cur===docs.length-1){ primary.textContent='Start over ↻'; primary.className='btn primary'; }
-    else { primary.textContent='Continue →'; primary.className='btn primary'; }
-  }
-  function show(i){
-    cur=Math.max(0,Math.min(docs.length-1,i));
-    docs.forEach((d,idx)=>d.classList.toggle('on', idx===cur));
-    [...rail.children].forEach((b,idx)=>{ b.setAttribute('aria-current', idx===cur); b.classList.toggle('seen', idx<cur); });
-    back.disabled = cur===0;
-    $('hint').innerHTML = HINTS[cur];
-    configurePrimary();
-    if(cur===1) loadDoc2();
-    if(cur===4) loadDoc5();
-  }
-  primary.addEventListener('click', async ()=>{
-    if(cur===2 && !revoked){ primary.disabled=true; const ok=await runRevoke(); primary.disabled=false; if(ok) configurePrimary(); return; }
-    if(cur===docs.length-1){ location.reload(); return; }
-    show(cur+1);
-  });
-  back.addEventListener('click', ()=>show(cur-1));
-  rail.addEventListener('click', e=>{ const b=e.target.closest('button'); if(b) show(+b.dataset.go); });
-  document.addEventListener('keydown', e=>{ if(e.target.tagName==='BUTTON') return; if(e.key==='ArrowRight' && !(cur===2&&!revoked)) show(cur+1); if(e.key==='ArrowLeft') show(cur-1); });
+  function setPrimary(){ const p=$('primary');
+    if(cur===2&&!revoked){ p.textContent='Stamp · take it back'; p.className='btn act'; }
+    else if(cur===scenes.length-1){ p.textContent='Start over ↻'; p.className='btn go'; }
+    else { p.textContent='Continue →'; p.className='btn go'; } }
+  function show(i){ cur=Math.max(0,Math.min(scenes.length-1,i));
+    scenes.forEach((s,x)=>s.classList.toggle('on',x===cur));
+    [...$('steps').children].forEach((b,x)=>{ b.setAttribute('aria-current',x===cur); b.classList.toggle('done',x<cur); });
+    $('back').disabled=cur===0; $('tip').innerHTML=TIPS[cur]; setPrimary();
+    if(cur===1) loadLicense(); if(cur===4) loadDecl(); }
+  $('primary').addEventListener('click', async()=>{
+    if(cur===2&&!revoked){ $('primary').disabled=true; const ok=await runRevoke(); $('primary').disabled=false; if(ok) setPrimary(); return; }
+    if(cur===scenes.length-1){ location.reload(); return; } show(cur+1); });
+  $('back').addEventListener('click',()=>show(cur-1));
+  $('steps').addEventListener('click',e=>{const b=e.target.closest('button'); if(b) show(+b.dataset.g);});
+  document.addEventListener('keydown',e=>{ if(e.target.tagName==='BUTTON')return;
+    if(e.key==='ArrowRight'&&!(cur===2&&!revoked)) show(cur+1); if(e.key==='ArrowLeft') show(cur-1); });
 
   boot(); show(0);
 })();
