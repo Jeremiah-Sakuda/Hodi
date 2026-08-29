@@ -14,6 +14,9 @@ COPY src/ /app/src/
 # every interpretation went to Vertex even when a recorded answer existed — and
 # the failure-tolerance drill could not read its fixture events at all.
 COPY fixtures/ /app/fixtures/
+# The committed, dated crawler audit — /metrics-snapshot serves this file so no
+# live page hard-codes an audit figure. Without it the route answers 503.
+COPY docs/metrics.json /app/docs/metrics.json
 
 ENV PYTHONPATH=/app
 

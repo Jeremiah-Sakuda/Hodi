@@ -235,11 +235,11 @@
 
           <div class="stats" id="stats">
             <div class="s"><div class="v gold" id="stWorks">—</div><div class="l">works registered</div></div>
-            <div class="s"><div class="v" id="stCrawl">—</div><div class="l">endpoint access records logged</div></div>
+            <div class="s"><div class="v" id="stCrawl">—</div><div class="l" id="stCrawlLab">self-identified AI crawler visits</div></div>
             <div class="s"><div class="v" id="stCanary">—</div><div class="l">canary hits recorded</div></div>
             <div class="s"><div class="v" id="stVerbatim">—</div><div class="l">verbatim matches found</div></div>
           </div>
-          <div class="statnote">read live from this service the moment you loaded the page — an unreachable count renders “unavailable”, never a plausible number</div>
+          <div class="statnote">works, canary hits and verbatim matches are read live the moment you load the page; crawler visits are the latest committed, dated audit — an unreachable count renders “unavailable”, never a plausible number</div>
         </div>
 
         <div class="sect how">
@@ -429,15 +429,22 @@
     } catch(e){ $('stWorks').textContent = 'unavailable'; }
     try {
       const c = await (await fetch('/evidence-counts')).json();
-      for (const [id, key] of [['stCrawl','crawler_access'],['stCanary','canary_hit'],['stVerbatim','verbatim_match']]) {
+      for (const [id, key] of [['stCanary','canary_hit'],['stVerbatim','verbatim_match']]) {
         const v = c[key];
         $(id).textContent = (v === undefined || v === null) ? 'unavailable' : v;
       }
       $('env').className = 'env ok';
     } catch(e){
-      ['stCrawl','stCanary','stVerbatim'].forEach(i => $(i).textContent = 'unavailable');
+      ['stCanary','stVerbatim'].forEach(i => $(i).textContent = 'unavailable');
       $('env').className = 'env warn';
     }
+    try {
+      // The committed, dated audit — the same file the README is held to.
+      const m = await (await fetch('/metrics-snapshot')).json();
+      if (typeof m.known_crawler_ua_matches !== 'number') throw 0;
+      $('stCrawl').textContent = m.known_crawler_ua_matches;
+      $('stCrawlLab').textContent = 'self-identified AI crawler visits · audit ' + (m.audit_date_utc || '');
+    } catch(e){ $('stCrawl').textContent = 'unavailable'; }
   }
 
   /* ---------- studio ---------- */

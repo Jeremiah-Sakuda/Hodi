@@ -17,7 +17,7 @@ Created for the All Things Agentic Hackathon.
 ## Writing
 
 - **[Seven ways to lie to yourself in code](blog/seven-ways-to-lie-to-yourself-in-code.html)** — the
-  defect ledger: sixty-four defects, nine classes, the four that recurred, and the four structural
+  defect ledger: sixty-six defects, nine classes, the four that recurred, and the four structural
   guards that answer them.
 
 ## Project documents
@@ -33,6 +33,7 @@ Created for the All Things Agentic Hackathon.
 ## Source and live service
 
 - Repository: [github.com/Jeremiah-Sakuda/Hodi](https://github.com/Jeremiah-Sakuda/Hodi)
-- **Interactive walkthrough: [/demo](https://hodi-evidence-endpoint-406699565497.us-central1.run.app/demo)** — click through the whole story against the live service, nothing simulated.
-- Evidence endpoint: [hodi-evidence-endpoint](https://hodi-evidence-endpoint-406699565497.us-central1.run.app/)
+- **The platform: [hodi-evidence-endpoint-…run.app](https://hodi-evidence-endpoint-406699565497.us-central1.run.app/)** — the Studio (register a work, hashed in your browser, declare terms, revoke with a KMS-signed cascade), the Market (ask for a licence in your own words — Gemini interprets live, the declared terms decide), and the guided walkthrough. No install, no account, nothing simulated.
+- **Interactive walkthrough: [/demo](https://hodi-evidence-endpoint-406699565497.us-central1.run.app/demo)** — the five-step run from the demo video, against the live service.
+- Evidence endpoint (JSON machine root, same URL for non-browser clients): [hodi-evidence-endpoint](https://hodi-evidence-endpoint-406699565497.us-central1.run.app/)
 - Machine-readable consent terms: [/.well-known/hodi.json](https://hodi-evidence-endpoint-406699565497.us-central1.run.app/.well-known/hodi.json)

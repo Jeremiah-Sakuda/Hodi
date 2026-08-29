@@ -247,13 +247,13 @@
           </div>
         </div>
         <div class="panel">
-          <div class="ptitle">Visitor log · Hodi’s own daily audit — Cloud Scheduler ✓ · latest Aug 26</div>
-          <div class="stat"><span class="big gold">17</span><span class="lab">visits identifying themselves as <b>AI crawlers</b></span></div>
-          <div class="tally"><span class="tg f"><i></i><i></i><i></i><i></i></span><span class="tg f"><i></i><i></i><i></i><i></i></span><span class="tg f"><i></i><i></i><i></i><i></i></span><span class="tg"><i></i><i></i></span></div>
+          <div class="ptitle" id="crawlTitle">Visitor log · Hodi’s own daily audit — Cloud Scheduler ✓</div>
+          <div class="stat"><span class="big gold" id="crawlN">—</span><span class="lab">visits identifying themselves as <b>AI crawlers</b></span></div>
+          <div class="tally" id="crawlTally"></div>
           <div class="divider"></div>
-          <div class="stat"><span class="big red">0</span><span class="lab">asked what they were allowed to <b>do</b> with the work</span></div>
+          <div class="stat"><span class="big red" id="termsN">—</span><span class="lab" id="termsLab">has ever fetched the <b>machine-readable terms</b></span></div>
           <div class="divider"></div>
-          <p class="sub" style="margin:0">Every one checked whether it was allowed <b>in</b>. There was never a way to ask the other question. <b>Hodi is that way — the knock.</b></p>
+          <p class="sub" style="margin:0" id="crawlSub">Nearly all of them checked only whether they were allowed <b>in</b>. What none of them can do yet is ask what they may <b>do</b> with the work. <b>Hodi is that way — the knock.</b></p>
         </div>
       </div>
     </section>
@@ -391,6 +391,39 @@
       const s = await (await api('/demo/api/session')).json(); sid=s.session;
       $('env').className='env ok';
     } catch(e){ $('env').className='env warn'; }
+    loadAudit();
+  }
+
+  // Every figure on this screen comes from the committed, dated audit the
+  // README and Diagram B are held to — never a literal in this file. The first
+  // version hard-coded the count; the next audit moved it and the live page
+  // kept reading the old number. Unreachable → "unavailable", not a plausible one.
+  async function loadAudit(){
+    try{
+      const m = await (await fetch('/metrics-snapshot')).json();
+      const n = m.known_crawler_ua_matches;
+      if (typeof n !== 'number') throw 0;
+      $('crawlN').textContent = n;
+      $('crawlTitle').textContent = 'Visitor log · Hodi’s own daily audit — Cloud Scheduler ✓ · audit ' + (m.audit_date_utc || '');
+      const t = $('crawlTally'); t.innerHTML = '';
+      for (let left = n; left > 0; left -= 5){
+        const g = document.createElement('span'); const k = Math.min(4, left === 5 ? 4 : left);
+        g.className = 'tg' + (left >= 5 ? ' f' : '');
+        for (let i = 0; i < k; i++) g.appendChild(document.createElement('i'));
+        t.appendChild(g);
+      }
+      const f = m.known_crawler_consent_doc_fetches;
+      if (typeof f === 'number'){
+        $('termsN').textContent = f;
+        $('termsLab').innerHTML = (f === 1 ? 'has' : 'have') + ' ever fetched the <b>machine-readable terms</b>';
+        $('crawlSub').innerHTML = (m.known_crawler_robots_txt_fetches ?? 'most') + ' of the ' + n
+          + ' checked whether they were allowed <b>in</b> (robots.txt). ' + (f === 1 ? 'Exactly one has read the terms.' : f + ' have read the terms.')
+          + ' What none of them can do yet is ask what they may <b>do</b> with the work. <b>Hodi is that way — the knock.</b>';
+      }
+    } catch(e){
+      $('crawlN').textContent = 'unavailable'; $('termsN').textContent = '—';
+      $('crawlTitle').textContent = 'Visitor log · the committed audit could not be read';
+    }
   }
 
   let l2=false;

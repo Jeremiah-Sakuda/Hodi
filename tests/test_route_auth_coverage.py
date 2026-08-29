@@ -114,6 +114,7 @@ PUBLIC_ROUTES = {
     "/demo/api/{sid}/works",           # GET: seeded + registered works · POST: register a claim, demo_works only
     "/demo/api/{sid}/request-license", # live Gemini interpret + deterministic decision; grant appends to demo_grants only
     "/demo/api/{sid}/grants",          # read-only ledger over demo_* collections
+    "/metrics-snapshot",               # the committed, dated crawler audit — read-only file serve
 }
 
 

@@ -1162,3 +1162,39 @@ check-generated, verify-scopes, `make demo-live` (6/6), red-team all green.
 3. Require action cues before every Step 4 claim — narration without the corresponding visible click would weaken proof of action even if the underlying feature exists.
 
 **Requirements touched:** HOD-104, HOD-301, HOD-302, HOD-320, HOD-360, HOD-620, HOD-760
+
+---
+
+### 2026-08-29 — Build the platform: landing page, Studio, and Market (HOD-780)
+
+**Prompt (verbatim):**
+> Proceed with the build, and then when you're done let's work on making sure the documentation is up to date, then we will work on the devpost stuff
+
+**Outcome:** The site at `/` now carries the product itself, with the guided walkthrough as one door of three. Browsers receive the platform page; every non-browser client still receives the JSON machine root from the same URL (content negotiation on the Accept header), so no crawler- or agent-facing surface changed. The Studio registers a work as a claim — title, medium, size, and a SHA-256 computed by the visitor's browser; the file is never uploaded — then declares licensable uses and conditions, shows the per-work append-only ledger, and revokes through the production cascade with a real Cloud KMS signature. The Market takes a free-text request, runs the real pinned Gemini interpreter live on Vertex AI, and decides deterministically from the artist's declared terms and the event log; a revocation also closes the standing offer, read from the log, so a revoked "yes" cannot be re-granted by asking again. All new routes execute as `sandbox_agent`, which the gateway denies at every real collection; the live interpreter call is text-length-, session-, and IP-capped. Twelve new tests cover the boundary against the gateway's write sink, the decision function through the real route, offer closure, and claim-only registration. Deployed twice and verified live: grant via real Gemini, three-reason refusal, KMS-signed cascade, offer-closed refusal.
+
+**Defect produced by this build (ledger `landing-stat-label-overclaim`):** the first deployed landing page rendered the `crawler_access` collection count — every logged access record, mostly this project's own instrumentation — under the label "AI crawler visits observed". A live number under a stronger label than its mechanism, caught only by reviewing the deployed page. Interim fix relabelled it to what the count is; final fix replaced it with the audited known-crawler figure served from `/metrics-snapshot`, dated.
+
+**Key decisions:**
+1. Registration stores a claim, never content — a public unauthenticated upload store is an abuse surface, and a rights registry holds claims about works, not masters. The UI says "your file never left your device" because that is mechanically true.
+2. One shared sandbox session across both journeys, so a judge can play both sides of the market against themselves: register in the Studio, license it in the Market, revoke, and watch the same request refuse.
+3. Revocation closes the offer, derived from the append-only log rather than mutable state — "I take it back" that auto-granted the next identical ask would be the system winking at itself.
+4. No accounts. Zero-friction access is both the contest's testing requirement and the honest shape of a public sandbox.
+
+**Requirements touched:** HOD-301, HOD-302, HOD-312, HOD-620, HOD-760, HOD-780
+
+---
+
+### 2026-08-29 — Documentation pass: the audit moved, and a live page had frozen it (HOD-790)
+
+**Prompt (verbatim):**
+> Ok let's do the documentation, and then seperately write up the devposty submission
+
+**Outcome:** Regenerated `docs/metrics.json` from live Firestore and swept every guarded document to the 2026-08-29 audit: 6956 accrued records, 29 known-crawler visits from three self-identifying user agents, 281 non-self unattributed — and one crawler has now fetched `/.well-known/hodi.json`, so the long-standing phrasing "not one fetched the terms" was retired across the README, both essays, the Devpost draft, and Diagram B (re-rendered). The recording script was replaced with the browser-walkthrough script and remains under the same `check-docs` guard (accrued count, crawler count, cascade median, revision). The defect ledger gained two entries and every stated total moved to sixty-six.
+
+**Defect recorded (ledger `demo-page-hardcoded-crawler-count`):** the guided demo's first screen shipped the known-crawler count as a literal in its HTML — 17, with a hand-drawn tally to match — and the next audit moved the number to 29 while the live page kept saying 17. The Literal Metric Rendering Rule, violated on the most-viewed surface in the project, by the build that existed to demonstrate the rule. Fixed structurally: `GET /metrics-snapshot` serves the committed, dated audit (now shipped in the image), and the demo page, the landing page, and the tally render every figure from it — an unreachable snapshot renders "unavailable", never a plausible number.
+
+**Key decisions:**
+1. Serve the committed audit rather than recompute per request — a public scan of 6900+ records per page load is a cost amplifier, and the dated snapshot is exactly what the README and Diagram B already cite. The date is the honesty.
+2. Let the finding age in public: the corrected sentence says the consent terms have been read once, because that is what the audit says now. A dated observation is allowed to change; an undated one just becomes false.
+
+**Requirements touched:** HOD-320, HOD-350, HOD-360, HOD-760, HOD-780, HOD-790

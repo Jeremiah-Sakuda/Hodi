@@ -382,6 +382,16 @@
           "id": "crawler-count-guard-anchored-on-exact-phrasings",
           "summary": "The Devpost text said 'nine' crawler matches in two sentences and 16 in a third — inside the section about number drift — because check_doc_metrics.py anchored its crawler checks on two exact phrasings. Separately, the headline robots.txt finding ('every one fetched /robots.txt, not one fetched the consent document') existed only in prose across five documents and was never derived.",
           "source": "scripts/check_doc_metrics.py sweeps every quantifier attached to a crawler noun; scripts/daily_accrual_check.py derives known_crawler_paths and the date range"
+        },
+        {
+          "id": "landing-stat-label-overclaim",
+          "summary": "The platform landing page rendered the crawler_access collection count — every access record, mostly this project's own instrumentation — under the label 'AI crawler visits observed'. A live number under a stronger label than its mechanism. Caught reviewing the deployed page; relabelled to what the count is, then replaced with the audited known-crawler figure served from /metrics-snapshot.",
+          "source": "src/demo/site.html; fix commits of 2026-08-29"
+        },
+        {
+          "id": "demo-page-hardcoded-crawler-count",
+          "summary": "The guided demo's first screen shipped the known-crawler count as a literal in its HTML (17, with a matching hand-drawn tally). The 2026-08-29 audit moved the number to 29 and the live page kept saying 17 — the Literal Metric Rendering Rule violated on the project's most-viewed surface. Fixed by serving the committed dated audit at GET /metrics-snapshot and rendering every figure (count, tally, terms-fetch line) from it.",
+          "source": "src/demo/index.html; GET /metrics-snapshot in src/evidence_service/main.py"
         }
       ]
     }

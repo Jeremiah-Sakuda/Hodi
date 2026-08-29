@@ -43,7 +43,7 @@ authenticated identity.
 > five registered works shows as "verified", because I have not cryptographically proven ownership
 > yet, and it refuses to round up.
 >
-> I also kept a ledger of every place the system lied to me while I built it — 64 defects, nine
+> I also kept a ledger of every place the system lied to me while I built it — 66 defects, nine
 > classes, four that came back after being fixed once. The write-up:
 > https://jeremiah-sakuda.github.io/Hodi/blog/seven-ways-to-lie-to-yourself-in-code.html
 >
