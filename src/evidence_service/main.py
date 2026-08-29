@@ -92,6 +92,13 @@ app.mount("/console", StaticFiles(directory=console_dir, html=True), name="conso
 # PUBLIC_ROUTES with that reason.
 _demo_page = os.path.join(os.path.dirname(os.path.dirname(__file__)), "demo", "index.html")
 
+# The platform site (HOD-780): landing page plus the Studio (artist) and Market
+# (buyer) journeys, all driving the same /demo/api sandbox. Served from GET /
+# to BROWSERS ONLY — content negotiation on the Accept header — so every agent,
+# crawler, and script that reads the JSON root keeps getting exactly the JSON
+# root. One URL, honest to both audiences.
+_site_page = os.path.join(os.path.dirname(os.path.dirname(__file__)), "demo", "site.html")
+
 
 @app.get("/demo", response_class=HTMLResponse)
 async def get_demo_page(request: Request):
@@ -549,6 +556,12 @@ async def get_hodi_json(request: Request):
 
 @app.get("/", response_class=JSONResponse)
 async def get_root(request: Request):
+    # A client that asks for text/html is a person with a browser — hand them
+    # the site. Everything else (curl, SDKs, crawlers with */*) still gets the
+    # machine root below, unchanged.
+    if "text/html" in request.headers.get("accept", ""):
+        with open(_site_page, encoding="utf-8") as fh:
+            return HTMLResponse(fh.read())
     base = get_effective_base_url()
     works = get_registered_works()
     return {

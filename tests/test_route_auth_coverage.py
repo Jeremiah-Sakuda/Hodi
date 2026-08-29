@@ -106,6 +106,14 @@ PUBLIC_ROUTES = {
     "/demo/api/{sid}/revoke",       # real cascade over demo_* only; sandbox role; signature-capped
     "/demo/api/fleet-drill",        # real ADK fleet delegation, write-free (reads fixtures, appends nothing)
     "/demo/api/interpret",          # real Gemini scope interpreter (cache-backed), read-only
+    # --- the platform sandbox (HOD-780): Studio + Market journeys -----------
+    # Same boundary as the guided demo: every call crosses the gateway as
+    # `sandbox_agent`, denied at every real collection. Registration stores a
+    # claim (title, medium, sha256) — never file content; the live interpreter
+    # call is text-length-, session- and IP-capped.
+    "/demo/api/{sid}/works",           # GET: seeded + registered works · POST: register a claim, demo_works only
+    "/demo/api/{sid}/request-license", # live Gemini interpret + deterministic decision; grant appends to demo_grants only
+    "/demo/api/{sid}/grants",          # read-only ledger over demo_* collections
 }
 
 

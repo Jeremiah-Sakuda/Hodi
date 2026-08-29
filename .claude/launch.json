@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "hodi-offline",
+      "runtimeExecutable": "/usr/bin/env",
+      "runtimeArgs": ["HODI_OFFLINE=1", "HODI_SIGNING=ephemeral", "/opt/homebrew/bin/python3", "-m", "uvicorn", "src.evidence_service.main:app", "--port", "8199"],
+      "port": 8199
+    }
+  ]
+}

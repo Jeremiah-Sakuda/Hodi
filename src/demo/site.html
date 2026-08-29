@@ -1,0 +1,645 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hodi — a consent registry for creative work</title>
+<meta name="description" content="Machine-readable consent for creative work: declare terms, license in plain language, revoke with a cascade — run by a governed fleet of agents on Google Cloud.">
+<link rel="alternate" type="application/json" href="/.well-known/hodi.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --ground:#141110; --panel:#1c1815; --panel-2:#241f1a; --line:#332c24; --line-2:#443a2e;
+    --ink:#f2ece0; --ink-2:#c8bda9; --ink-dim:#8d8271;
+    --gold:#d9b26a; --gold-dim:#a4823f;
+    --green:#5fd08a; --green-dim:#2e6b4f; --green-wash:rgba(95,208,138,.09);
+    --red:#e2685c; --red-dim:#8e332b; --red-wash:rgba(226,104,92,.10);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0; height:100%;}
+  body{background:var(--ground); color:var(--ink); font-family:"IBM Plex Sans",system-ui,sans-serif;
+    line-height:1.5; -webkit-font-smoothing:antialiased; overflow:hidden;}
+  .serif{font-family:"Fraunces",Georgia,serif;} .mono{font-family:"IBM Plex Mono",monospace;}
+  ::selection{background:var(--gold); color:#171310;}
+  a{color:var(--gold); text-decoration:none;} a:hover{text-decoration:underline;}
+
+  .app{height:100dvh; display:grid; grid-template-rows:auto 1fr;}
+
+  /* ---------- top bar ---------- */
+  .bar{display:flex; align-items:center; justify-content:space-between; gap:20px;
+    padding:0 clamp(16px,2.6vw,40px); height:56px; border-bottom:1px solid var(--line); background:var(--panel); z-index:5;}
+  .bl{display:flex; align-items:center; gap:18px; min-width:0;}
+  .logo{font-family:"IBM Plex Mono",monospace; font-weight:600; letter-spacing:.34em; font-size:.78rem; color:var(--ink);
+    border:1px solid var(--line-2); padding:6px 10px 6px 14px; border-radius:4px; cursor:pointer;}
+  .env{display:flex; align-items:center; gap:8px; font-family:"IBM Plex Mono",monospace; font-size:.66rem; color:var(--ink-dim); min-width:0;}
+  .env .dot{width:7px;height:7px;border-radius:50%;background:#7a7a7a;flex:none;}
+  .env.ok .dot{background:var(--green); animation:pl 2.4s infinite;}
+  .env.warn .dot{background:var(--gold);}
+  .env .host{color:var(--ink-2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  @keyframes pl{0%{box-shadow:0 0 0 0 rgba(95,208,138,.45)}70%{box-shadow:0 0 0 6px transparent}100%{box-shadow:0 0 0 0 transparent}}
+  nav{display:flex; gap:2px;}
+  nav a, nav .navlink{font-family:"IBM Plex Mono",monospace; font-size:.66rem; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--ink-dim); padding:8px 12px; border-radius:5px; cursor:pointer; text-decoration:none;}
+  nav a:hover{color:var(--ink); text-decoration:none;}
+  nav a.cur{color:var(--ink); background:var(--panel-2); border:1px solid var(--line);}
+  @media(max-width:760px){.env .host{display:none} nav a{padding:8px 8px}}
+
+  /* ---------- views ---------- */
+  .stage{position:relative; min-height:0;}
+  .view{position:absolute; inset:0; overflow-y:auto; overflow-x:hidden; display:none;}
+  .view.on{display:block;}
+  .view::-webkit-scrollbar{width:9px} .view::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:5px}
+  .wrap{max-width:1180px; margin:0 auto; padding:0 clamp(16px,3vw,44px);}
+
+  .eyebrow{font-family:"IBM Plex Mono",monospace; font-size:.62rem; letter-spacing:.26em; text-transform:uppercase; color:var(--gold-dim);}
+  h1{font-family:"Fraunces",Georgia,serif; font-weight:400; font-size:clamp(2.2rem,4.6vw,3.9rem); line-height:1.02;
+    letter-spacing:-.01em; margin:.2em 0 0; text-wrap:balance;}
+  h1 em{font-style:italic; color:var(--gold);}
+  h2{font-family:"Fraunces",Georgia,serif; font-weight:400; font-size:clamp(1.5rem,2.6vw,2.2rem); line-height:1.08; margin:.2em 0 0;}
+  h2 em{font-style:italic; color:var(--gold);}
+  .sub{color:var(--ink-2); font-size:clamp(.96rem,1.2vw,1.08rem); max-width:64ch; margin-top:.8em;}
+  .sub b{color:var(--ink); font-weight:600;}
+  .panel{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:clamp(14px,1.6vw,24px); min-width:0;}
+  .ptitle{font-family:"IBM Plex Mono",monospace; font-size:.6rem; letter-spacing:.2em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:12px;}
+  .pill{font-family:"IBM Plex Mono",monospace; font-size:.58rem; letter-spacing:.14em; text-transform:uppercase;
+    border:1px solid var(--line-2); color:var(--ink-dim); padding:3px 9px; border-radius:20px; white-space:nowrap;}
+  .btn{font-family:"IBM Plex Mono",monospace; font-size:.72rem; letter-spacing:.14em; text-transform:uppercase;
+    background:var(--panel-2); color:var(--ink); border:1px solid var(--line-2); border-radius:6px;
+    padding:12px 18px; cursor:pointer; transition:.2s;}
+  .btn:hover{border-color:var(--gold-dim);}
+  .btn.gold{background:var(--gold); color:#171310; border-color:var(--gold); font-weight:600;}
+  .btn.gold:hover{filter:brightness(1.06);}
+  .btn.red{background:var(--red-wash); color:var(--red); border-color:var(--red-dim);}
+  .btn:disabled{opacity:.45; cursor:default;}
+  .mini{font-family:"IBM Plex Mono",monospace; font-size:.62rem; letter-spacing:.1em; text-transform:uppercase;
+    background:none; color:var(--ink-2); border:1px solid var(--line-2); border-radius:5px; padding:7px 12px; cursor:pointer;}
+  .mini:hover{border-color:var(--gold-dim); color:var(--ink);}
+  .mini:disabled{opacity:.4; cursor:default;}
+  .note{border-left:2px solid var(--gold-dim); padding-left:14px; color:var(--ink-2); font-size:.92rem;}
+  .note b{color:var(--ink);}
+
+  /* ---------- landing ---------- */
+  .hero{padding:clamp(44px,7vh,86px) 0 clamp(28px,4vh,48px);}
+  .doors{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:clamp(12px,1.6vw,22px); margin-top:clamp(24px,3.4vh,40px);}
+  @media(max-width:900px){.doors{grid-template-columns:minmax(0,1fr);}}
+  .door{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:clamp(18px,2vw,26px);
+    display:flex; flex-direction:column; gap:10px; cursor:pointer; transition:.25s; text-decoration:none; color:var(--ink);}
+  .door:hover{border-color:var(--gold-dim); transform:translateY(-2px); text-decoration:none;}
+  .door .k{font-family:"IBM Plex Mono",monospace; font-size:.6rem; letter-spacing:.22em; text-transform:uppercase; color:var(--gold-dim);}
+  .door .t{font-family:"Fraunces",Georgia,serif; font-size:1.5rem;}
+  .door .d{color:var(--ink-2); font-size:.92rem; flex:1;}
+  .door .go{font-family:"IBM Plex Mono",monospace; font-size:.68rem; color:var(--gold);}
+
+  .stats{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:1px; background:var(--line);
+    border:1px solid var(--line); border-radius:10px; overflow:hidden; margin:clamp(30px,4.5vh,54px) 0 8px;}
+  @media(max-width:760px){.stats{grid-template-columns:repeat(2,minmax(0,1fr));}}
+  .stats .s{background:var(--panel); padding:18px clamp(14px,1.6vw,24px);}
+  .stats .v{font-family:"Fraunces",Georgia,serif; font-size:clamp(1.8rem,3vw,2.6rem); line-height:1;}
+  .stats .v.gold{color:var(--gold);}
+  .stats .l{font-family:"IBM Plex Mono",monospace; font-size:.6rem; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-dim); margin-top:8px;}
+  .statnote{font-family:"IBM Plex Mono",monospace; font-size:.62rem; color:var(--ink-dim); margin-bottom:clamp(30px,4.5vh,54px);}
+
+  .sect{padding:clamp(26px,4vh,48px) 0; border-top:1px solid var(--line);}
+  .cols3{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:clamp(12px,1.6vw,22px); margin-top:22px;}
+  @media(max-width:900px){.cols3{grid-template-columns:minmax(0,1fr);}}
+  .how .n{font-family:"IBM Plex Mono",monospace; font-size:.72rem; color:var(--gold-dim);}
+  .how .t{font-family:"Fraunces",Georgia,serif; font-size:1.3rem; margin:6px 0 8px;}
+  .how .d{color:var(--ink-2); font-size:.92rem;}
+  .how .d b{color:var(--ink);}
+  .agents{display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:1px; background:var(--line);
+    border:1px solid var(--line); border-radius:10px; overflow:hidden; margin-top:22px;}
+  @media(max-width:980px){.agents{grid-template-columns:repeat(2,minmax(0,1fr));}}
+  .agents .a{background:var(--panel); padding:16px;}
+  .agents .nm{font-family:"IBM Plex Mono",monospace; font-size:.66rem; color:var(--ink); letter-spacing:.06em;}
+  .agents .rl{font-size:.82rem; color:var(--ink-2); margin-top:6px;}
+  .agents .no{font-family:"IBM Plex Mono",monospace; font-size:.6rem; color:var(--red); margin-top:8px;}
+  .chips{display:flex; flex-wrap:wrap; gap:8px; margin-top:18px;}
+  .refuse .r{display:flex; gap:14px; padding:13px 0; border-bottom:1px solid var(--line); align-items:baseline;}
+  .refuse .r:last-child{border-bottom:0;}
+  .refuse .x{color:var(--red); font-family:"IBM Plex Mono",monospace;}
+  .refuse .h{font-size:.98rem;}
+  .refuse .s{display:block; color:var(--ink-dim); font-size:.85rem; margin-top:3px;}
+  .foot{border-top:1px solid var(--line); padding:26px 0 40px; display:flex; flex-wrap:wrap; gap:10px 26px;
+    font-family:"IBM Plex Mono",monospace; font-size:.66rem; color:var(--ink-dim);}
+
+  /* ---------- studio & market ---------- */
+  .jhead{padding:clamp(22px,3.4vh,40px) 0 clamp(14px,2vh,22px);}
+  .cols-app{display:grid; grid-template-columns:minmax(0,5fr) minmax(0,7fr); gap:clamp(14px,1.8vw,26px); padding-bottom:48px; align-items:start;}
+  @media(max-width:980px){.cols-app{grid-template-columns:minmax(0,1fr);}}
+  .wlist{display:flex; flex-direction:column; gap:10px;}
+  .wcard{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px 16px; cursor:pointer; transition:.2s;}
+  .wcard:hover{border-color:var(--gold-dim);}
+  .wcard.sel{border-color:var(--gold); background:var(--panel-2);}
+  .wcard .t{font-family:"Fraunces",Georgia,serif; font-size:1.08rem;}
+  .wcard .m{font-family:"IBM Plex Mono",monospace; font-size:.6rem; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-dim); margin-top:4px; display:flex; gap:10px; flex-wrap:wrap;}
+  .wcard .g{color:var(--green);}
+  .field{display:flex; flex-direction:column; gap:6px; margin-bottom:14px;}
+  .field label{font-family:"IBM Plex Mono",monospace; font-size:.6rem; letter-spacing:.18em; text-transform:uppercase; color:var(--ink-dim);}
+  input[type=text], textarea, select{background:var(--ground); color:var(--ink); border:1px solid var(--line-2); border-radius:6px;
+    padding:10px 12px; font-family:"IBM Plex Sans",system-ui,sans-serif; font-size:.95rem; outline:none; width:100%;}
+  input[type=text]:focus, textarea:focus, select:focus{border-color:var(--gold-dim);}
+  textarea{min-height:88px; resize:vertical;}
+  .checks{display:flex; flex-wrap:wrap; gap:8px;}
+  .chk{display:inline-flex; align-items:center; gap:7px; font-family:"IBM Plex Mono",monospace; font-size:.64rem;
+    letter-spacing:.06em; border:1px solid var(--line-2); border-radius:20px; padding:6px 12px; cursor:pointer; color:var(--ink-2); user-select:none;}
+  .chk input{accent-color:var(--gold);}
+  .chk.on{border-color:var(--gold-dim); color:var(--ink);}
+  .drop{border:1px dashed var(--line-2); border-radius:8px; padding:16px; text-align:center; color:var(--ink-dim);
+    font-size:.86rem; cursor:pointer; transition:.2s;}
+  .drop:hover,.drop.over{border-color:var(--gold-dim); color:var(--ink-2);}
+  .drop .hash{font-family:"IBM Plex Mono",monospace; font-size:.62rem; color:var(--green); word-break:break-all; margin-top:8px;}
+  .ev{display:flex; gap:12px; padding:9px 0; border-bottom:1px solid var(--line); font-size:.88rem; align-items:baseline;}
+  .ev:last-child{border-bottom:0;}
+  .ev .k{font-family:"IBM Plex Mono",monospace; font-size:.6rem; letter-spacing:.12em; text-transform:uppercase; flex:none; width:74px;}
+  .ev .k.g{color:var(--green);} .ev .k.r{color:var(--red);}
+  .ev .d{color:var(--ink-2); min-width:0;}
+  .ev .mono2{font-family:"IBM Plex Mono",monospace; font-size:.66rem; color:var(--ink-dim); display:block; margin-top:2px; word-break:break-all;}
+  .grant{border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin-bottom:10px; background:var(--ground);}
+  .grant .hd{display:flex; justify-content:space-between; gap:10px; align-items:center; flex-wrap:wrap;}
+  .grant .u{font-family:"IBM Plex Mono",monospace; font-size:.72rem; color:var(--green);}
+  .grant .meta{font-family:"IBM Plex Mono",monospace; font-size:.62rem; color:var(--ink-dim); margin-top:6px;}
+  .cascade{border-left:2px solid var(--red-dim); padding-left:14px; margin-top:12px; font-size:.9rem; color:var(--ink-2); display:none;}
+  .cascade.on{display:block;}
+  .cascade b{color:var(--ink);}
+  .cascade .sig{font-family:"IBM Plex Mono",monospace; font-size:.62rem; color:var(--ink-dim); word-break:break-all; margin-top:6px;}
+  .exch{display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;}
+  .term{display:flex; gap:14px; align-items:baseline; padding:10px 0; border-bottom:1px solid var(--line);}
+  .term:last-child{border-bottom:0;}
+  .term .i{font-family:"IBM Plex Mono",monospace; font-size:.68rem; color:var(--gold-dim); width:18px; flex:none;}
+  .term .p{font-size:.96rem;}
+  .term .m{display:block; font-family:"IBM Plex Mono",monospace; font-size:.62rem; color:var(--ink-dim); margin-top:2px;}
+  .badge{display:inline-flex; align-items:center; gap:9px; font-family:"IBM Plex Mono",monospace; font-weight:600; font-size:.72rem;
+    letter-spacing:.18em; text-transform:uppercase; padding:8px 16px; border-radius:5px; margin-top:14px;}
+  .badge.ok{border:1px solid var(--green-dim); color:var(--green); background:var(--green-wash);}
+  .badge.no{border:1px solid var(--red-dim); color:var(--red); background:var(--red-wash);}
+  .reasons{margin:10px 0 0; padding-left:18px; color:var(--ink-2); font-size:.9rem;}
+  .reasons li{margin-bottom:4px;}
+  .empty{color:var(--ink-dim); font-size:.88rem;}
+  .msg{font-family:"IBM Plex Mono",monospace; font-size:.66rem; color:var(--ink-dim); margin-top:10px; min-height:1em;}
+  .msg.err{color:var(--red);}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <div class="bl">
+      <span class="logo" onclick="location.hash=''">HODI</span>
+      <span class="env" id="env"><span class="dot"></span><span>Google&nbsp;Cloud</span><span class="host" id="host"></span></span>
+    </div>
+    <nav id="nav">
+      <a href="#" data-v="home">Overview</a>
+      <a href="#studio" data-v="studio">Studio</a>
+      <a href="#market" data-v="market">Market</a>
+      <a href="/demo">Guided demo ↗</a>
+    </nav>
+  </header>
+
+  <main class="stage">
+
+    <!-- ==================== LANDING ==================== -->
+    <section class="view" id="view-home">
+      <div class="wrap">
+        <div class="hero">
+          <div class="eyebrow">A consent registry for creative work · live on Google Cloud</div>
+          <h1>Your work. Your terms.<br><em>And you can change your mind.</em></h1>
+          <p class="sub">robots.txt can say <b>crawl</b> or <b>don’t</b> — and nothing else. It cannot say
+            <i>train, but don’t clone my voice</i>. It cannot say <i>non-commercial only</i>. And it cannot take a yes back.
+            Hodi can: machine-readable consent, decided by <b>deterministic rules</b>, enforced by a
+            <b>governed fleet of agents</b>. Nothing on this site is simulated — every action below is a real call
+            against this running service.</p>
+          <div class="doors">
+            <a class="door" href="#studio">
+              <span class="k">For creators</span>
+              <span class="t serif">The Studio</span>
+              <span class="d">Register a work — hashed in your browser, the file never leaves your device.
+                Declare your terms. Watch grants arrive. Revoke with one press, signed by Cloud KMS.</span>
+              <span class="go">Enter the Studio →</span>
+            </a>
+            <a class="door" href="#market">
+              <span class="k">For AI buyers</span>
+              <span class="t serif">The Market</span>
+              <span class="d">Ask for a license in your own words. Gemini 3.5 interprets the request live —
+                then the artist’s declared terms decide. A yes becomes a real grant; a no tells you why.</span>
+              <span class="go">Enter the Market →</span>
+            </a>
+            <a class="door" href="/demo">
+              <span class="k">For the impatient</span>
+              <span class="t serif">The Walkthrough</span>
+              <span class="d">The five-step guided run from our demo video — register, license, revoke,
+                verify the signature, and run the real agent fleet — replayable by anyone, in about three minutes.</span>
+              <span class="go">Replay the walkthrough ↗</span>
+            </a>
+          </div>
+
+          <div class="stats" id="stats">
+            <div class="s"><div class="v gold" id="stWorks">—</div><div class="l">works registered</div></div>
+            <div class="s"><div class="v" id="stCrawl">—</div><div class="l">AI crawler visits observed</div></div>
+            <div class="s"><div class="v" id="stCanary">—</div><div class="l">canary hits recorded</div></div>
+            <div class="s"><div class="v" id="stVerbatim">—</div><div class="l">verbatim matches found</div></div>
+          </div>
+          <div class="statnote">read live from this service the moment you loaded the page — an unreachable count renders “unavailable”, never a plausible number</div>
+        </div>
+
+        <div class="sect how">
+          <div class="eyebrow">How it works</div>
+          <h2>Declare. Decide. <em>Enforce.</em></h2>
+          <div class="cols3">
+            <div class="panel"><div class="n">01</div><div class="t serif">Declare</div>
+              <div class="d">You register a <b>claim</b> about your work — title, medium, a SHA-256 fingerprint computed
+              in your browser. The registry holds claims, never masters: <b>your file never leaves your device</b>.
+              Then you declare terms: which uses may be licensed, commercial or not, attribution or not.</div></div>
+            <div class="panel"><div class="n">02</div><div class="t serif">Decide</div>
+              <div class="d">A buyer asks in plain language. <b>Gemini 3.5 on Vertex AI</b> interprets the sentence into
+              typed terms — use, model class, commerce, territory, attribution. Then deterministic policy code decides
+              against your declaration. <b>The model interprets; it never decides.</b></div></div>
+            <div class="panel"><div class="n">03</div><div class="t serif">Enforce</div>
+              <div class="d">Every yes is an event in an <b>append-only log</b>. Revocation cascades through everything
+              your yes contained — derived from a scope lattice, not hard-coded — is signed by <b>Cloud KMS</b>,
+              and closes the standing offer. History is struck through, never erased.</div></div>
+          </div>
+        </div>
+
+        <div class="sect">
+          <div class="eyebrow">Why a fleet, not a chatbot</div>
+          <h2>Five agents, split by <em>conflict of interest.</em></h2>
+          <p class="sub">The agent that negotiates licenses must never touch revocations. Each agent runs under its own
+            Google Cloud service-account identity with its own database permissions, and every call crosses an
+            <b>agent gateway</b> that enforces policy structurally — not a prompt asking nicely. When a worker hangs,
+            a supervisor quarantines it and reroutes the task. <a href="/demo">Run the fleet live in the walkthrough ↗</a></p>
+          <div class="agents">
+            <div class="a"><div class="nm">licensing_negotiator</div><div class="rl">Evaluates buyer requests against your terms.</div><div class="no">✕ cannot revoke</div></div>
+            <div class="a"><div class="nm">rights_custodian</div><div class="rl">Holds identity and custody of registered claims.</div><div class="no">✕ cannot grant</div></div>
+            <div class="a"><div class="nm">revocation_propagator</div><div class="rl">Runs the cascade; issues the KMS-signed notices.</div><div class="no">✕ cannot negotiate</div></div>
+            <div class="a"><div class="nm">evidence_agent</div><div class="rl">Records crawler visits and canary hits at the endpoint.</div><div class="no">✕ cannot touch grants</div></div>
+            <div class="a"><div class="nm">consent_arbiter</div><div class="rl">Deterministic evaluator behind every decision.</div><div class="no">✕ is not a model</div></div>
+          </div>
+          <div class="chips">
+            <span class="pill">Cloud Run</span><span class="pill">Vertex AI · Gemini 3.5 Flash</span>
+            <span class="pill">Google ADK</span><span class="pill">Firestore · per-domain databases</span>
+            <span class="pill">Cloud KMS · ECDSA P-256</span><span class="pill">Cloud Trace · OpenTelemetry</span>
+          </div>
+        </div>
+
+        <div class="sect refuse">
+          <div class="eyebrow">What Hodi refuses to claim</div>
+          <h2>A registry that flatters you <em>is worthless.</em></h2>
+          <div style="margin-top:14px">
+            <div class="r"><span class="x">✕</span><span class="h">That your work is inside a model’s training data.
+              <span class="s">It cannot reliably know — so there is no field for the claim, anywhere in the schema.</span></span></div>
+            <div class="r"><span class="x">✕</span><span class="h">That revocation pulls your work out of a model.
+              <span class="s">It withdraws permission going forward and closes the offer. It does not un-train anything, and says so on every notice.</span></span></div>
+            <div class="r"><span class="x">✕</span><span class="h">That your ownership is verified before you prove it.
+              <span class="s">Unproven claims are labeled <i>asserted</i>, in public, including the author’s own.</span></span></div>
+          </div>
+        </div>
+
+        <div class="foot">
+          <a href="/demo">Guided walkthrough</a>
+          <a href="/works">Public registry (JSON)</a>
+          <a href="/.well-known/hodi.json">Machine-readable terms</a>
+          <a href="/verification-key">Signature verification key</a>
+          <a href="https://github.com/Jeremiah-Sakuda/Hodi" rel="noopener">Source repository</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== STUDIO ==================== -->
+    <section class="view" id="view-studio">
+      <div class="wrap">
+        <div class="jhead">
+          <div class="eyebrow">The Studio · for creators</div>
+          <h2>Your works, your terms, <em>your ledger.</em></h2>
+          <p class="sub">This is a live sandbox minted for you alone — same gateway, same policy, same signatures as
+            production, isolated collections. Register a work below, or revoke the grants already here.
+            <b>Files are hashed in your browser and never uploaded.</b></p>
+          <div class="msg" id="studioMsg"></div>
+        </div>
+        <div class="cols-app">
+          <div>
+            <div class="panel" style="margin-bottom:14px">
+              <div class="ptitle">Register a work — the file never leaves this device</div>
+              <div class="field"><label for="regTitle">Title</label><input type="text" id="regTitle" maxlength="120" placeholder="e.g. Harbor Lights EP"></div>
+              <div class="field"><label for="regMedium">Medium</label>
+                <select id="regMedium"><option value="audio">audio</option><option value="prose">prose</option>
+                <option value="code">code</option><option value="image">image</option><option value="video">video</option>
+                <option value="other">other</option></select></div>
+              <div class="field"><label>Fingerprint</label>
+                <div class="drop" id="drop">drop a file here, or click to choose —<br>SHA-256 is computed locally by your browser
+                  <div class="hash" id="dropHash"></div></div>
+                <input type="file" id="file" style="display:none"></div>
+              <div class="field"><label>Uses you are willing to license</label>
+                <div class="checks" id="regUses">
+                  <label class="chk"><input type="checkbox" value="training">training</label>
+                  <label class="chk on"><input type="checkbox" value="fine_tuning" checked>fine_tuning</label>
+                  <label class="chk"><input type="checkbox" value="rag_retrieval">rag_retrieval</label>
+                  <label class="chk"><input type="checkbox" value="human_reference">human_reference</label>
+                  <label class="chk"><input type="checkbox" value="synthesis">synthesis</label>
+                </div></div>
+              <div class="field"><label>Conditions</label>
+                <div class="checks">
+                  <label class="chk" id="chkComm"><input type="checkbox" id="regComm">allow commercial use</label>
+                  <label class="chk on" id="chkAttr"><input type="checkbox" id="regAttr" checked>require attribution</label>
+                </div></div>
+              <button class="btn gold" id="regBtn">Register the claim</button>
+              <div class="msg" id="regMsg"></div>
+            </div>
+            <div class="ptitle">Works in this sandbox</div>
+            <div class="wlist" id="studioWorks"><div class="empty">loading the ledger…</div></div>
+          </div>
+          <div>
+            <div class="panel" id="studioDetail"><div class="empty">select a work to see its ledger</div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== MARKET ==================== -->
+    <section class="view" id="view-market">
+      <div class="wrap">
+        <div class="jhead">
+          <div class="eyebrow">The Market · for AI buyers</div>
+          <h2>Ask in your own words. <em>The terms decide.</em></h2>
+          <p class="sub">Pick a work, ask for a license the way you’d write an email. Your sentence goes to the
+            <b>real Gemini 3.5 interpreter, live on Vertex AI</b> — then the artist’s declared terms decide,
+            deterministically. A grant is a real event in the append-only log; refusals cost nothing and tell you why.</p>
+          <div class="msg" id="marketMsg"></div>
+        </div>
+        <div class="cols-app">
+          <div>
+            <div class="ptitle">The registry — pick a work</div>
+            <div class="wlist" id="marketWorks"><div class="empty">loading the registry…</div></div>
+          </div>
+          <div>
+            <div class="panel">
+              <div class="ptitle">Your request</div>
+              <div class="field"><label for="buyerName">Who is asking (optional)</label>
+                <input type="text" id="buyerName" maxlength="60" placeholder="e.g. Coastal Signal Research"></div>
+              <div class="field"><label for="askText">The ask, in plain language</label>
+                <textarea id="askText" maxlength="600" placeholder="e.g. We would like to fine-tune our open-weights model on this recording, non-commercial research only, with attribution."></textarea></div>
+              <div class="exch">
+                <button class="mini exbtn">We’d like to fine-tune an open-weights model on this, non-commercial, with attribution.</button>
+                <button class="mini exbtn">We want full training rights for a commercial frontier model, no attribution.</button>
+                <button class="mini exbtn">May our assistant quote from this work with retrieval, credited, US only?</button>
+              </div>
+              <div style="margin-top:14px"><button class="btn gold" id="askBtn">Send the request — interpreted live</button></div>
+              <div class="msg" id="askMsg"></div>
+            </div>
+            <div class="panel" id="decision" style="display:none; margin-top:14px"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const api = (p, body) => fetch('/demo/api' + p, {method:'POST', headers:{'Content-Type':'application/json'},
+    body: body === undefined ? undefined : JSON.stringify(body)});
+  const get = p => fetch('/demo/api' + p);
+
+  /* ---------- session, shared by both journeys ---------- */
+  let sid = null;
+  async function ensureSession(){
+    if (sid) return sid;
+    const stored = sessionStorage.getItem('hodi_platform_sid');
+    if (stored) {
+      const r = await get('/' + stored + '/works');
+      if (r.ok) { sid = stored; $('env').className = 'env ok'; return sid; }
+    }
+    const r = await api('/session');
+    if (!r.ok) throw new Error('could not open a sandbox session');
+    sid = (await r.json()).session;
+    sessionStorage.setItem('hodi_platform_sid', sid);
+    $('env').className = 'env ok';
+    return sid;
+  }
+
+  /* ---------- landing stats: read live, render honestly ---------- */
+  async function loadStats(){
+    $('host').textContent = '· ' + location.host;
+    try {
+      const w = await (await fetch('/works')).json();
+      $('stWorks').textContent = w.count ?? w.works?.length ?? 'unavailable';
+    } catch(e){ $('stWorks').textContent = 'unavailable'; }
+    try {
+      const c = await (await fetch('/evidence-counts')).json();
+      for (const [id, key] of [['stCrawl','crawler_access'],['stCanary','canary_hit'],['stVerbatim','verbatim_match']]) {
+        const v = c[key];
+        $(id).textContent = (v === undefined || v === null) ? 'unavailable' : v;
+      }
+      $('env').className = 'env ok';
+    } catch(e){
+      ['stCrawl','stCanary','stVerbatim'].forEach(i => $(i).textContent = 'unavailable');
+      $('env').className = 'env warn';
+    }
+  }
+
+  /* ---------- studio ---------- */
+  let ledger = null, selected = null, fileHash = null, fileSize = 0;
+
+  async function loadLedger(){
+    await ensureSession();
+    const r = await get('/' + sid + '/grants');
+    if (!r.ok) { sessionStorage.removeItem('hodi_platform_sid'); sid = null; throw new Error('session expired'); }
+    ledger = (await r.json()).works;
+    return ledger;
+  }
+
+  function workCard(row, forMarket){
+    const w = row.work ?? row;
+    const active = row.active ? row.active.length : null;
+    const d = document.createElement('div');
+    d.className = 'wcard' + ((selected === w.work_id) ? ' sel' : '');
+    d.innerHTML = '<div class="t">' + esc(w.title) + '</div>'
+      + '<div class="m"><span>' + esc(w.medium) + '</span>'
+      + '<span>offers: ' + esc((w.offered_use_types||[]).join(', ')) + '</span>'
+      + '<span>' + (w.commercial_ok ? 'commercial ok' : 'non-commercial') + '</span>'
+      + (active !== null ? '<span class="' + (active ? 'g' : '') + '">' + active + ' active grant' + (active === 1 ? '' : 's') + '</span>' : '')
+      + (w.source === 'judge_registered' ? '<span style="color:var(--gold)">registered by you</span>' : '') + '</div>';
+    d.addEventListener('click', () => { selected = w.work_id; forMarket ? renderMarket() : renderStudio(); });
+    return d;
+  }
+
+  function renderStudio(){
+    const list = $('studioWorks'); list.innerHTML = '';
+    if (!ledger || !ledger.length) { list.innerHTML = '<div class="empty">no works yet</div>'; return; }
+    ledger.forEach(row => list.appendChild(workCard(row, false)));
+    const row = ledger.find(r => r.work.work_id === selected);
+    const det = $('studioDetail');
+    if (!row) { det.innerHTML = '<div class="empty">select a work to see its ledger</div>'; return; }
+    const w = row.work;
+    let h = '<div class="ptitle">' + esc(w.title) + ' — the ledger</div>';
+    h += '<div class="m mono" style="font-size:.62rem;color:var(--ink-dim);margin-bottom:12px">'
+      + (w.sha256 ? 'sha256 ' + esc(w.sha256.slice(0,16)) + '… · ' : '')
+      + (w.content_stored === false ? 'content not stored — the registry holds the claim, not the work' : esc(w.note || '')) + '</div>';
+    h += '<div class="ptitle">Active grants</div>';
+    if (!row.active.length) h += '<div class="empty" style="margin-bottom:12px">none — nothing is licensed right now</div>';
+    row.active.forEach(g => {
+      h += '<div class="grant"><div class="hd"><span class="u">' + esc(g.scope.use_type) + ' → ' + esc(g.counterparty_id) + '</span>'
+        + '<button class="btn red rvk" data-w="' + esc(w.work_id) + '" data-u="' + esc(g.scope.use_type) + '">Revoke — run the real cascade</button></div>'
+        + '<div class="meta">' + (g.scope.commercial ? 'commercial' : 'non-commercial') + ' · '
+        + (g.scope.attribution_required ? 'attribution required' : 'no attribution') + ' · since ' + esc((g.issued_at||'').slice(0,19)) + 'Z</div></div>';
+    });
+    h += '<div class="cascade" id="cascadeOut"></div>';
+    h += '<div class="ptitle" style="margin-top:16px">Event history — append-only, struck through, never erased</div>';
+    if (!row.events.length) h += '<div class="empty">no events yet — license it in the Market</div>';
+    row.events.forEach(e => {
+      const revoked = e.kind === 'revoked';
+      h += '<div class="ev"><span class="k ' + (revoked ? 'r' : 'g') + '">' + esc(e.kind) + '</span>'
+        + '<span class="d"' + (revoked ? ' style="text-decoration:line-through;text-decoration-color:var(--red)"' : '') + '>'
+        + esc(e.scope.use_type) + ' to ' + esc(e.counterparty_id)
+        + '<span class="mono2">' + esc(e.event_id) + ' · ' + esc((e.issued_at||'').slice(0,19)) + 'Z</span></span></div>';
+    });
+    if (row.notices.length) {
+      h += '<div class="ptitle" style="margin-top:16px">Notices issued</div>';
+      row.notices.forEach(n => { h += '<div class="ev"><span class="k r">notice</span><span class="d">' + esc(n.notice_text || ('grant ' + n.grant_id + ' terminated')) + '</span></div>'; });
+    }
+    det.innerHTML = h;
+    det.querySelectorAll('.rvk').forEach(b => b.addEventListener('click', () => revoke(b.dataset.w, b.dataset.u, b)));
+  }
+
+  async function revoke(workId, useType, btn){
+    btn.disabled = true; btn.textContent = 'minting a Cloud KMS signature…';
+    const t0 = performance.now();
+    try {
+      const r = await api('/' + sid + '/revoke', {work_id: workId, revoked_use_type: useType});
+      const j = await r.json();
+      if (!r.ok) { $('studioMsg').className = 'msg err'; $('studioMsg').textContent = j.detail || 'the revocation was refused'; btn.disabled = false; btn.textContent = 'Revoke — run the real cascade'; return; }
+      const ms = Math.round(performance.now() - t0);
+      const res = j.result || {};
+      const sig = ((res.issued_notices || [])[0] || {}).signature || '';
+      await loadLedger(); renderStudio();
+      const out = $('cascadeOut');
+      if (out) { out.className = 'cascade on';
+        out.innerHTML = 'The real cascade ran in <b>' + (ms/1000).toFixed(1) + 's</b> — revoking <b>' + esc(useType)
+          + '</b> withdrew ' + esc((res.terminated_scopes || [useType]).join(', ')) + '. The standing offer is now closed: '
+          + 'the same request will be refused in the Market.'
+          + (sig ? '<div class="sig">notice signed · ' + esc(sig.slice(0, 88)) + '…</div>' : ''); }
+      $('studioMsg').className = 'msg'; $('studioMsg').textContent = '';
+    } catch(e) {
+      $('studioMsg').className = 'msg err'; $('studioMsg').textContent = 'could not reach the live service';
+      btn.disabled = false; btn.textContent = 'Revoke — run the real cascade';
+    }
+  }
+
+  /* browser-side hashing: the file never leaves the device */
+  const drop = $('drop'), file = $('file');
+  drop.addEventListener('click', () => file.click());
+  drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+  drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); if (e.dataTransfer.files[0]) hashFile(e.dataTransfer.files[0]); });
+  file.addEventListener('change', () => { if (file.files[0]) hashFile(file.files[0]); });
+  async function hashFile(f){
+    $('dropHash').textContent = 'hashing locally…';
+    try {
+      const buf = await f.arrayBuffer();
+      const digest = await crypto.subtle.digest('SHA-256', buf);
+      fileHash = [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2,'0')).join('');
+      fileSize = f.size;
+      $('dropHash').textContent = f.name + ' · ' + fileHash.slice(0, 24) + '… — computed in this browser; nothing was uploaded';
+      if (!$('regTitle').value) $('regTitle').value = f.name.replace(/\.[^.]+$/, '');
+    } catch(e){ $('dropHash').textContent = 'could not hash that file'; fileHash = null; }
+  }
+
+  document.querySelectorAll('.checks').forEach(c => c.addEventListener('change', e => {
+    const l = e.target.closest('.chk'); if (l) l.classList.toggle('on', e.target.checked);
+  }));
+
+  $('regBtn').addEventListener('click', async () => {
+    const title = $('regTitle').value.trim();
+    const uses = [...document.querySelectorAll('#regUses input:checked')].map(i => i.value);
+    const msg = $('regMsg');
+    if (!title) { msg.className = 'msg err'; msg.textContent = 'give the work a title'; return; }
+    if (!fileHash) { msg.className = 'msg err'; msg.textContent = 'drop a file so your browser can fingerprint it — it will not be uploaded'; return; }
+    if (!uses.length) { msg.className = 'msg err'; msg.textContent = 'offer at least one use'; return; }
+    $('regBtn').disabled = true; msg.className = 'msg'; msg.textContent = 'registering the claim…';
+    try {
+      await ensureSession();
+      const r = await api('/' + sid + '/works', {title, medium: $('regMedium').value, sha256: fileHash,
+        size_bytes: fileSize, offered_use_types: uses,
+        commercial_ok: $('regComm').checked, attribution_required: $('regAttr').checked});
+      const j = await r.json();
+      if (!r.ok) { msg.className = 'msg err'; msg.textContent = j.detail || 'registration refused'; }
+      else {
+        msg.textContent = 'registered — a claim, not the file. It is now licensable in the Market.';
+        selected = j.work.work_id; fileHash = null; fileSize = 0; $('dropHash').textContent = ''; $('regTitle').value = '';
+        await loadLedger(); renderStudio();
+      }
+    } catch(e){ msg.className = 'msg err'; msg.textContent = 'could not reach the live service'; }
+    $('regBtn').disabled = false;
+  });
+
+  /* ---------- market ---------- */
+  function renderMarket(){
+    const list = $('marketWorks'); list.innerHTML = '';
+    if (!ledger || !ledger.length) { list.innerHTML = '<div class="empty">no works in the registry</div>'; return; }
+    ledger.forEach(row => list.appendChild(workCard(row, true)));
+  }
+
+  document.querySelectorAll('.exbtn').forEach(b => b.addEventListener('click', () => { $('askText').value = b.textContent; }));
+
+  $('askBtn').addEventListener('click', async () => {
+    const msg = $('askMsg'), text = $('askText').value.trim();
+    if (!selected) { msg.className = 'msg err'; msg.textContent = 'pick a work from the registry first'; return; }
+    if (!text) { msg.className = 'msg err'; msg.textContent = 'write the ask in your own words'; return; }
+    $('askBtn').disabled = true; msg.className = 'msg'; msg.textContent = 'Gemini is reading your request, live…';
+    const box = $('decision'); box.style.display = 'none';
+    try {
+      await ensureSession();
+      const body = {work_id: selected, text};
+      const name = $('buyerName').value.trim(); if (name) body.buyer_name = name;
+      const r = await api('/' + sid + '/request-license', body);
+      const j = await r.json();
+      if (!r.ok) { msg.className = 'msg err'; msg.textContent = j.detail || 'the request could not be evaluated'; $('askBtn').disabled = false; return; }
+      msg.textContent = '';
+      const sc = j.interpreted_scope || {};
+      let h = '<div class="ptitle">What ' + esc(j.interpreter_model) + ' read — live on Vertex AI</div>';
+      const rows = [
+        ['use', sc.use_type], ['model class', sc.model_class],
+        ['commerce', sc.commercial ? 'commercial' : 'non-commercial'],
+        ['territory', (sc.territory||[]).join(', ')],
+        ['attribution', sc.attribution_required ? 'required' : 'not offered']];
+      rows.forEach(([k,v],i) => { h += '<div class="term"><span class="i">' + (i+1) + '</span><span><span class="p">' + esc(v) + '</span><span class="m">' + esc(k) + '</span></span></div>'; });
+      if (j.decision === 'granted') {
+        h += '<div class="badge ok">✓ granted — a real event, appended</div>'
+          + '<div class="note" style="margin-top:12px">Event <span class="mono" style="font-size:.68rem">' + esc(j.grant.event_id) + '</span> now binds: '
+          + '<b>permits() says ' + esc(String(j.binds)) + '</b>. The artist can revoke it in the <a href="#studio">Studio</a> — '
+          + 'then this same request will be refused.</div>';
+      } else {
+        h += '<div class="badge no">✕ refused — and it tells you why</div><ul class="reasons">'
+          + (j.reasons||[]).map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>'
+          + '<div class="note" style="margin-top:12px">The model only interpreted your words. <b>The refusal came from the artist’s declared terms</b> and the append-only log — deterministic code, not a vibe.</div>';
+      }
+      box.innerHTML = h; box.style.display = 'block';
+      await loadLedger();  // grant counts changed
+      renderMarket();
+    } catch(e){ msg.className = 'msg err'; msg.textContent = 'could not reach the live service'; }
+    $('askBtn').disabled = false;
+  });
+
+  /* ---------- routing ---------- */
+  const views = {home: 'view-home', studio: 'view-studio', market: 'view-market'};
+  async function route(){
+    const key = (location.hash.replace('#','') || 'home');
+    const v = views[key] ? key : 'home';
+    Object.entries(views).forEach(([k, id]) => $(id).classList.toggle('on', k === v));
+    document.querySelectorAll('#nav a[data-v]').forEach(a => a.classList.toggle('cur', a.dataset.v === v));
+    if (v === 'studio' || v === 'market') {
+      const msg = $(v + 'Msg');
+      try { await loadLedger(); v === 'studio' ? renderStudio() : renderMarket(); msg.className='msg'; msg.textContent=''; }
+      catch(e){ try { await ensureSession(); await loadLedger(); v === 'studio' ? renderStudio() : renderMarket(); }
+        catch(e2){ msg.className='msg err'; msg.textContent = 'could not open a live sandbox — reload the page'; } }
+    }
+  }
+  window.addEventListener('hashchange', route);
+  loadStats(); route();
+})();
+</script>
+</body>
+</html>

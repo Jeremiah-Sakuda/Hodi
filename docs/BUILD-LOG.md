@@ -1114,3 +1114,51 @@ a single altered byte; six anonymous probes refused. Offline suite **549 pass**;
 check-generated, verify-scopes, `make demo-live` (6/6), red-team all green.
 
 **Requirements touched:** HOD-311, HOD-312, HOD-350, HOD-360, HOD-620, HOD-760
+
+---
+
+### 2026-08-28 — Hackathon judge evaluation
+
+**Prompt (verbatim):**
+> This is a submission for this hackathon [https://allthingsagentichackathon.devpost.com/](https://allthingsagentichackathon.devpost.com/) [https://allthingsagentichackathon.devpost.com/rules](https://allthingsagentichackathon.devpost.com/rules) evaluate it as a judge, and score it. Present your findings the way you would to a panel of judges, be thorough and very detailed, then suggest improvements to the team
+
+**Outcome:** Evaluated the repository against the live Devpost Stage One requirements and the weighted Stage Two rubric. Empirical checks in this session: `make test` passed 551 tests with 18 live-only skips; `make demo`, `make verify-scopes` (56 cases), and `make compliance` (74 requirements) passed; the public Cloud Run `/demo`, `/works`, and `/.well-known/hodi.json` surfaces returned HTTP 200. No public YouTube or Vimeo demo-video URL was found in the repository, so the current submission package remains at risk of Stage One failure until that mandatory artifact is supplied. No product source was changed.
+
+**Key decisions:**
+1. Score the current package separately from its post-video ceiling — the rules make the public demo video mandatory, while the repository and live application are independently judgeable and strong.
+2. Treat live-only tests as unverified in this session rather than failures — they are deliberately gated and the repository names dated external evidence for them, but this evaluation did not possess the credentials needed to rerun those IAM and Firestore checks.
+3. Do not award bonus points without submitted URLs — Gemma integration is evidenced in code, but the public-content and social bonuses require actual qualifying submission links.
+
+**Requirements touched:** No product requirements changed; evaluation covered HOD-001 through HOD-760.
+
+---
+
+### 2026-08-29 — Review the one-tab demonstration script
+
+**Prompt (verbatim):**
+> This is the script now:
+
+**Outcome:** Reviewed the supplied one-browser-tab recording script against the hackathon's four-minute demonstration requirement and the live `/demo` implementation. The concept corrects the earlier terminal-first presentation problem and visibly covers the creator workflow, Gemini/Vertex interpretation, live revocation, KMS verification and tamper failure, ADK delegation, Cloud Trace linkage, production-route attacks, and the honesty limits. The script is not yet timing-safe: its spoken copy is roughly 600 words, which consumes approximately four minutes at a clear presentation pace before clicks, animations, pauses, or network latency. Several claims also need precision edits before recording: the lattice relation is declared rather than literally unwritten; a signed notice proves integrity and issuance rather than receipt by a real company; training-set membership should be framed as not reliably determinable rather than an absolute claim about every person; and the reference buyer client proves that an integrated client can stop, not that all integrated clients do.
+
+**Key decisions:**
+1. Preserve the one-tab walkthrough as the final demonstration format — it makes the creator the user and still exposes the production evidence the rubric requires.
+2. Cut narration rather than accelerate delivery — a rushed four-minute performance would reduce comprehension and make the live action harder to trust.
+3. Narrow legal and technical claims to exactly what the visible artifact proves — signature validity proves integrity and provenance of the notice, while delivery and universal counterparty behavior require separate evidence.
+
+**Requirements touched:** HOD-301, HOD-302, HOD-312, HOD-320, HOD-350, HOD-360, HOD-620, HOD-760
+
+---
+
+### 2026-08-29 — Review the compressed recording plan
+
+**Prompt (verbatim):**
+> This is the plan
+
+**Outcome:** Reviewed the supplied compressed one-tab recording plan. Its approximately 346 spoken words require about 143 seconds at 145 words per minute, leaving meaningful room under the four-minute cap for the live cascade, signature verification, fleet drill, attacks, and deliberate pauses. Two blocking corrections remain before recording: Step 4 must explicitly direct all four inline clicks so the visible state proves the narration; and the opening example “train, but don't fine-tune” must be replaced because Hodi's current chain-shaped use scope cannot express training while excluding its descendants. One revocation-path sentence and the browser-verification sentence also need narrower wording so they describe the precise artifacts produced.
+
+**Key decisions:**
+1. Accept the compressed length as timing-safe — the plan now leaves roughly 97 seconds beyond spoken delivery at 145 words per minute.
+2. Reject “train, but don't fine-tune” as the illustrative consent distinction — the live alternative was to let a rhetorically useful sentence imply an inexpressible scope.
+3. Require action cues before every Step 4 claim — narration without the corresponding visible click would weaken proof of action even if the underlying feature exists.
+
+**Requirements touched:** HOD-104, HOD-301, HOD-302, HOD-320, HOD-360, HOD-620, HOD-760

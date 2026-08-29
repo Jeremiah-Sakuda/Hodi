@@ -586,3 +586,15 @@ The conflict topology is legible in the trace itself: the buyer's negotiator ask
 **Google-toolchain finding.** Cloud Run workload separation is only real when three independent pieces agree: `roles/run.invoker` selects who may call the service, the callee pins its role from its own environment and verifies the caller's OIDC email, and Firestore IAM scopes the callee to its database. A private service with a project-wide viewer is still a cross-domain credential. The front-door client now also requires a literal execution-surface marker from the worker; an unrelated HTTP 200 is not accepted as proof that the propagator workload executed the cascade. No new Antigravity runtime observation was made; the recorded headless-SDK result and ADK/OTel span behavior remain unchanged.
 
 **Deployment truth.** The code and offline tests implement the worker cutover and IAM narrowing. They have not been deployed in this session. `docs/deployment_status.json` therefore records the worker as `provisioned_unverified` and the route cutover as `scripted_not_executed`; no new live latency, trace, KMS, crawler, or IAM result is claimed.
+
+---
+
+## 2026-08-28 — Judge-evaluation verification pass
+
+**Crawler-log volume and Gemma triage rate.** Not re-audited in this session; the latest admissible values remain those derived in `docs/metrics.json`. No value is copied here because this run did not execute `make metrics` against live Firestore.
+
+**Canary results and `spend_to_date`.** Not observed in this session and therefore **unavailable** for this entry.
+
+**Scope-lattice edge cases and verbatim-match hit rate.** No new scope edge case was discovered. The complete 56-case containment suite passed. Verbatim-match hit rate was not re-measured and is **unavailable** for this entry.
+
+**Google-toolchain findings.** The credential-free ADK fleet demo ran and emitted a single correlated in-process OTel trace spanning registry non-disclosure, rights-custodian initiation, propagator execution, and supervisor quarantine/reroute. This is an observed offline execution surface, not a new Cloud Trace observation. The public Cloud Run `/demo`, `/works`, and `/.well-known/hodi.json` surfaces returned HTTP 200; no authenticated live IAM, Vertex, KMS mutation, or Firestore E2E check was run. `make test` passed 551 tests with 18 live-gated skips, `make verify-scopes` passed 56 cases, and `make compliance` reconciled 74 requirements.
