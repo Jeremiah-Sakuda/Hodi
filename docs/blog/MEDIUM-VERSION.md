@@ -14,7 +14,7 @@ source so the two locations cannot drift.
     https://jeremiah-sakuda.github.io/Hodi/blog/seven-ways-to-lie-to-yourself-in-code.html
 
 Medium imports the rendered page, keeps the formatting, and sets `rel="canonical"` back to the
-Pages version for you. Then place the two images and publish.
+Pages version for you.
 
 **If you paste manually instead**, set the canonical link by hand:
 Story settings (the `…` menu in the editor) → **Advanced settings** → **Customize canonical link**
@@ -23,14 +23,11 @@ This matters: the Pages version is the source of record, and without it the two 
 search results.
 
 **Title:** Seven ways to lie to yourself in code
-**Subtitle:** A defect ledger from building a system whose premise is refusing to assert what it cannot verify.
+**Subtitle:** What building an honesty-first AI consent system taught me about my own defects.
 **Suggested tags (5 max):** Software Engineering · Testing · Google Cloud · AI Agents · Software Architecture
 
-**Two images to place** — markers are inline below, in blockquotes. Delete each marker after you
-place its image.
-
 **Verify after publishing:** the sentence *"Created for the All Things Agentic Hackathon"* must
-survive the paste. It is the first line of the body.
+survive the paste. It is at the top of the body.
 
 ---
 
@@ -38,204 +35,78 @@ survive the paste. It is the first line of the body.
 
 ---
 
+*What building an honesty-first AI consent system taught me about my own defects.*
+
 *Created for the All Things Agentic Hackathon.*
 
-I built a system whose entire premise is refusing to assert what it cannot verify. Then I kept a ledger of every place it lied to me anyway.
+I spent August building [Hodi](https://hodi-evidence-endpoint-406699565497.us-central1.run.app/), a consent control plane for creative work used by AI. A creator registers a work's fingerprint and machine-readable terms. A buyer asks for a license in ordinary language. Gemini translates the request into a typed scope, but a deterministic policy lattice decides permission. If the creator changes their mind, a governed fleet of Google ADK agents runs a revocation cascade, signs the notices with Cloud KMS, and closes the standing offer. Nothing in the system is allowed to assert what it cannot verify.
 
-The project is called Hodi — *hodi* is what you call at someone's door before entering. It's a governed fleet of agents that administers creative consent: registering works with proof of control, expressing machine-readable licensing terms, negotiating with buyers under confidentiality, propagating revocations. Four agents separated by conflict of interest, an append-only event log, and a set of honesty invariants that are supposed to be enforced by structure rather than by good intentions.
+That last sentence is the whole thesis. So while I built it, I kept a ledger of every place my own implementation violated it.
 
-Over about seventy-two hours it produced sixty-six real defects. They sort into nine classes. **Four of those classes recurred after being fixed once** — which is the actually interesting part, because a bug you fix twice is telling you something a bug you fix once is not.
+The ledger contains sixty-six real defects. They sort into nine classes. Four of those classes recurred after being fixed once, which is the actually interesting part, because a bug you fix twice is telling you something a bug you fix once is not.
 
-The title says seven. The ledger says nine, and it says sixty-six rather than the fifteen this piece was published with — because the count is now generated from an enumerated ledger instead of typed into seven documents by hand, and the enumeration found more than the prose had been carrying. The old number had already drifted: fifteen here, fourteen everywhere else. **A number repeated in seven places and derived in none is not a measurement**, and it is the same defect class as two others in the ledger below. So the title stays as a record of what I thought the shape was, and the number moves, because that one is checked by a build step now.
+The title says seven. The ledger says nine, and the count when I first published this piece was fifteen. The count moved because it is now generated from an enumerated ledger instead of typed into documents by hand, and the enumeration kept finding more than the prose had been carrying. A number repeated in seven places and derived in none is not a measurement. The title stays as a record of what I thought the shape was. The number moves, because a build step checks it now.
 
-Before the ledger, the one idea worth understanding, because most of what follows only lands if you have it.
+Here are the three findings that carry the ledger.
 
-The four agents are separated by **conflict of interest, not by task**. The rights custodian holds artist identity and must see it. The licensing negotiator talks to buyers and must *not* see other buyers' negotiated terms — rate confidentiality is the norm in licensing, and a leak destroys the next deal. The evidence agent reads access logs and outputs and must *not* see commercial terms, because findings from an agent that knows what a deal is worth are interested findings. The revocation propagator acts across grants and must not hold identity at all.
+## 1. Comparing two attacker-controlled values is not an authorization boundary
 
-Stack those constraints and you get the point of the architecture: a single agent doing all four jobs would need the union of all four permission sets, which is precisely the position no honest broker may occupy. **A monolith here would itself be the violation.** The separation isn't decomposition for tidiness; it's the product. Which is why the first defect below is the one that matters most.
+Hodi's first invariant is that no buyer can read another buyer's terms. It is the reason the system has four agents instead of one, each under its own service account, separated by conflict of interest: the agent that holds creator identity must never see commercial terms, the agent that negotiates for one buyer must be incapable of reading another's, and so on. Every inter-agent call crosses a policy gateway that logs every denial as a structured event.
 
-Here they are, worst first.
+The gateway worked exactly as designed. And the boundary was still breakable.
 
-> **[IMAGE 1 — place here]** `diagram_a_the_fleet.png`
-> Four agents, the four conflict walls drawn as walls with forbidden reads terminating at them, the ADK orchestration layer with its OTel exporter, and the deployed Cloud Run surfaces.
-> Upload from: `docs/architecture/diagram_a_the_fleet.png` · or drag from https://raw.githubusercontent.com/Jeremiah-Sakuda/Hodi/main/docs/architecture/diagram_a_the_fleet.png
-> Caption: *The conflict-of-interest topology. The walls are the product.*
+The licensing endpoint took `counterparty_id` from the request body and used it as both the database query filter and the session identity the gateway validated that filter against. The gateway was comparing the caller's claim to itself, and it always agreed. One unauthenticated request with a signature field containing the literal string `NOT-A-REAL-SIGNATURE` returned another counterparty's grant, their negotiated scope, and a receipt in their name.
 
----
+One day later, the same class recurred three lines below the handler I had just fixed. The revocation route took no authenticator at all. Anyone could revoke any published work. And because the grant log is append-only by IAM policy (the deployed identity holds create but not update or delete), those writes could not simply be erased.
 
-## The one that was live
+The lasting fix was structural, not local. Identity now derives from a verified credential, never from the body. The original exploit is a permanent regression test replayed against the deployed service. And a CI guard enumerates the router's own routes and fails the build if any mutating method reaches an endpoint that never authenticates. That guard is twenty lines. Both defects would have been caught on first commit.
 
-The first invariant in the README reads: *"No agent can read another buyer's terms."* It's the first row of the invariant table and the reason there are four agents instead of one.
+The lesson: a security invariant is not what your policy engine enforces. It is what your policy engine is handed.
 
-It was breakable over the public internet, unauthenticated, and it was broken.
+## 2. Your observability stack needs the same adversarial testing as your product
 
-`POST /api/v1/license` took `counterparty_id` from the request body and used that same value as **both** the database query filter **and** the "session context" the policy gateway validated that filter against. The gateway compared the caller's claim to itself and always agreed. The signature field was checked only for truthiness.
+Hodi runs a live evidence endpoint on Cloud Run that has logged every access since August 6, alongside a `robots.txt` that points at machine-readable consent terms at `/.well-known/hodi.json`. The idea: if AI crawlers visit, we can observe whether any of them looks for the terms.
 
-An unauthenticated request, naming a counterparty that was not its own, came back with that counterparty's grant id, their full negotiated scope, and a signed receipt issued in their name.
+My first published finding was a clean negative result: nothing identifying itself as a crawler had asked. It was a good line, and it was built on two bugs pulling in opposite directions.
 
-The gateway was working exactly as designed. It was being handed the attacker's assertion as ground truth. That's the shape of it: **the mechanism was fine, the input to the mechanism was the lie.**
+First, the false positive. The list of self-originated user agents omitted `Google-Cloud-Scheduler`, so my own scheduled audit job was being counted as third-party traffic. My infrastructure was manufacturing my evidence.
 
-The part that stings more is why the tests didn't catch it. There was a live boundary test. It passed the whole time. It exercised a debug endpoint that supplies its own session context — so it could not fail the way production failed.
+Then, the false negative. The crawler detector required a word boundary before the string `bot`, so the commonest crawler naming convention there is (a vendor prefix glued directly onto `bot`) never matched. The zero was not evidence of absence. It was a regex that could not see.
 
-> A boundary test that cannot fail the way production fails is not a boundary test.
+After both corrections, the audited numbers as of 2026-08-29 read: 6,956 accrued records, of which 6,675 are my own instrumented tooling, 281 are non-self but browser-like and stay labeled unattributed, and 29 match a generic crawler signature. Those 29 visits came from three distinct self-identifying crawler user agents. Twenty-one of those 29 fetched `/robots.txt`. Exactly one, ever, fetched the consent document named inside it.
 
-And then, one day later, the same class again: `POST /api/v1/revoke`, three lines below the handler I'd just fixed, took no authenticator at all. Anyone could revoke any published work id. The response disclosed every affected counterparty's terms. And because the log is append-only with no update or delete permission, **the writes weren't undoable.**
+That last sentence is the product thesis in one audit: the crawlers ask whether they may enter, and almost none ask what they may do, because for most of the web there is still nowhere to ask it.
 
-I had fixed the reported route. I had not asserted the property across the routes.
+Note what the claim is not. A user agent is self-declared, so these records are attributable, not authenticated. No company is named, because the records cannot prove who sent anything, and the point was never who they are. The counts regenerate from source, and the build fails if this essay's figures drift from the audit file.
 
----
+The lesson: an evidence pipeline that is not tested adversarially will eventually testify in your favor, and that is exactly when you should not believe it.
 
-## The one where my own infrastructure lied for me
+## 3. Generating docs from source prevents drift. It does not make the source true.
 
-Hodi's first empirical headline was a negative result: *I published machine-readable consent terms at a discoverable endpoint and no crawler asked.* Two later audits corrected it, in the same direction: self-identifying crawlers did come — 29 visits from three of them at the 2026-08-29 count — and most fetched `/robots.txt` while exactly one has followed the linked machine-readable consent document. The earlier zero was a detector bug, not evidence of absence.
+Hodi must never claim that a work was inside a model's training data, because nobody can reliably know that today. The evidence schema has no field for the claim, and a render-time lint rejects overclaim phrasings in generated text.
 
-Its entire value depends on the third-party count being real.
+The README said the lint catches paraphrases. So I measured it. Against a twelve-paraphrase probe set, seeded from phrasings the lint was deliberately not written against, the regex layer rejected four.
 
-The list of user agents belonging to my own tooling was missing one entry: `Google-Cloud-Scheduler`. From the moment I enabled the daily accrual job, **the project's own scheduled infrastructure was being counted as third-party crawler traffic.** The honesty finding had inverted into a fabricated positive, manufactured by the project itself.
+The claim came out and the number went in. A Gemini embedding backstop now takes measured coverage to twelve of twelve, and it is admissible for exactly one reason: it can only ever add a refusal. It runs after every regex has declined, so a wrong embedding produces a false refusal, never a false permission. If the embedding model is unreachable, the system falls back to the deterministic four-of-twelve layer instead of silently trusting a model it cannot reach. Both numbers stay published, because one depends on a model and the other does not.
 
-It didn't surface from a test. It surfaced because the README said one number and the project's own documented `make metrics` command produced a different one. The docs and the tool disagreed, and the first thing a skeptical reader does is run the tool.
+This finding generalizes further than the other two. Everything in this project that could be generated from source is generated from source: the IAM conflict matrix, the metrics in the README, the defect count in this essay. That prevents documentation from drifting away from reality. It does not prevent reality from being read wrongly. The sharpest defect in the ledger was a conflict matrix generated perfectly from a policy module whose enforcement function matched collections by prefix, so the document was accurate about a permission that was not the permission being granted.
 
-The root cause was duplication: the list existed in two files. And it had already fired once — the day before, with two different missing patterns. The fix that time was to add them to both copies. The comment directly above one of those lists literally warned that a missing pattern "inflates the third-party count into a fabricated finding."
-
-The warning was correct. It did not prevent the recurrence. **A comment is not a mechanism.**
-
-And then it happened a third time. The final verification pass, days later, found a Hodi-branded audit probe — my own, running from my own machine — being counted as non-self-originated, because it too was missing from the list. Three misses, three fixes, and the first two fixes were *adding the missing entries*. The third fix was the one that should have been first: every probe this project points at its own endpoint is named `Hodi-<something>`, so the check now matches the prefix. A new probe is covered on the day it is written. The repo's own note on it reads: *"An enumeration you must remember to update is not a mechanism."* Which is the same sentence as the comment, one level up, and this time it is code.
-
-There's a coda. After fixing the list, ten non-self records remained. I nearly wrote them up as third-party hits. Then I looked: nine arrived within a single second, from cloud IPs, and one of them requested `/api/v1/debug/compromised_agent_read` — a path no sitemap advertises and no crawler would care about. That's someone inspecting the service. Not a crawler.
-
-Reporting those ten as crawler access would have been exactly the fabricated finding the project exists to refuse, arrived at from the opposite direction. So the metric changed shape: `known_crawler_ua_matches` is the only number this project describes as crawler access, while every other non-self request stays *unattributed*. The later detector correction found matching user agents after all — **29 visits** as of the 2026-08-29 audit, from three distinct self-identifying crawlers. Twenty-one fetched `/robots.txt`; exactly one has fetched the linked consent document. That is attribution, not authentication, and the current count remains sourced from `docs/metrics.json` rather than frozen into this article.
-
----
-
-## The one where the guard passed perfectly and the property was false
-
-This is the last defect I found, and it is the one I would keep if I could only keep one.
-
-`resolve()` is the single read path for grant state — a pure fold over an append-only event log. Its acceptance criterion, written early and taken seriously, was **byte-stable replay**: shuffle the event log any way you like, fold it, and the resulting state must be byte-for-byte identical. The demo proves it on every run by hashing the output of an ordered fold against a shuffled one. It has never once disagreed.
-
-The fold sorted events by `issued_at.isoformat()` — the ISO *string*, not the instant it denotes.
-
-For a log where everything is in UTC, those are the same thing. For a log with mixed offsets they are not, because string comparison is lexicographic and time zones are not:
-
-```
-granted at 2026-08-05T12:00:00+00:00   ->  12:00Z
-revoked at 2026-08-05T09:00:00-05:00   ->  14:00Z   (later!)
-```
-
-`"2026-08-05T09..."` sorts before `"2026-08-05T12..."`, so the revocation folds in *ahead of the grant it revokes*. The grant comes out the other side alive:
-
-```
-resolve() status    : active     (should be revoked)
-permits(training)   : True       <-- on a grant that was revoked
-```
-
-Now the part worth the section. **The byte-stability check passed the entire time, and it was right to.** The fold was not unstable. It was *deterministically wrong* — it produced the same incorrect answer from every input ordering, which is exactly what a consistency check is designed to see as healthy. The guard was working. It just could not see this.
-
-> A test that proves consistency is not a test that proves correctness.
-
-That is the meta-pattern of this whole ledger eating the mechanism built to prevent it. I had written down a property, built a mechanism that genuinely enforced it, and wired the two together — and the property I chose to enforce was adjacent to the one I actually needed. Determinism is not accuracy. A system can be perfectly reproducible and perfectly wrong, and reproducibility will report success in a confident voice.
-
-Two footnotes that matter for how alarmed to be, in both directions. It was **not reachable through Firestore**, which normalises timestamps to UTC before they are stored, so the live grant path never had mixed offsets to trip over. But it *was* reachable through any JSON-sourced log — which is the committed fixture log and the failure-tolerance drill, the two paths the demo and the delegation exercise. So it was live in the parts of the system I point at when I want to show the thing working.
-
-The fix is one line: sort on `issued_at.astimezone(timezone.utc)` instead of on its rendering. The tiebreak on `event_id` stays, because byte-stable replay still depends on it — the criterion was never wrong, only insufficient.
-
----
-
-## The rest of the ledger
-
-**Tests that could not fail.** Four of them. My favourite: the guardian of the append-only invariant — the property the entire audit trail rests on — built a set literal and asserted that the set contained what it had just been constructed to contain. It touched no policy, no role, no datastore. Elsewhere, prompt-injection detection lived entirely inside a test class gated behind a credentials flag, so emptying the detection patterns broke nothing; and a sort tiebreak documented as load-bearing for reproducibility was never exercised, because every fixture happened to carry a distinct timestamp.
-
-**Infrastructure reported done, never built.** Budget alerts, a cost-fenced project, a scheduler. All written up as complete in the build log. None existed. This one gets its own correction note, because the pattern — reporting infrastructure as verified without an observed execution — is itself the finding.
-
-**Claims with no code behind them.** Google's Agent Development Kit — ADK — was named as "the runtime agent framework" in the README, in the spec, and on the architecture diagram, while `google.adk` appeared nowhere in the codebase. The only occurrence of the string was inside a `print()` statement. It was my claim and my omission, so there is nobody to be vague about.
-
-**Policy looser than the policy text.** Collection permissions were matched by prefix, so an entry written to express *per-counterparty scoping* also permitted reading the entire collection. And a `denied_collections` list sat in the policy data, consulted by nothing. The policy document was right. The generated documentation rendered it faithfully. The enforcement quietly did not implement it.
-
-**Semantics that disagreed with themselves.** Four instances. The cleanest: a "superseded" grant. `resolve()` reported status *superseded* while handing back a live scope; the folded-state function correctly returned nothing; and the containment engine accepted the raw event and said *yes*. Three components, three answers, about the same event. Fail-closed, so never a breach — but "revocation is a new event that supersedes" was not what the read path implemented.
-
----
-
-## The one claim that was verified before it was made
-
-There is a counter-example in the ledger, and it is the same discipline applied one level up — to a decision about what to build on, rather than to code already written.
-
-The competition spec required at least one Google agent framework. I intended to use the Antigravity SDK. Before building anything on it, I wrote down a boolean assertion and gave it a date:
-
-> *From a headless Cloud Run Job, with no interactive session, the SDK executes a two-agent delegation under distinct service accounts and emits an OpenTelemetry span per agent decision carrying (a) the invoking agent's identity, (b) the policy consulted, and (c) the outcome.*
-
-Partial emission counted as a failure, stated in advance. Spans without agent identity cannot support the observability requirement, so "it emits spans, just not those ones" was defined as a no before there was any temptation to call it a yes.
-
-The harness was two trivial agents, one delegating to the other, deployed as a Cloud Run Job under two distinct service accounts. Observed result: it failed at the first check — `No module named 'google.antigravity'`. The SDK does not currently expose a headless server-side Python surface for multi-agent delegation under distinct service accounts.
-
-The pre-committed branch was ADK, and ADK is what runs today. The full assertion, the verbatim output, the span payloads and the branch taken are in [`docs/antigravity/decision.md`](https://github.com/Jeremiah-Sakuda/Hodi/blob/main/docs/antigravity/decision.md).
-
-I am not making a claim about the SDK's quality — this is one assertion, on one date, about one surface, and an IDE-oriented tool not having a headless server module is a reasonable thing for it to be. The part worth noticing is procedural: **the decision criterion existed before the test, so the outcome was executed rather than debated.** There was no afternoon spent negotiating with myself about whether partial emission was good enough.
-
-And it is the only claim in this project that was verified before it was made. It is also the only one that never had to be corrected.
-
----
+The lesson: generation-from-source moves the lie one layer down. You still have to go look.
 
 ## The meta-pattern
 
-Every one of these is the same failure at a different altitude:
+Every one of the nine classes reduces to the same shape: a stated property, a mechanism that does not enforce it, and nothing connecting the two. The property is always written down. The mechanism usually exists. What is missing is the wire that fails loudly when they come apart.
 
-> **A stated property, a mechanism that doesn't enforce it, and nothing connecting the two.**
+So the fixes that matter are not the sixty-six patches. They are the four guards: the route enumerator that fails CI on an unauthenticated mutating endpoint, the self-traffic classifier that is itself tested, the measured lint coverage that is republished on every build, and the doc-drift check that fails the build when a published number disagrees with its source.
 
-The property is always written down somewhere — a README row, a docstring, a comment, a spec requirement. The mechanism usually exists too. What's missing is the wire between them: something that fails, loudly, when they come apart.
+One more, for anyone building on ADK. The agents in Hodi are deterministic `BaseAgent` subclasses (no LLM inside the authority hops, which is the point), and `BaseAgent` is a Pydantic model. Shared mutable state passed as a model field gets deep-copied per agent. Every agent mutated its own private copy, the orchestrator saw none of it, nothing errored, and the run reported success while returning nothing. It is now a regression test, and it is the kind of failure this whole essay is about: every component honest, the composition lying.
 
-I already had one instance of that wire and it worked perfectly. The IAM conflict matrix in the docs is *generated* from the policy module the gateway reads. It cannot drift. In seventy-two hours it never drifted once.
+## What the system refuses to say
 
-Everywhere I hadn't built that wire, things drifted.
+Hodi will not claim your work was in a model's training data. It will not claim revocation un-trains a model; it withdraws permission going forward and closes the offer. It will not call ownership verified until it is proven: even my own five registered works display as asserted, because the verifier refuses to upgrade a claim it cannot check.
 
-Worth saying plainly: much of this was built with agentic assistance, and several classes in this ledger are that practice's characteristic failure modes — infrastructure reported done without an observed execution, tests that assert what they were just constructed to assert, transcripts written rather than captured. The speed is real and so is that failure surface. The guards are the answer to it specifically: **a mechanism that fails loudly is the only thing that distinguishes work verified from work reported as verified.** Reading more carefully does not scale; a build that goes red does.
+A registry that flatters you is worthless. The only version worth building is one that is built to be believed.
 
-So the fixes that matter aren't the sixty-six patches. They're the four guards:
+You can try the whole thing, live, with no account: [the platform](https://hodi-evidence-endpoint-406699565497.us-central1.run.app/) has a Studio for creators, a Market for buyers, and a [three-minute guided walkthrough](https://hodi-evidence-endpoint-406699565497.us-central1.run.app/demo). The [demo video](https://youtu.be/gLnM-3nZEbg) shows the full run. The code, the defect ledger, and every audit behind the numbers in this essay are public at [github.com/Jeremiah-Sakuda/Hodi](https://github.com/Jeremiah-Sakuda/Hodi).
 
-- **One list, two consumers.** The self-traffic user agents live in one module now, imported by both the audit script and the triage engine. The duplication that caused the same defect twice is gone.
-- **Docs must equal the tool.** A check fails the build if any *accrual* number — the ones that carry the honesty finding — disagrees between the regenerated metrics file and the README, the honesty diagram, or the submission text. Named figures, not every integer in the repo; the ones where drift would change what a reader believes.
-- **Every pinned model needs a call site.** A test that fails if a model is declared but never called — because I'd pinned one that nothing invoked, which reads as model-count padding to anyone paying attention.
-- **Every mutating route must authenticate.** The newest one, and the one I should have written first. It enumerates the router's own routes and fails CI if any POST, PUT, PATCH or DELETE reaches an endpoint that never authenticates. Exemptions go in a named list, in the diff, with a written reason. It's mutation-verified: I added a fake unauthenticated route and watched it fail.
-
-That last guard is twenty lines. Both live security defects would have been caught by it, on the first commit, before either reached a deployed service.
-
----
-
-## What I'd take from this
-
-Generation-from-source is the strongest idea in this codebase, and I underused it. But it has a limit worth naming precisely:
-
-**It protects against the documentation drifting from the source. It does not protect against the source being read wrongly.**
-
-The conflict matrix was generated correctly from a policy module whose *enforcement function* matched collections by prefix. The document was accurate. The permission it described was not the permission being granted. Generation gives you consistency between artifacts; it gives you nothing about whether the shared artifact means what you think.
-
-For that you need the second thing: a test that fails when the property is false, written from the property rather than from the implementation. Which is the standard advice, and I'd read it many times, and I still wrote four tests that couldn't fail.
-
-The difference between knowing that and doing it, it turns out, is roughly one defect ledger.
-
----
-
-None of which is why the thing exists.
-
-An illustrator cannot currently say *this series may be trained on, that one may not, and this third may for a fee with attribution* in any form a counterparty can read, verify, or be held to. The options are a checkbox on a platform you don't control, a `robots.txt` line covering a whole domain, or a lawsuit years later. Buyers acting in good faith have the mirror problem: no way to find work that is actually licensable. Both sides are stuck for the same reason — there is no machine-readable, verifiable, revocable expression of creative consent. Hodi is an attempt at that rail: register a work with proof of control, express scoped terms a machine can read, ask in plain language and get a typed answer with a receipt, revoke and have it cascade.
-
-> **[IMAGE 2 — place here]** `diagram_b_what_hodi_will_not_say.png`
-> The four typed evidence classes as columns, plus a struck-through fifth labelled *training-set membership — not determinable*.
-> Upload from: `docs/architecture/diagram_b_what_hodi_will_not_say.png` · or drag from https://raw.githubusercontent.com/Jeremiah-Sakuda/Hodi/main/docs/architecture/diagram_b_what_hodi_will_not_say.png
-> Caption: *The fifth column is the one that matters. There is no enum value for it, so the schema cannot express the claim.*
-
-And the finding I did not expect to be the most interesting one — which has now been wrong twice, in opposite directions, which is the eighth way and the reason this section is dated.
-
-I published machine-readable consent terms at a discoverable endpoint, with a `robots.txt` pointing at them. For a week I wrote that **nothing identifying itself as a crawler had asked** — *the absence is the evidence* — and it was a good line built on a broken regex, which required a word boundary before `bot` and so could not see the commonest crawler-naming shape there is. Then it read one. As of the **2026-08-29** audit it reads **29 visits from three distinct crawler-signature user agents, between August 11th and August 29th** — and the follow-up claim ("none fetched the terms") aged out from under me too: exactly one crawler has now fetched the machine-readable consent document. A dated observation is allowed to change; an undated one just becomes false.
-
-And the finding survived being corrected twice, which is the part worth keeping: **twenty-one of those 29 fetched `/robots.txt`, and exactly one — ever — fetched `/.well-known/hodi.json`** — one request away, named in the very file they did read. They asked whether they were allowed to crawl; in nineteen days the terms were read once. None of them can yet ask what they are allowed to *do with the work* — building the place where that question has an answer is what this project is.
-
-That is stronger than the absence I nearly published, and I only have it because the number was checked against a mechanism instead of a memory. The live count is sourced from `docs/metrics.json`; if it disagrees with this paragraph, the metrics file is right and a build step will say so. Hodi is the knock — the door exists now. It turns out the harder problem is getting anyone to knock.
-
----
-
-*Hodi is open source, with its full build log and findings — including every correction note quoted here. The two named findings above are in [`docs/FINDINGS.md`](https://github.com/Jeremiah-Sakuda/Hodi/blob/main/docs/FINDINGS.md) in their complete form, with dates and exact exposure.*
-
-
----
-
-*Originally published at [https://jeremiah-sakuda.github.io/Hodi/blog/seven-ways-to-lie-to-yourself-in-code.html](https://jeremiah-sakuda.github.io/Hodi/blog/seven-ways-to-lie-to-yourself-in-code.html). Source, build log, and full findings: [github.com/Jeremiah-Sakuda/Hodi](https://github.com/Jeremiah-Sakuda/Hodi).*
+Your voice deserves a door. Hodi is the knock.
