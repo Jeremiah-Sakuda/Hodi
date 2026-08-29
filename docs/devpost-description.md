@@ -4,6 +4,8 @@ Created for the All Things Agentic Hackathon. Category: The Fortified Enterprise
 
 Every claim below has a producing section in the repository, named inline. Every number is read from `docs/metrics.json` or the live service, and `make check-docs` fails the build if this file's figures drift from their source.
 
+**Demo video:** [youtu.be/gLnM-3nZEbg](https://youtu.be/gLnM-3nZEbg) (3:44, public).
+
 **▶ Try it — no install, no account, nothing simulated: [hodi-evidence-endpoint-406699565497.us-central1.run.app](https://hodi-evidence-endpoint-406699565497.us-central1.run.app/)**. The platform has three doors: **the Studio** (register a work — SHA-256 computed in your browser, the file never uploaded — declare terms, revoke with a real Cloud KMS-signed cascade), **the Market** (ask for a licence in your own words; Gemini interprets the sentence live on Vertex AI, and the artist's declared terms decide deterministically), and **[the guided walkthrough](https://hodi-evidence-endpoint-406699565497.us-central1.run.app/demo)** — the five-step run shown in the demo video. The same URL serves the JSON machine root to non-browser clients.
 
 ---

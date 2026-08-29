@@ -33,6 +33,7 @@ Created for the All Things Agentic Hackathon.
 ## Source and live service
 
 - Repository: [github.com/Jeremiah-Sakuda/Hodi](https://github.com/Jeremiah-Sakuda/Hodi)
+- **Demo video: [youtu.be/gLnM-3nZEbg](https://youtu.be/gLnM-3nZEbg)** — 3:44, recorded live against the deployed service.
 - **The platform: [hodi-evidence-endpoint-…run.app](https://hodi-evidence-endpoint-406699565497.us-central1.run.app/)** — the Studio (register a work, hashed in your browser, declare terms, revoke with a KMS-signed cascade), the Market (ask for a licence in your own words — Gemini interprets live, the declared terms decide), and the guided walkthrough. No install, no account, nothing simulated.
 - **Interactive walkthrough: [/demo](https://hodi-evidence-endpoint-406699565497.us-central1.run.app/demo)** — the five-step run from the demo video, against the live service.
 - Evidence endpoint (JSON machine root, same URL for non-browser clients): [hodi-evidence-endpoint](https://hodi-evidence-endpoint-406699565497.us-central1.run.app/)

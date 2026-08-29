@@ -8,6 +8,8 @@ Hodi is a governed fleet of institutional agents that administers creative conse
 
 **Hodi is the knock.**
 
+**▶ [Watch the 4-minute demo](https://youtu.be/gLnM-3nZEbg)** — the guided walkthrough, recorded live against the deployed service in one unedited take.
+
 **▶ Try it live — no install, no account, nothing simulated:** [**hodi-evidence-endpoint-…run.app**](https://hodi-evidence-endpoint-406699565497.us-central1.run.app/) *(browsers get the site; the same URL still serves the JSON machine root to non-browser clients)*. Three doors:
 
 - **[The Studio](https://hodi-evidence-endpoint-406699565497.us-central1.run.app/#studio)** *(creators)* — register a work as a **claim**: title, medium, and a SHA-256 fingerprint computed in your browser — **the file never leaves your device**. Declare which uses may be licensed, watch grants arrive, and revoke any of them: the real cascade runs against the deployed service and returns a Cloud KMS signature.
