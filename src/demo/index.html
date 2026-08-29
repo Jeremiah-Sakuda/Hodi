@@ -432,7 +432,9 @@
     try{
       const j = await (await api('/demo/api/interpret')).json();
       $('letter').textContent = j.request_text;
-      $('drawn').innerHTML = 'Drawn into the artist’s terms — read live by <span style="color:var(--gold)">'+j.interpreter_model+'</span> · Vertex AI';
+      $('drawn').innerHTML = j.surface_kind === 'live'
+        ? 'Drawn into the artist’s terms — read <b>live</b> by <span style="color:var(--gold)">'+j.interpreter_model+'</span> · Vertex AI'
+        : 'Drawn into the artist’s terms by <span style="color:var(--gold)">'+j.interpreter_model+'</span> · Vertex AI — <b>recorded response</b> (live call unavailable just now)';
       const sc=j.interpreted_scope||{}, terr=(sc.territory||[]).join(' & ');
       const rows=[['They may teach their AI from this work','use_type: '+sc.use_type],
         ['only the kind of model they named','model_class: '+sc.model_class],
@@ -538,7 +540,7 @@
   const names=['Register','License','Revoke','Certificate','Declarations'];
   $('steps').innerHTML=scenes.map((_,i)=>'<button data-g="'+i+'"><span class="b"></span><span class="t">'+(i+1)+' '+names[i]+'</span></button>').join('');
   const TIPS=['Live sandbox on Google Cloud — every action is a real call. <b>Nothing is simulated.</b>',
-    'Read live by <b>Gemini 3.5 Flash</b> on Vertex AI — then the deterministic rules decide.',
+    '<b>Gemini 3.5 Flash</b> on Vertex AI interprets the request — then the deterministic rules decide.',
     'The hero: <b>Stamp</b> runs the real revocation cascade against this live service.',
     'Verify the signature in your browser · run the real ADK fleet · attack the live routes.',
     'What the office refuses to certify — then the knock.'];

@@ -97,9 +97,21 @@ class ScopeInterpreter:
 
     def interpret(self, request_text: str, valid_from: datetime) -> Scope:
         """Returns a validated Scope, or raises. There is no third outcome."""
+        scope, _ = self.interpret_with_surface(request_text, valid_from)
+        return scope
+
+    def interpret_with_surface(self, request_text: str, valid_from: datetime,
+                               prefer_live: bool = False):
+        """(Scope, surface) — surface is "live" or "cache", from the client.
+
+        A caller that displays the word "live" must display THIS value (HOD-800):
+        the guided demo said "read live" over a cache hit, because the label was
+        asserted in HTML rather than taken from the run.
+        """
         prompt = INTERPRETER_PROMPT_TEMPLATE.format(request_text=request_text)
-        raw = self.client.generate(prompt, model_id=self.model_id)
+        raw, surface = self.client.generate_with_surface(
+            prompt, model_id=self.model_id, prefer_live=prefer_live)
         fields = validate_interpretation(_strict_parse(raw))
         # Scope's Literal types enforce the vocabulary a second time at
         # construction — belt and braces, both structural.
-        return Scope(valid_from=valid_from, **fields)
+        return Scope(valid_from=valid_from, **fields), surface

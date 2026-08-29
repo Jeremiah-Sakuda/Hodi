@@ -1,6 +1,6 @@
 # Hodi — recording script (browser walkthrough)
 
-**One browser tab. One URL. Five steps, six clicks. ~470 spoken words · lands ≈3:45 with the live pauses.**
+**One browser tab. One URL. Five steps, six clicks. ~441 spoken words · lands ≈3:30 with the live pauses.**
 
 The video is recorded against the guided walkthrough at
 **https://hodi-evidence-endpoint-406699565497.us-central1.run.app/demo** — the third door on the
@@ -50,25 +50,25 @@ buttons on step 4. Arrow keys also work.
 **Screen:** five works tagged `ASSERTED`; the visitor-log panel with the gold crawler count and
 tally, and the terms-fetch count beneath it. Hold still; let the host in the top bar be readable.
 
-> Put creative work on the internet — music, writing, code — and AI companies will crawl it. Your
-> only control is robots.txt: a file that can say one thing — crawl, or don't. Not *what* a company
-> may do with your work — "training yes, but don't clone my voice" — and it cannot take a yes
-> back.
+> Put creative work online and AI companies will crawl it. Your only control is robots.txt: a file
+> that says one thing — crawl, or don't. Not *what* they may do with your work — "training yes,
+> but don't clone my voice" — and it can't take a yes back.
 >
-> I'm an independent musician and developer — I will never have a legal team or a licensing
-> department. **Hodi is a fleet of AI agents, live on Google Cloud, acting as that department —
-> for anyone.**
+> I'm an independent musician and developer — I'll never have a legal team. **Hodi is a fleet of
+> AI agents, live on Google Cloud, acting as one — for anyone.**
 >
-> Everything you're seeing is the deployed service — that address in the top bar is its Cloud Run
-> URL. These five works are mine. The visits on this log are AI crawlers — nearly all asked only
-> whether they could crawl. None could ask what they may *do* with the work.
+> Everything here is the deployed service — that address in the top bar is its Cloud Run URL.
+> These five works are mine. The visits on this log are AI crawlers, asking whether they could
+> crawl. None could ask what they may *do* with the work.
 
 **Do:** click **Continue →**
 
 ## 2 · LICENSE · ~0:40–1:10
 
-**Screen:** the company's request as a large quote; terms animate in under
-"read live by gemini-3.5-flash · Vertex AI"; a green **✓ Granted** badge.
+**Screen:** the company's request as a large quote; terms animate in under a header the page takes
+from the actual run — normally **"read live by gemini-3.5-flash · Vertex AI"** (the deployed route
+calls Vertex fresh). If it instead reads **"recorded response (live call unavailable)"**, the live
+call failed this load: reload and retake — do not record the fallback under this narration.
 
 > A company asks to license my work, in plain English. **Gemini 3.5, on Vertex AI**, turns the
 > sentence into structured terms — fine-tuning, non-commercial, attribution required.
@@ -91,8 +91,8 @@ the primary button is red: **STAMP · TAKE IT BACK**.
 > automatically withdraws the narrower uses inside it — and leaves untouched the one I never
 > granted.
 >
-> It crossed the agent gateway, joined a permanent event log — the fleet's shared memory — and was
-> signed by **Cloud KMS**. And the request granted a minute ago is now refused.
+> It crossed the agent gateway, joined the permanent event log, and was signed by **Cloud KMS**.
+> The request granted a minute ago is now refused.
 
 **Do:** click **Continue →**
 
@@ -128,9 +128,8 @@ the primary button is red: **STAMP · TAKE IT BACK**.
 > cannot reliably know. It will never pretend revocation un-trains a model. A registry that
 > flatters creators is worthless. **This one is built to be believed.**
 >
-> And none of it is specific to me: at this same address, any creator can register work in the
-> Studio, any buyer can ask in their own words in the Market. Play both sides yourself, right
-> now.
+> None of it is specific to me: at this same address, any creator can register work in the Studio,
+> any buyer can ask in the Market. Play both sides yourself.
 >
 > Your voice deserves a door. **Hodi is the knock.**
 
@@ -140,7 +139,7 @@ the primary button is red: **STAMP · TAKE IT BACK**.
 
 - **Run the full sequence live three times and time the slowest.** Record against that number.
 - **If a rehearsal exceeds 3:50, cut in this order:** the attack beat down to "Six attacks, six
-  refused." → "the fleet's shared memory" clause → the certificate beat down to "Verified. Altered —
+  refused." → the "asking whether they could crawl" sentence → the certificate beat down to "Verified. Altered —
   void."
 - **Never cut:** the cold open, "the model interprets; it never decides," the why-five-agents
   sentence, the quarantine beat, the Cloud Run URL line, the final two lines.

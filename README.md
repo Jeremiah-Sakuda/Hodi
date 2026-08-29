@@ -4,7 +4,7 @@
 
 *"Your voice is in a product you never agreed to."*
 
-Hodi is a governed fleet of institutional agents that administers creative consent end to end: registering works with proof of control, expressing scoped machine-readable terms, negotiating with buyers under confidentiality, and propagating revocations across affected grants. The fleet's four agents are separated by conflict of interest — not by task — and every inter-agent call passes a policy-enforcing gateway whose denials are logged as structured events, never silent. Hodi's audit record refuses to assert anything it cannot verify, structurally: the schema itself cannot express the claims the system will not make.
+Hodi is a governed fleet of institutional agents that administers creative consent end to end: registering works with proof of control, expressing scoped machine-readable terms, evaluating buyer requests under confidentiality, and propagating revocations across affected grants. The fleet's four agents are separated by conflict of interest — not by task — and every inter-agent call passes a policy-enforcing gateway whose denials are logged as structured events, never silent. Hodi's audit record refuses to assert anything it cannot verify, structurally: the schema itself cannot express the claims the system will not make.
 
 **Hodi is the knock.**
 
@@ -15,6 +15,26 @@ Hodi is a governed fleet of institutional agents that administers creative conse
 - **[The Walkthrough](https://hodi-evidence-endpoint-406699565497.us-central1.run.app/demo)** — the guided five-step run from the demo video: register, license, revoke (live cascade + wall clock), verify the KMS signature **in your own browser** — then watch it VOID on a single altered byte — run the real ADK fleet delegation, and throw six anonymous attacks at the live routes and see all six refused.
 
 Every value on all three surfaces is produced live by the same code the production routes run. The public journeys run in per-visit isolated sandboxes whose safety is policy, not convention: they execute as a `sandbox_agent` role the gateway denies at every real collection, exactly as it denies any other agent outside its authority ([HOD-760](docs/BUILD-LOG.md), [HOD-780](docs/BUILD-LOG.md); [tests/test_demo_sandbox_boundary.py](tests/test_demo_sandbox_boundary.py), [tests/test_demo_platform_sandbox.py](tests/test_demo_platform_sandbox.py)).
+
+---
+
+## For judges — the five-minute route
+
+1. **Open [the platform](https://hodi-evidence-endpoint-406699565497.us-central1.run.app/)** and click **The Walkthrough** (~3 min): live revocation cascade with a wall clock, a Cloud KMS signature you verify (and void) in your own browser, the real ADK fleet drill with its Cloud Trace id, six attacks refused.
+2. **Play both sides** (~2 min): register a work in the **Studio** (hashed in your browser), license it to yourself in the **Market** in your own words, revoke it, watch the same request refuse.
+3. If you have five more: the overview diagram below, then [the five decisive proofs](#five-decisive-proofs).
+
+### Five decisive proofs
+
+Of the 566 tests, these five carry the thesis — each states a property an impostor system would fail:
+
+| Property | Proof |
+|---|---|
+| The demo/real boundary is policy, not convention | a sandbox call aimed at a real collection is refused **by the gateway** ([tests/test_demo_sandbox_boundary.py](tests/test_demo_sandbox_boundary.py)) |
+| The model cannot decide permission | an interpretation smuggling `{"permitted": true}` is **rejected**, not stripped ([tests/test_gemini_interpreter.py](tests/test_gemini_interpreter.py)) |
+| Revocation reaches exactly the grants that permitted the use | all 25 (held × revoked) cells asserted against `permits()` as an independent oracle ([tests/test_revocation_reach.py](tests/test_revocation_reach.py)) |
+| A hung worker cannot stall or corrupt the fleet | the supervisor writes `TaskAbandoned` itself and a revoked lease blocks the worker's late commit ([tests/test_supervisor.py](tests/test_supervisor.py), [tests/test_execution_leases.py](tests/test_execution_leases.py)) |
+| History cannot be rewritten, even by the deployed identity | the runtime SA's effective IAM permissions exclude `update`/`delete`, read back from the deployed revision ([tests/test_grant_log_iam.py](tests/test_grant_log_iam.py)) |
 
 ---
 
@@ -44,9 +64,18 @@ This table is lifted verbatim from the PRD (§3.4). Every enforcement mechanism 
 
 ## Architecture
 
+![Hodi in one view: users and sandbox → agent gateway → ADK registry and supervisor → four conflict-domain agents → per-domain Firestore plus the append-only grant log, with Vertex AI, Cloud KMS, and Cloud Trace alongside](docs/architecture/diagram_overview.png)
+
+*Source: [diagram_overview.mmd](docs/architecture/diagram_overview.mmd).*
+
+<details>
+<summary><b>Full engineering diagram</b> — every workload, service account, database, and conflict wall (Diagram A)</summary>
+
 ![The Hodi fleet: four agents, four conflict walls, the ADK orchestration layer with its OTel exporter, and the deployed Cloud Run surfaces](docs/architecture/diagram_a_the_fleet.png)
 
 *Source: [diagram_a_the_fleet.mmd](docs/architecture/diagram_a_the_fleet.mmd). Every number traces to [docs/metrics.json](docs/metrics.json).*
+
+</details>
 
 ![What Hodi will not say: four typed evidence classes, and a struck-through fifth column labelled training-set membership — not determinable](docs/architecture/diagram_b_what_hodi_will_not_say.png)
 
@@ -104,7 +133,7 @@ Fetches the **live** `/works` manifest and verifies the corpus-integrity propert
 make test
 ```
 
-Runs the full offline suite — 566 tests, credential-free, including the cross-buyer attack suite, the work-scoped authorization adversarial suite, the route-authentication coverage guard, the recording-script contract guard, the 56-case containment truth table, the ADK delegation, and the quarantine drill. Seventeen tests that genuinely require live Firestore or live IAM (byte-identity at rest, and reading the deployed runtime identity back from IAM, cannot be proven against an in-memory buffer) are skipped unless you set `HODI_E2E=1`, because they write to real collections.
+Runs the full offline suite — 570 tests, credential-free, including the cross-buyer attack suite, the work-scoped authorization adversarial suite, the route-authentication coverage guard, the recording-script contract guard, the 56-case containment truth table, the ADK delegation, and the quarantine drill. Seventeen tests that genuinely require live Firestore or live IAM (byte-identity at rest, and reading the deployed runtime identity back from IAM, cannot be proven against an in-memory buffer) are skipped unless you set `HODI_E2E=1`, because they write to real collections.
 
 ```bash
 make compliance

@@ -1,0 +1,19 @@
+---
+title: Hodi — the fleet in one view (full engineering detail in Diagram A)
+---
+flowchart TB
+    classDef surface fill:#f5f0e6,stroke:#8a7248,stroke-width:1.5px,color:#2b2114
+    classDef gate fill:#fdf3d8,stroke:#a4823f,stroke-width:2px,color:#2b2114
+    classDef agents fill:#eef6ee,stroke:#2e6b4f,stroke-width:1.5px,color:#173325
+    classDef data fill:#eceff7,stroke:#3d5a99,stroke-width:1.5px,color:#141d33
+    classDef cloud fill:#f7ecec,stroke:#8e332b,stroke-width:1.5px,color:#331414
+
+    U["Creator (Studio) · Buyer (Market) · Judge (Walkthrough)<br/>one Cloud Run URL — HMAC-authenticated API, or isolated public sandbox"]:::surface
+    GW["AGENT GATEWAY<br/>every call: identity → role → policy<br/>denials are structured events, never silent"]:::gate
+    ORCH["ADK registry + supervisor<br/>role-scoped discovery · deadlines · leases<br/>quarantine + reroute on a hung worker"]:::agents
+    FLEET["Four conflict-domain agents (+ deterministic arbiter)<br/>custodian ∥ negotiator ∥ evidence ∥ revocation<br/>one service account each — no SA holds two domains"]:::agents
+    DATA["Firestore: per-domain databases (IAM-conditioned)<br/>+ append-only grant-event log (create-only IAM)<br/>state = a fold over events, at any timestamp"]:::data
+    CLOUD["Gemini 3.5 · Vertex AI — interprets, never decides<br/>Cloud KMS — signs notices, verifiable by anyone<br/>Cloud Trace — one correlated trace per delegation"]:::cloud
+
+    U --> GW --> ORCH --> FLEET --> DATA
+    FLEET --> CLOUD

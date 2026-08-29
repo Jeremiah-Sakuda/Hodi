@@ -79,20 +79,49 @@ class VertexGeminiClient:
         self._cache = _load_cache()
 
     def generate(self, prompt: str, model_id: str = PINNED_INTERPRETER_MODEL) -> str:
+        text, _ = self.generate_with_surface(prompt, model_id)
+        return text
+
+    def generate_with_surface(self, prompt: str, model_id: str = PINNED_INTERPRETER_MODEL,
+                              prefer_live: bool = False):
+        """Returns (response_text, surface) where surface is "live" or "cache".
+
+        Default order is cache-first — the credential-free demo's contract.
+        `prefer_live=True` inverts it: try Vertex FIRST, fall back to the cache
+        only if the live call fails. Added for HOD-800: the guided walkthrough's
+        page said "read live" while this client answered its fixed request from
+        the committed cache — a true integration wearing a stronger label than
+        the run it labelled. A caller that shows the word "live" must take the
+        surface from THIS return value, never assert it. Under HODI_OFFLINE=1
+        `prefer_live` still never touches the network — offline is a promise,
+        not a preference.
+        """
         if model_id not in PINNED_MODELS:
             raise ValueError(f"Model ID '{model_id}' is not a pinned literal. Pinned: {sorted(PINNED_MODELS)}")
 
         key = _cache_key(model_id, prompt)
-        if key in self._cache["entries"]:
-            return self._cache["entries"][key]["response_text"]
+        offline = os.environ.get("HODI_OFFLINE") == "1"
 
-        if os.environ.get("HODI_OFFLINE") == "1":
+        if prefer_live and not offline:
+            try:
+                return self._record(key, model_id, prompt, self._call_vertex(prompt, model_id)), "live"
+            except Exception:  # noqa: BLE001 — fall back to the recorded response, labelled as such
+                if key in self._cache["entries"]:
+                    return self._cache["entries"][key]["response_text"], "cache"
+                raise
+
+        if key in self._cache["entries"]:
+            return self._cache["entries"][key]["response_text"], "cache"
+
+        if offline:
             raise GeminiUnavailableError(
                 f"HODI_OFFLINE=1 and no cached response for this prompt under '{model_id}'. "
                 "The offline path never calls the network."
             )
 
-        text = self._call_vertex(prompt, model_id)
+        return self._record(key, model_id, prompt, self._call_vertex(prompt, model_id)), "live"
+
+    def _record(self, key: str, model_id: str, prompt: str, text: str) -> str:
 
         if os.environ.get("HODI_CACHE_WRITE") == "1":
             self._cache["entries"][key] = {"model_id": model_id, "prompt": prompt, "response_text": text}

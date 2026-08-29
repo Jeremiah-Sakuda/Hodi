@@ -1165,6 +1165,22 @@ check-generated, verify-scopes, `make demo-live` (6/6), red-team all green.
 
 ---
 
+### 2026-08-29 — Blank-slate hackathon panel reevaluation
+
+**Prompt (verbatim):**
+> re evaluate. We now have updated documentation, demo script and devpost submission writeups all in the repo. Run that panel from a blannk slate
+
+**Outcome:** Re-evaluated the current repository from a blank slate against the live Devpost rules and weighted rubric. Empirical checks in this session: `make test` passed 566 tests with 18 live-gated skips; `make demo`, `make verify-scopes` (56 cases), `make compliance` (74 requirements), and `make check-docs` passed. The browser root, `/demo`, `/metrics-snapshot`, `/works`, and `/.well-known/hodi.json` returned HTTP 200. A fresh isolated public walkthrough was executed over the network: grant permitted, sandbox revocation returned a Cloud KMS ECDSA signature and four derived scopes, the identical request was then refused, and the ADK drill returned six hops, three role identities, quarantine/reroute, and a Cloud Trace id in 1615 ms. Two submission-readiness gaps remain: no public YouTube/Vimeo URL was found, so Stage One completeness is not yet established; and the guided walkthrough's fixed interpreter prompt was served from the committed response cache while the screen and script call it “live” Gemini interpretation. The separate Market genuinely reaches Vertex for uncached visitor text, so the integration is real, but the filmed guided action's execution-surface label currently overstates what occurred. No product source was changed.
+
+**Key decisions:**
+1. Score the implementation and the currently submit-ready package separately — the missing public video is a Stage One completeness issue, not evidence that the underlying system lacks merit.
+2. Treat the cached guided interpretation as a presentation overclaim rather than a missing Gemini integration — the production route and uncached Market path do call Vertex AI, but the exact filmed action did not on this run.
+3. Deduct presentation readiness for Diagram A rather than architecture discipline — the exhaustive topology is technically substantive but too dense and small-texted to serve as the clean, fast-reading diagram the judging rubric asks for.
+
+**Requirements touched:** HOD-001, HOD-104, HOD-301, HOD-302, HOD-310, HOD-312, HOD-320, HOD-330, HOD-340, HOD-341, HOD-342, HOD-601, HOD-602, HOD-603, HOD-604, HOD-605, HOD-606, HOD-607, HOD-608, HOD-622, HOD-760
+
+---
+
 ### 2026-08-29 — Build the platform: landing page, Studio, and Market (HOD-780)
 
 **Prompt (verbatim):**

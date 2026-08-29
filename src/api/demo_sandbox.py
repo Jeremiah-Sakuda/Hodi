@@ -316,16 +316,23 @@ async def interpret(request: Request):
     AI), a cache hit, and show == do. The returned model id and typed scope are
     what the page renders.
     """
-    from datetime import datetime as _dt
     from src.llm.scope_interpreter import ScopeInterpreter
     from src.llm.vertex_gemini import PINNED_INTERPRETER_MODEL
     _rate_limit_or_429(_client_ip(request))
     try:
-        scope = ScopeInterpreter().interpret(DEMO_REQUEST_TEXT, valid_from=datetime.now(timezone.utc))
+        # prefer_live=True (HOD-800): a judge watching this step is told the
+        # model read the request — so the deployed route calls Vertex fresh,
+        # and only falls back to the committed recorded response if the live
+        # call fails, reporting WHICH ONE HAPPENED so the page can only ever
+        # display the label the run earned. Offline stays cache-only.
+        scope, surface = ScopeInterpreter().interpret_with_surface(
+            DEMO_REQUEST_TEXT, valid_from=datetime.now(timezone.utc), prefer_live=True)
         return {
             "request_text": DEMO_REQUEST_TEXT,
             "interpreter_model": PINNED_INTERPRETER_MODEL,
-            "surface": "Vertex AI · pinned interpreter · committed response cache",
+            "surface_kind": surface,
+            "surface": ("Vertex AI · pinned interpreter · live call" if surface == "live"
+                        else "Vertex AI · pinned interpreter · recorded response (live call unavailable)"),
             "interpreted_scope": scope.model_dump(mode="json"),
         }
     except Exception as exc:

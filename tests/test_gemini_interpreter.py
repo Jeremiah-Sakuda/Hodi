@@ -182,3 +182,67 @@ class TestNoticeDrafterLintGate(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LiveLabelComesFromTheRunNotTheMarkup(unittest.TestCase):
+    """HOD-800: the guided walkthrough said "read live" over a cache hit. The
+    label must now be TAKEN from the surface the client reports, and the
+    client's ordering under prefer_live must be what the label claims."""
+
+    def setUp(self):
+        from tests.offline_env import force_offline
+        force_offline(self)
+
+    def _client(self):
+        from src.llm.vertex_gemini import VertexGeminiClient
+        return VertexGeminiClient()
+
+    def _cached_prompt(self):
+        # the committed guided-demo request — guaranteed present in the cache
+        from src.llm.scope_interpreter import INTERPRETER_PROMPT_TEMPLATE
+        from src.api.demo_sandbox import DEMO_REQUEST_TEXT
+        return INTERPRETER_PROMPT_TEMPLATE.format(request_text=DEMO_REQUEST_TEXT)
+
+    def test_prefer_live_tries_vertex_before_the_cache(self):
+        """With a cached entry present, prefer_live must still attempt the live
+        call first — otherwise "live" is a label the cache wears."""
+        import os
+        from unittest.mock import patch
+        os.environ.pop("HODI_OFFLINE", None)  # simulate the deployed mode
+        client = self._client()
+        with patch.object(type(client), "_call_vertex", return_value='{"use_type": "fine_tuning", "model_class": "open_weights", "commercial": false, "attribution_required": true, "territory": ["US"]}') as live:
+            text, surface = client.generate_with_surface(self._cached_prompt(), prefer_live=True)
+        live.assert_called_once()
+        self.assertEqual(surface, "live")
+
+    def test_prefer_live_falls_back_to_cache_and_says_so(self):
+        import os
+        from unittest.mock import patch
+        os.environ.pop("HODI_OFFLINE", None)
+        client = self._client()
+        with patch.object(type(client), "_call_vertex", side_effect=RuntimeError("vertex down")):
+            text, surface = client.generate_with_surface(self._cached_prompt(), prefer_live=True)
+        self.assertEqual(surface, "cache")
+        self.assertTrue(text)
+
+    def test_prefer_live_never_touches_the_network_offline(self):
+        """Offline is a promise, not a preference: prefer_live under
+        HODI_OFFLINE=1 must serve the cache without attempting a call."""
+        from unittest.mock import patch
+        client = self._client()
+        with patch.object(type(client), "_call_vertex",
+                          side_effect=AssertionError("network I/O under HODI_OFFLINE=1")) as live:
+            text, surface = client.generate_with_surface(self._cached_prompt(), prefer_live=True)
+        live.assert_not_called()
+        self.assertEqual(surface, "cache")
+
+    def test_demo_interpret_route_reports_the_surface_it_ran_on(self):
+        """Offline the route must label the recorded response as recorded —
+        the word "live" may only ever come from a live run."""
+        from fastapi.testclient import TestClient
+        from src.evidence_service.main import app
+        r = TestClient(app, raise_server_exceptions=False).post("/demo/api/interpret")
+        self.assertEqual(r.status_code, 200)
+        j = r.json()
+        self.assertEqual(j["surface_kind"], "cache")
+        self.assertIn("recorded response", j["surface"])

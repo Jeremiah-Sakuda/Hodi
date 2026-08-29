@@ -608,3 +608,15 @@ The conflict topology is legible in the trace itself: the buyer's negotiator ask
 **A live surface froze the moving number.** The guided demo's first screen carried the crawler count as an HTML literal (17) with a matching hand-drawn tally; the audit moved to 29 and the deployed page kept saying 17. Same class as the landing page's launch-day label, which put the whole `crawler_access` collection count (mostly self-instrumentation) under "AI crawler visits observed". Both are ledgered (`demo-page-hardcoded-crawler-count`, `landing-stat-label-overclaim`), and the structural fix is `GET /metrics-snapshot`: the committed dated audit served to every page, so a figure a judge sees is either the one the README is held to, or the word "unavailable".
 
 **Google-toolchain finding.** Content negotiation on the Cloud Run root lets one URL serve both audiences honestly: browsers get the platform site, everything else keeps the JSON machine root — no crawler-facing surface changed shape when the product page shipped. And the platform's live-interpreter route is the project's only public path that spends model quota on anonymous input; it is bounded three ways (text length, per-session cap, per-IP rate limit) because an unauthenticated Vertex call is a spend amplifier by construction.
+
+---
+
+## 2026-08-29 — Blank-slate judging verification
+
+**Crawler-log volume and Gemma triage rate.** Not re-audited from Firestore in this pass. The dated values in `docs/metrics.json` remain the source; `make check-docs` passed against the 2026-08-29 audit. No new triage rate is claimed.
+
+**Canary results, verbatim-match hit rate, and `spend_to_date`.** Not observed in this session and therefore **unavailable** for this entry.
+
+**Scope-lattice edge cases.** No new containment defect was found. All 56 cases passed. The presentation review confirmed that “training yes, but don't clone my voice” is admissible as an example because synthesis is incomparable to the training chain; the documented inexpressible case remains “training but not fine_tuning.”
+
+**Google-toolchain findings.** The deployed public walkthrough was executed from a new sandbox. Its revocation returned a `KMS-ECDSA-P256-SHA256` notice, the identical request flipped from permitted to refused, and the ADK failure drill returned six structured hops, three role identities, `COMPLETED_DEGRADED`, Cloud Trace exporter metadata, and trace id `5a9a9660413c2123270d51e1ea711ad6` in 1615 ms. The fixed guided interpretation returned `interpreter_model: gemini-3.5-flash` and explicitly identified its surface as `Vertex AI · pinned interpreter · committed response cache`. Because `VertexGeminiClient.generate()` returns a matching cache entry before calling `_call_vertex()`, this particular filmed action is a replay of a real recorded response, not a fresh Vertex call; the current “read live” UI and narration overstate that surface. The separate Market path accepts arbitrary visitor text and calls Vertex AI on a cache miss, so this is a demo-label defect rather than an absent model integration.
